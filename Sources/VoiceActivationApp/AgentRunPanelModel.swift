@@ -111,6 +111,15 @@ final class AgentRunPanelModel {
             ])
     }
 
+    func discard(runID: UUID) {
+        guard snapshot?.runID == runID else { return }
+        retirePresentation()
+    }
+
+    func shutdown() {
+        retirePresentation()
+    }
+
     func toggleThinkingDetails(thinkingID: UUID) {
         guard
             snapshot?.timeline.contains(where: { item in
@@ -284,5 +293,16 @@ final class AgentRunPanelModel {
             task.cancel()
         }
         previewTasks.removeAll(keepingCapacity: true)
+    }
+
+    private func retirePresentation() {
+        cancelAllPreviewTasks()
+        artifactPreviewStates.removeAll(keepingCapacity: false)
+        snapshot = nil
+        isAutoFollowing = true
+        isMinimized = false
+        resolvingPermissions = []
+        expandedThinkingIDs = []
+        isUserScrolling = false
     }
 }

@@ -100,6 +100,42 @@ struct AgentRunPanelModelArtifactTests {
         #expect(model.previewStatus(for: artifact.id) == nil)
     }
 
+    @MainActor @Test
+    func preview_WhenRunIsDiscarded_RejectsItsLateCompletion() async throws {
+        let runID = UUID()
+        let artifact = result(title: "Report")
+        let preview = AgentArtifactPreview(image: try onePixelImage())
+        let loader = ControlledAgentArtifactPreviewLoader()
+        let model = AgentRunPanelModel(previewLoader: loader)
+        model.begin(snapshot(runID: runID, artifacts: [artifact]))
+        await loader.waitUntilRequested(artifact.id)
+
+        model.discard(runID: runID)
+        await loader.complete(artifact.id, with: preview)
+        await Task.yield()
+
+        #expect(model.snapshot == nil)
+        #expect(model.previewStatus(for: artifact.id) == nil)
+    }
+
+    @MainActor @Test
+    func preview_WhenPanelShutsDown_RejectsItsLateCompletion() async throws {
+        let runID = UUID()
+        let artifact = result(title: "Report")
+        let preview = AgentArtifactPreview(image: try onePixelImage())
+        let loader = ControlledAgentArtifactPreviewLoader()
+        let model = AgentRunPanelModel(previewLoader: loader)
+        model.begin(snapshot(runID: runID, artifacts: [artifact]))
+        await loader.waitUntilRequested(artifact.id)
+
+        model.shutdown()
+        await loader.complete(artifact.id, with: preview)
+        await Task.yield()
+
+        #expect(model.snapshot == nil)
+        #expect(model.previewStatus(for: artifact.id) == nil)
+    }
+
     private func snapshot(
         runID: UUID,
         artifacts: [AgentArtifactPresentation]

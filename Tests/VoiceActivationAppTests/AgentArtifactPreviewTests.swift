@@ -7,7 +7,7 @@ import VoiceActivationCore
 @testable import VoiceActivationApp
 
 struct AgentArtifactPreviewTests {
-    @Test func source_WhenArtifactVaries_SelectsOnlySafeAutomaticPreview() throws {
+    @Test func source_WhenArtifactVaries_SelectsOnlySafeAutomaticPreview() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -17,27 +17,37 @@ struct AgentArtifactPreviewTests {
         let imageData = Data([0, 0, 0, 255])
         let loader = SystemAgentArtifactPreviewLoader()
 
-        #expect(loader.previewSource(for: artifact(
+        let embedded = await loader.previewSource(for: artifact(
             uri: nil,
             mimeType: "image/png",
             payload: .image(data: imageData, mimeType: "image/png")))
-            == .embeddedImage(imageData))
-        #expect(loader.previewSource(for: artifact(
+        let local = await loader.previewSource(for: artifact(
             uri: localFile.absoluteString,
             mimeType: "application/pdf",
-            payload: .linked)) == .localFile(localFile))
-        #expect(loader.previewSource(for: artifact(
+            payload: .linked))
+        let remote = await loader.previewSource(for: artifact(
             uri: "https://example.com/report.pdf",
             mimeType: "application/pdf",
-            payload: .linked)) == nil)
-        #expect(loader.previewSource(for: artifact(
+            payload: .linked))
+        let remoteAuthority = await loader.previewSource(for: artifact(
+            uri: "file://example.invalid/tmp/report.pdf",
+            mimeType: "application/pdf",
+            payload: .linked))
+        let privateText = await loader.previewSource(for: artifact(
             uri: localFile.absoluteString,
             mimeType: "text/plain",
-            payload: .embeddedText("private"))) == nil)
-        #expect(loader.previewSource(for: artifact(
+            payload: .embeddedText("private")))
+        let memory = await loader.previewSource(for: artifact(
             uri: "memory:///report.pdf",
             mimeType: "application/pdf",
-            payload: .linked)) == nil)
+            payload: .linked))
+
+        #expect(embedded == .embeddedImage(imageData))
+        #expect(local == .localFile(localFile))
+        #expect(remote == nil)
+        #expect(remoteAuthority == nil)
+        #expect(privateText == nil)
+        #expect(memory == nil)
     }
 
     private func artifact(

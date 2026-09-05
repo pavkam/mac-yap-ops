@@ -6,9 +6,12 @@ import VoiceActivationCore
 
 extension AppModel {
     /// Idempotently stops every adapter and flushes diagnostics before application exit.
-    func shutdown() {
+    func shutdown() async {
         guard !isShutdown else {
             diagnostics.record(category: .app, event: "app_model.shutdown_ignored")
+            if !isShutdownComplete {
+                await withCheckedContinuation { shutdownWaiters.append($0) }
+            }
             return
         }
         diagnostics.record(category: .app, event: "app_model.shutdown_started")
@@ -20,7 +23,7 @@ extension AppModel {
         if let runID = agentRunSnapshot?.runID {
             agentRunPanelPresenter.hide(runID: runID)
         }
-        agentRunPanelPresenter.shutdown()
+        await agentRunPanelPresenter.shutdown()
         agentRunPresentation.shutdown()
         agentConversationAudioPresenter.shutdown()
         elevenLabsVoiceCatalogGeneration &+= 1
@@ -28,6 +31,12 @@ extension AppModel {
         elevenLabsVoicePreview.stop()
         diagnostics.record(category: .app, event: "app_model.shutdown_finished")
         diagnostics.flush()
+        isShutdownComplete = true
+        let waiters = shutdownWaiters
+        shutdownWaiters.removeAll(keepingCapacity: false)
+        for waiter in waiters {
+            waiter.resume()
+        }
     }
 
     /// Updates only the editable shortcut draft for a profile.

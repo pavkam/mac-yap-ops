@@ -36,7 +36,7 @@ extension AppModelTests {
         #expect(panel.shown == [runID])
     }
 
-    @MainActor @Test func deleteAgentRun_WhenConversationIsTerminal_DiscardsItAndHidesPanel()
+    @MainActor @Test func deleteAgentRun_WhenConversationIsTerminal_DiscardsPanelState()
         throws
     {
         let profile = try makeAgentProfile(displayName: "Codex")
@@ -60,7 +60,8 @@ extension AppModelTests {
                 event: .agentMessageDelta(messageID: "late", text: "Do not restore")))
 
         #expect(fixture.model.agentRunSnapshot == nil)
-        #expect(panel.hidden == [runID])
+        #expect(panel.discarded == [runID])
+        #expect(panel.hidden.isEmpty)
     }
 
     @MainActor @Test func agentLifecycle_WhenEventIsStale_IgnoresIt() throws {

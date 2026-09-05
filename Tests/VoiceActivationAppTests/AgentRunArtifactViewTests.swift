@@ -29,6 +29,63 @@ struct AgentRunArtifactViewTests {
         #expect(highContrast.cgImage != nil)
     }
 
+    @MainActor @Test
+    func thinking_WhenToolHasRetainedContent_RendersTheContentInExpandedDetails() throws {
+        let withoutContent = renderedThinking(content: [])
+        let withContent = renderedThinking(content: ["Generated **report.pdf** successfully."])
+
+        #expect(withContent != withoutContent)
+    }
+
+    @MainActor
+    private func renderedThinking(content: [String]) -> Data? {
+        let model = AgentRunPanelModel()
+        let thinkingID = UUID()
+        model.begin(snapshotWithToolContent(thinkingID: thinkingID, content: content))
+        model.toggleThinkingDetails(thinkingID: thinkingID)
+        guard case let .thinking(thinking)? = model.snapshot?.timeline.first else { return nil }
+        let panelView = AgentRunPanelView(model: model)
+        let renderer = ImageRenderer(content: panelView.thinkingCard(thinking))
+        renderer.proposedSize = ProposedViewSize(width: 600, height: nil)
+        guard let image = renderer.cgImage else { return nil }
+        return NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
+    }
+
+    @MainActor
+    private func snapshotWithToolContent(
+        thinkingID: UUID,
+        content: [String]
+    ) -> AgentRunSnapshot {
+        let tool = AgentToolPresentation(
+            id: "tool-1",
+            title: "Create report",
+            kind: .other,
+            status: .completed,
+            content: content,
+            isSettled: true)
+        return AgentRunSnapshot(
+            runID: UUID(),
+            profileID: UUID(),
+            accent: .blue,
+            prompt: "Create a report",
+            providerName: "Codex",
+            phase: .completed(.endTurn),
+            voiceInput: "",
+            output: "",
+            timeline: [.thinking(AgentThinkingPresentation(
+                id: thinkingID,
+                details: [.tool(tool)],
+                isSettled: true))],
+            diagnostics: "",
+            plan: [],
+            tools: [tool],
+            permissions: [],
+            notices: [],
+            elapsedSeconds: 1,
+            evictedToolCount: 0,
+            ignoredToolUpdateCount: 0)
+    }
+
     @MainActor
     private func snapshotWithImageAndPDF() -> AgentRunSnapshot {
         let imageData = Data(base64Encoded:

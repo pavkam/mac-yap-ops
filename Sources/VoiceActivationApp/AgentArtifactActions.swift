@@ -11,7 +11,7 @@ protocol AgentArtifactOpening: AnyObject {
     func open(runID: UUID, artifact: AgentArtifactPresentation)
     func reveal(runID: UUID, artifact: AgentArtifactPresentation)
     func discard(runID: UUID)
-    func shutdown()
+    func shutdown() async
 }
 
 protocol AgentArtifactMaterializing: Sendable {
@@ -20,6 +20,10 @@ protocol AgentArtifactMaterializing: Sendable {
         artifact: AgentArtifactPresentation) async -> URL?
     func discard(runID: UUID) async
     func discardAll() async
+}
+
+protocol AgentArtifactFileChecking: Sendable {
+    func existingRegularFile(_ url: URL) async -> URL?
 }
 
 @MainActor
@@ -33,7 +37,10 @@ enum AgentArtifactActionPolicy {
         switch artifact.artifact.payload {
         case .linked:
             guard let url = linkedURL(artifact) else { return false }
-            return ["file", "http", "https"].contains(url.scheme?.lowercased())
+            if url.isFileURL {
+                return localFileURL(url) != nil
+            }
+            return ["http", "https"].contains(url.scheme?.lowercased())
         case .image, .embeddedText, .embeddedBlob:
             return true
         }
@@ -41,21 +48,30 @@ enum AgentArtifactActionPolicy {
 
     static func canReveal(_ artifact: AgentArtifactPresentation) -> Bool {
         guard case .linked = artifact.artifact.payload,
-              let url = linkedURL(artifact)
+              let url = linkedURL(artifact),
+              localFileURL(url) != nil
         else {
             return false
         }
-        return url.isFileURL
+        return true
     }
 
     static func linkedURL(_ artifact: AgentArtifactPresentation) -> URL? {
         artifact.artifact.uri.flatMap(URL.init(string:))
+    }
+
+    static func localFileURL(_ url: URL) -> URL? {
+        guard url.isFileURL else { return nil }
+        let host = url.host?.lowercased()
+        guard host == nil || host == "" || host == "localhost" else { return nil }
+        return URL(fileURLWithPath: url.path).standardizedFileURL
     }
 }
 
 @MainActor
 final class SystemAgentArtifactOpener: AgentArtifactOpening {
     private let store: any AgentArtifactMaterializing
+    private let fileChecker: any AgentArtifactFileChecking
     private let workspace: any AgentArtifactWorkspaceOpening
     private let diagnostics: any VoiceActivationDiagnosticRecording
     private var activeRunID: UUID?
@@ -63,10 +79,12 @@ final class SystemAgentArtifactOpener: AgentArtifactOpening {
 
     init(
         store: any AgentArtifactMaterializing = AgentArtifactTemporaryFileStore(),
+        fileChecker: any AgentArtifactFileChecking = SystemAgentArtifactFileChecker(),
         workspace: any AgentArtifactWorkspaceOpening = SystemAgentArtifactWorkspace(),
         diagnostics: any VoiceActivationDiagnosticRecording = VoiceActivationDiagnostics.shared)
     {
         self.store = store
+        self.fileChecker = fileChecker
         self.workspace = workspace
         self.diagnostics = diagnostics
     }
@@ -85,9 +103,7 @@ final class SystemAgentArtifactOpener: AgentArtifactOpening {
 
         switch artifact.artifact.payload {
         case .linked:
-            guard let url = AgentArtifactActionPolicy.linkedURL(artifact),
-                  linkedURLCanOpen(url)
-            else {
+            guard let url = AgentArtifactActionPolicy.linkedURL(artifact) else {
                 record(action: "open", runID: runID, artifact: artifact, result: false)
                 return
             }
@@ -96,7 +112,20 @@ final class SystemAgentArtifactOpener: AgentArtifactOpening {
                       self.activeRunID == runID,
                       self.generation == operationGeneration
                 else { return }
-                let result = await self.workspace.open(url)
+                let resolvedURL: URL
+                if url.isFileURL {
+                    guard let localURL = await self.fileChecker.existingRegularFile(url) else {
+                        self.record(action: "open", runID: runID, artifact: artifact, result: false)
+                        return
+                    }
+                    resolvedURL = localURL
+                } else {
+                    resolvedURL = url
+                }
+                guard self.activeRunID == runID,
+                      self.generation == operationGeneration
+                else { return }
+                let result = await self.workspace.open(resolvedURL)
                 self.record(action: "open", runID: runID, artifact: artifact, result: result)
             }
         case .image, .embeddedText, .embeddedBlob:
@@ -127,14 +156,27 @@ final class SystemAgentArtifactOpener: AgentArtifactOpening {
     func reveal(runID: UUID, artifact: AgentArtifactPresentation) {
         guard activeRunID == runID,
               AgentArtifactActionPolicy.canReveal(artifact),
-              let url = AgentArtifactActionPolicy.linkedURL(artifact),
-              FileManager.default.fileExists(atPath: url.path)
+              let url = AgentArtifactActionPolicy.linkedURL(artifact)
         else {
             record(action: "reveal", runID: runID, artifact: artifact, result: false)
             return
         }
-        let result = workspace.reveal(url)
-        record(action: "reveal", runID: runID, artifact: artifact, result: result)
+        let operationGeneration = generation
+        Task { [weak self] in
+            guard let self else { return }
+            guard let localURL = await self.fileChecker.existingRegularFile(url) else {
+                guard self.activeRunID == runID,
+                      self.generation == operationGeneration
+                else { return }
+                self.record(action: "reveal", runID: runID, artifact: artifact, result: false)
+                return
+            }
+            guard self.activeRunID == runID,
+                  self.generation == operationGeneration
+            else { return }
+            let result = self.workspace.reveal(localURL)
+            self.record(action: "reveal", runID: runID, artifact: artifact, result: result)
+        }
     }
 
     func discard(runID: UUID) {
@@ -147,19 +189,10 @@ final class SystemAgentArtifactOpener: AgentArtifactOpening {
         }
     }
 
-    func shutdown() {
+    func shutdown() async {
         generation &+= 1
         activeRunID = nil
-        Task { [store] in
-            await store.discardAll()
-        }
-    }
-
-    private func linkedURLCanOpen(_ url: URL) -> Bool {
-        guard url.isFileURL else { return true }
-        var isDirectory: ObjCBool = false
-        return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
-            && !isDirectory.boolValue
+        await store.discardAll()
     }
 
     private func record(
@@ -180,6 +213,25 @@ final class SystemAgentArtifactOpener: AgentArtifactOpening {
                 "has_mime_type": String(artifact.artifact.mimeType != nil),
                 "result": String(result),
             ])
+    }
+}
+
+final class SystemAgentArtifactFileChecker: AgentArtifactFileChecking, @unchecked Sendable {
+    private let queue = DispatchQueue(
+        label: "org.ciobanu.VoiceActivation.artifact-file-check",
+        qos: .userInitiated)
+
+    func existingRegularFile(_ url: URL) async -> URL? {
+        guard let localURL = AgentArtifactActionPolicy.localFileURL(url) else { return nil }
+        return await withCheckedContinuation { continuation in
+            queue.async {
+                var isDirectory: ObjCBool = false
+                let exists = FileManager.default.fileExists(
+                    atPath: localURL.path,
+                    isDirectory: &isDirectory)
+                continuation.resume(returning: exists && !isDirectory.boolValue ? localURL : nil)
+            }
+        }
     }
 }
 
@@ -206,6 +258,7 @@ final class AgentArtifactTemporaryFileStore: AgentArtifactMaterializing, @unchec
         label: "org.ciobanu.VoiceActivation.artifact-files",
         qos: .userInitiated)
     private let rootURL: URL
+    private var isClosed = false
 
     init(rootURL: URL = AgentArtifactTemporaryFileStore.defaultRootURL()) {
         self.rootURL = rootURL
@@ -216,7 +269,11 @@ final class AgentArtifactTemporaryFileStore: AgentArtifactMaterializing, @unchec
         artifact: AgentArtifactPresentation) async -> URL?
     {
         await withCheckedContinuation { continuation in
-            queue.async { [rootURL] in
+            queue.async { [self] in
+                guard !isClosed else {
+                    continuation.resume(returning: nil)
+                    return
+                }
                 continuation.resume(returning: Self.write(
                     rootURL: rootURL,
                     runID: runID,
@@ -239,7 +296,8 @@ final class AgentArtifactTemporaryFileStore: AgentArtifactMaterializing, @unchec
 
     func discardAll() async {
         await withCheckedContinuation { continuation in
-            queue.async { [rootURL] in
+            queue.async { [self] in
+                isClosed = true
                 try? FileManager.default.removeItem(at: rootURL)
                 continuation.resume()
             }

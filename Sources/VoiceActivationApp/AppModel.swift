@@ -79,6 +79,8 @@ final class AppModel {
     @ObservationIgnored var agentLifecycleSequence: UInt64 = 0
     @ObservationIgnored var started = false
     @ObservationIgnored var isShutdown = false
+    @ObservationIgnored var isShutdownComplete = false
+    @ObservationIgnored var shutdownWaiters: [CheckedContinuation<Void, Never>] = []
     @ObservationIgnored var permissionGranted = false
     @ObservationIgnored var permissionTask: Task<Bool, Never>?
     @ObservationIgnored var credentialLoadTask: Task<Void, Never>?
@@ -105,6 +107,7 @@ final class AppModel {
         preferences: AppPreferences = AppPreferences(),
         recordingOverlay: any RecordingOverlayDisplaying = RecordingOverlayController(),
         agentRunPanel: any AgentRunPanelDisplaying = AgentRunPanelController(),
+        artifactOpener: any AgentArtifactOpening = SystemAgentArtifactOpener(),
         shortcut: any PushToTalkShortcutManaging = PushToTalkShortcut(),
         speechSession: any SpeechSessionProtocol = AppleSpeechSession(),
         commandRunner: any CommandRunning = CommandRunner(),
@@ -152,6 +155,7 @@ final class AppModel {
         agentRunPresentation = AgentRunPresentation(diagnostics: diagnostics)
         agentRunPanelPresenter = AgentRunPanelPresenter(
             display: agentRunPanel,
+            artifactOpener: artifactOpener,
             diagnostics: diagnostics)
         soundPresenter = CaptureSoundPresenter(player: soundPlayer)
         self.agentConversationAudioPlayer = resolvedAgentConversationAudioPlayer

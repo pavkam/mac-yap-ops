@@ -314,6 +314,12 @@ final class AgentRunEventDeliveryQueue: @unchecked Sendable {
         discardedBytes: UInt64,
         discardedEntries: UInt64)
     {
+        if let existingIndex = entries.firstIndex(where: { $0.noticeKind == kind }) {
+            var notice = entries[existingIndex]
+            notice.addNoticeCounts(bytes: discardedBytes, entries: discardedEntries)
+            entries[existingIndex] = notice
+            return
+        }
         if index > 0, entries[index - 1].noticeKind == kind {
             var notice = entries[index - 1]
             notice.addNoticeCounts(bytes: discardedBytes, entries: discardedEntries)

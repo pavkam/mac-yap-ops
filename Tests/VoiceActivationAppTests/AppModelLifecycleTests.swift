@@ -7,6 +7,27 @@ import Testing
 @testable import VoiceActivationApp
 @testable import VoiceActivationCore
 
+@MainActor
+private final class ControlledShutdownArtifactOpener: AgentArtifactOpening {
+    private var continuation: CheckedContinuation<Void, Never>?
+    private(set) var shutdownStarted = false
+
+    func begin(runID _: UUID) {}
+    func open(runID _: UUID, artifact _: AgentArtifactPresentation) {}
+    func reveal(runID _: UUID, artifact _: AgentArtifactPresentation) {}
+    func discard(runID _: UUID) {}
+
+    func shutdown() async {
+        shutdownStarted = true
+        await withCheckedContinuation { continuation = $0 }
+    }
+
+    func completeShutdown() {
+        continuation?.resume()
+        continuation = nil
+    }
+}
+
 
 extension AppModelTests {
     @MainActor @Test func togglePassiveListening_WhenProfilesDiffer_PausesWithoutChangingProfiles()
@@ -149,7 +170,7 @@ extension AppModelTests {
 
         let priority = try #require(priorities.priorities.first)
         #expect(priority.rawValue >= TaskPriority.userInitiated.rawValue)
-        model.shutdown()
+        await model.shutdown()
     }
 
     @MainActor @Test func passiveListening_WhenDisabledDuringPermissionRequest_StaysOff()
@@ -295,12 +316,50 @@ extension AppModelTests {
         let startup = Task { @MainActor in await model.start() }
         await waitUntil { permission.isWaiting }
 
-        model.shutdown()
+        await model.shutdown()
         permission.resolve(true)
         await startup.value
 
         #expect(speech.startCount == 0)
         #expect(model.state == .disabled)
+    }
+
+    @MainActor @Test func shutdown_WhenCalledConcurrently_AllCallersAwaitArtifactCleanup()
+        async throws
+    {
+        let suite = "VoiceActivationConcurrentShutdownTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        let opener = ControlledShutdownArtifactOpener()
+        let model = AppModel(
+            preferences: AppPreferences(defaults: defaults),
+            recordingOverlay: AppModelOverlayStub(),
+            agentRunPanel: AppModelAgentPanelSpy(),
+            artifactOpener: opener,
+            shortcut: ShortcutSpy(),
+            speechSession: AppModelSpeechSessionSpy(),
+            permissionRequest: { true },
+            soundPlayer: SilentCaptureSoundPlayer(),
+            agentConversationAudioPlayer: SilentAgentConversationAudioPlayer(),
+            agentSpeechCredentialStore: SilentAgentSpeechCredentialStore(),
+            startsAutomatically: false)
+        var secondFinished = false
+        let first = Task { @MainActor in await model.shutdown() }
+        await waitUntil { opener.shutdownStarted }
+
+        let second = Task { @MainActor in
+            await model.shutdown()
+            secondFinished = true
+        }
+        await waitUntil { model.shutdownWaiters.count == 1 }
+        #expect(!secondFinished)
+
+        opener.completeShutdown()
+        await first.value
+        await second.value
+
+        #expect(secondFinished)
+        #expect(model.isShutdownComplete)
     }
 
     @MainActor @Test func start_WhenPassiveDisabledDuringPermissionRequest_StaysOff() async throws {

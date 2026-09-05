@@ -28,6 +28,8 @@ enum AgentRunEventNormalizer {
     private static let maximumControlTextBytes = 64 * 1_024
     private static let maximumPlanEntryBytes = 8 * 1_024
     private static let maximumToolTextBytes = 16 * 1_024
+    private static let maximumToolTextEntries = 32
+    private static let maximumRetainedToolTextBytes = 64 * 1_024
 
     static func normalize(_ event: AgentRunEvent) throws -> AgentRunEventNormalization {
         switch event {
@@ -63,7 +65,7 @@ enum AgentRunEventNormalizer {
                 discardedBytes: saturatingAdd(
                     bounded.discardedBytes,
                     normalizedContent.discardedBytes),
-                discardedEntries: 0).entries
+                discardedEntries: normalizedContent.discardedEntries).entries
             entries.append(contentsOf: normalizedContent.artifacts)
             return AgentRunEventNormalization(entries: entries)
         case let .toolCallUpdate(update):
@@ -82,7 +84,7 @@ enum AgentRunEventNormalizer {
                 discardedBytes: saturatingAdd(
                     bounded?.discardedBytes ?? 0,
                     normalizedContent.discardedBytes),
-                discardedEntries: 0).entries
+                discardedEntries: normalizedContent.discardedEntries).entries
             entries.append(contentsOf: normalizedContent.artifacts)
             return AgentRunEventNormalization(entries: entries)
         case let .plan(plan):
@@ -158,7 +160,7 @@ enum AgentRunEventNormalizer {
                 discardedBytes: saturatingAdd(
                     boundedTitle?.discardedBytes ?? 0,
                     normalizedContent.discardedBytes),
-                discardedEntries: 0).entries
+                discardedEntries: normalizedContent.discardedEntries).entries
             entries.append(contentsOf: normalizedContent.artifacts)
             return AgentRunEventNormalization(entries: entries)
         case .deliveryNotice:
@@ -209,24 +211,44 @@ enum AgentRunEventNormalizer {
     ) throws -> (
         text: [AgentToolCallContent],
         artifacts: [AgentRunEventDeliveryEntry],
-        discardedBytes: Int)
+        discardedBytes: Int,
+        discardedEntries: Int)
     {
         var text: [AgentToolCallContent] = []
         var artifacts: [AgentRunEventDeliveryEntry] = []
         var discardedBytes = 0
+        var discardedEntries = 0
+        var retainedTextBytes = 0
+        text.reserveCapacity(min(toolContent.count, maximumToolTextEntries))
 
         for content in toolContent {
             switch content {
             case let .text(value):
-                let bounded = boundedPrefix(value, maximumBytes: maximumToolTextBytes)
-                text.append(.text(bounded.value))
+                guard !value.isEmpty else { continue }
+                let availableBytes = maximumRetainedToolTextBytes - retainedTextBytes
+                guard text.count < maximumToolTextEntries, availableBytes > 0 else {
+                    discardedBytes = saturatingAdd(discardedBytes, value.utf8.count)
+                    discardedEntries = saturatingAdd(discardedEntries, 1)
+                    continue
+                }
+                let bounded = boundedPrefix(
+                    value,
+                    maximumBytes: min(maximumToolTextBytes, availableBytes))
+                if !bounded.value.isEmpty {
+                    text.append(.text(bounded.value))
+                    retainedTextBytes = saturatingAdd(
+                        retainedTextBytes,
+                        bounded.value.utf8.count)
+                } else {
+                    discardedEntries = saturatingAdd(discardedEntries, 1)
+                }
                 discardedBytes = saturatingAdd(discardedBytes, bounded.discardedBytes)
             case let .artifact(artifact):
                 try validate(artifact: artifact)
                 artifacts.append(artifactEntry(artifact))
             }
         }
-        return (text, artifacts, discardedBytes)
+        return (text, artifacts, discardedBytes, discardedEntries)
     }
 
     private static func artifactEntry(_ artifact: AgentArtifact) -> AgentRunEventDeliveryEntry {

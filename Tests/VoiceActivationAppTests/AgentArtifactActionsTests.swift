@@ -56,6 +56,30 @@ private actor ControlledArtifactMaterializer: AgentArtifactMaterializing {
     }
 }
 
+private actor ControlledArtifactFileChecker: AgentArtifactFileChecking {
+    private var continuation: CheckedContinuation<URL?, Never>?
+    private var requestWaiters: [CheckedContinuation<Void, Never>] = []
+    private var requested = false
+
+    func existingRegularFile(_ url: URL) async -> URL? {
+        requested = true
+        let waiters = requestWaiters
+        requestWaiters.removeAll()
+        for waiter in waiters { waiter.resume() }
+        return await withCheckedContinuation { continuation = $0 }
+    }
+
+    func waitUntilRequested() async {
+        guard !requested else { return }
+        await withCheckedContinuation { requestWaiters.append($0) }
+    }
+
+    func complete(with url: URL?) {
+        continuation?.resume(returning: url)
+        continuation = nil
+    }
+}
+
 @MainActor
 private final class ArtifactLifecycleDisplaySpy: AgentRunPanelDisplaying {
     var onAction: ((AgentRunPanelAction) -> Void)?
@@ -63,6 +87,8 @@ private final class ArtifactLifecycleDisplaySpy: AgentRunPanelDisplaying {
     func update(_: AgentRunSnapshot) {}
     func show(runID _: UUID) {}
     func hide(runID _: UUID) {}
+    func discard(runID _: UUID) {}
+    func shutdown() {}
     func minimize(runID _: UUID) {}
     func restore(runID _: UUID) {}
 }
@@ -88,6 +114,21 @@ struct AgentArtifactActionsTests {
 
         await store.discard(runID: runID)
         #expect(!FileManager.default.fileExists(atPath: runDirectory.path))
+    }
+
+    @Test func materialize_WhenStoreIsClosed_DoesNotRecreateDeletedRoot() async {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = AgentArtifactTemporaryFileStore(rootURL: root)
+
+        await store.discardAll()
+        let url = await store.materialize(
+            runID: UUID(),
+            artifact: embedded(name: "late.txt", text: "private"))
+
+        #expect(url == nil)
+        #expect(!FileManager.default.fileExists(atPath: root.path))
     }
 
     @MainActor @Test
@@ -135,8 +176,8 @@ struct AgentArtifactActionsTests {
         presenter.begin(snapshot(runID: thirdRunID, artifacts: [thirdArtifact]), from: nil)
         display.onAction?(.openArtifact(runID: thirdRunID, artifactID: thirdArtifact.id))
         await eventually { workspace.opened.count == 3 }
-        presenter.shutdown()
-        await eventually { !FileManager.default.fileExists(atPath: root.path) }
+        await presenter.shutdown()
+        #expect(!FileManager.default.fileExists(atPath: root.path))
     }
 
     @MainActor @Test
@@ -157,6 +198,27 @@ struct AgentArtifactActionsTests {
         #expect(workspace.opened.isEmpty)
     }
 
+    @MainActor @Test
+    func open_WhenRetiredFileCheckCompletesLate_DoesNotInvokeWorkspace() async {
+        let fileChecker = ControlledArtifactFileChecker()
+        let workspace = ArtifactWorkspaceSpy()
+        let opener = SystemAgentArtifactOpener(
+            fileChecker: fileChecker,
+            workspace: workspace)
+        let oldRunID = UUID()
+        let fileURL = URL(fileURLWithPath: "/tmp/report.pdf")
+        let artifact = linked(uri: fileURL.absoluteString)
+        opener.begin(runID: oldRunID)
+        opener.open(runID: oldRunID, artifact: artifact)
+        await fileChecker.waitUntilRequested()
+
+        opener.begin(runID: UUID())
+        await fileChecker.complete(with: fileURL)
+        for _ in 0..<20 { await Task.yield() }
+
+        #expect(workspace.opened.isEmpty)
+    }
+
     private func embedded(name: String, text: String) -> AgentArtifactPresentation {
         AgentArtifactPresentation(
             id: UUID(),
@@ -168,6 +230,19 @@ struct AgentArtifactActionsTests {
                 mimeType: "text/plain",
                 declaredSize: UInt64(text.utf8.count),
                 payload: .embeddedText(text)))
+    }
+
+    private func linked(uri: String) -> AgentArtifactPresentation {
+        AgentArtifactPresentation(
+            id: UUID(),
+            artifact: AgentArtifact(
+                uri: uri,
+                name: "report.pdf",
+                title: nil,
+                descriptiveText: nil,
+                mimeType: "application/pdf",
+                declaredSize: nil,
+                payload: .linked))
     }
 
     @MainActor

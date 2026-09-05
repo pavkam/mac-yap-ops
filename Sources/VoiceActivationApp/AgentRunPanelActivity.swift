@@ -124,6 +124,12 @@ extension AgentRunPanelView {
                         .font(.callout.monospaced())
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
+                    ForEach(Array(tool.content.enumerated()), id: \.offset) { _, content in
+                        AgentMarkdownView(markdown: content)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }

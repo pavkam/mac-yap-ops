@@ -46,13 +46,20 @@ struct SystemAgentArtifactPreviewLoader: AgentArtifactPreviewLoading {
     private static let imageQueue = DispatchQueue(
         label: "org.ciobanu.VoiceActivation.artifact-preview",
         qos: .userInitiated)
+    private let fileChecker: any AgentArtifactFileChecking
 
-    func previewSource(for artifact: AgentArtifactPresentation) -> AgentArtifactPreviewSource? {
+    init(fileChecker: any AgentArtifactFileChecking = SystemAgentArtifactFileChecker()) {
+        self.fileChecker = fileChecker
+    }
+
+    func previewSource(
+        for artifact: AgentArtifactPresentation
+    ) async -> AgentArtifactPreviewSource? {
         switch artifact.artifact.payload {
         case let .image(data, _):
             .embeddedImage(data)
         case .linked:
-            localFileSource(uri: artifact.artifact.uri)
+            await localFileSource(uri: artifact.artifact.uri)
         case .embeddedText, .embeddedBlob:
             nil
         }
@@ -63,7 +70,7 @@ struct SystemAgentArtifactPreviewLoader: AgentArtifactPreviewLoading {
         size: CGSize,
         scale: CGFloat) async -> AgentArtifactPreview?
     {
-        switch previewSource(for: artifact) {
+        switch await previewSource(for: artifact) {
         case let .embeddedImage(data):
             return await embeddedImagePreview(data: data, size: size, scale: scale)
         case let .localFile(url):
@@ -73,20 +80,14 @@ struct SystemAgentArtifactPreviewLoader: AgentArtifactPreviewLoading {
         }
     }
 
-    private func localFileSource(uri: String?) -> AgentArtifactPreviewSource? {
+    private func localFileSource(uri: String?) async -> AgentArtifactPreviewSource? {
         guard let uri,
               let url = URL(string: uri),
-              url.isFileURL
+              let localURL = await fileChecker.existingRegularFile(url)
         else {
             return nil
         }
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
-              !isDirectory.boolValue
-        else {
-            return nil
-        }
-        return .localFile(url)
+        return .localFile(localURL)
     }
 
     private func embeddedImagePreview(

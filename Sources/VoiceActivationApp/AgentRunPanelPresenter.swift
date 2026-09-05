@@ -25,6 +25,8 @@ protocol AgentRunPanelDisplaying: AnyObject {
     func update(_ snapshot: AgentRunSnapshot)
     func show(runID: UUID)
     func hide(runID: UUID)
+    func discard(runID: UUID)
+    func shutdown()
     func minimize(runID: UUID)
     func restore(runID: UUID)
 }
@@ -136,9 +138,11 @@ final class AgentRunPanelPresenter {
         handle(.delete(runID: runID))
     }
 
-    func shutdown() {
-        artifactOpener.shutdown()
+    func shutdown() async {
         snapshot = nil
+        isMinimized = false
+        display.shutdown()
+        await artifactOpener.shutdown()
     }
 
     private func handle(_ action: AgentRunPanelAction) {
@@ -215,7 +219,7 @@ final class AgentRunPanelPresenter {
             self.snapshot = nil
             isMinimized = false
             artifactOpener.discard(runID: runID)
-            display.hide(runID: runID)
+            display.discard(runID: runID)
             onDelete?(runID)
             recordApplied(action)
         case .openArtifact(let runID, let artifactID):
