@@ -20,6 +20,7 @@ extension AppModel {
         if let runID = agentRunSnapshot?.runID {
             agentRunPanelPresenter.hide(runID: runID)
         }
+        agentRunPanelPresenter.shutdown()
         agentRunPresentation.shutdown()
         agentConversationAudioPresenter.shutdown()
         elevenLabsVoiceCatalogGeneration &+= 1
