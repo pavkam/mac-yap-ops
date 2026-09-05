@@ -5,45 +5,59 @@ SPDX-License-Identifier: MIT
 
 # Voice Activation documentation
 
-Voice Activation is a native macOS menu-bar app that listens for configurable
-wake phrases or a push-to-talk shortcut, transcribes a request, and routes it
-to either a direct command or a local ACP coding agent without passing speech
-through a shell.
+Use this index to move from first launch to the guide that owns a setting,
+runtime contract, investigation, or contributor workflow.
 
-## Guides
+## Start here
 
 | Guide | Use it to |
 | --- | --- |
 | [Getting started](getting-started.md) | Build, launch, grant permissions, and run the first command. |
-| [Configuration](configuration.md) | Configure wake phrases, command or agent targets, colors, locale, and push-to-talk. |
-| [ACP agent harness](agent-harness.md) | Configure Cursor, Codex, Claude, or a custom ACP v1 agent and understand streamed runs. |
-| [Sound design](sound-design.md) | Understand listening, thinking, and tool-transition cues. |
-| [Architecture](architecture.md) | Understand speech modes, state transitions, privacy, and process execution. |
-| [Troubleshooting](troubleshooting.md) | Diagnose permissions, recognition, shortcuts, commands, and agent runs. |
-| [Development](development.md) | Work with the package, tests, app bundle, and continuous integration. |
+| [Configuration reference](configuration.md) | Check saved defaults, field meanings, validation, and persistence. |
+| [Troubleshooting](troubleshooting.md) | Recover from common permission, recognition, command, agent, audio, and login-item symptoms. |
 
-## Core behavior
+## Use Voice Activation
 
-- Passive listening is enabled by default and uses on-device recognition.
-- The default wake profile is `computer`, a Google search URL, and blue.
-- Multiple wake profiles can route speech to different commands or ACP agents
-  and presentation colors.
-- Every wake profile can have a distinct push-to-talk shortcut that uses that
-  profile’s URL and color.
-- An animated translucent overlay and start/end sounds show capture state.
-- Launch at Login registers the app through macOS Service Management.
-- Command targets insert spoken text into explicit process arguments through
-  `{text}` or `{urlText}` placeholders. Agent targets send it as an ACP text
-  content block.
-- Agent targets stream bounded Markdown into a non-activating floating panel.
-  Reasoning and tools collect in one expandable **Thinking** card per work
-  burst, then the microphone stays live for spoken follow-ups.
-- Each agent profile can provide its own system prompt and default permission
-  level; interactive permission requests can be answered by voice.
-- Streaming reply speech through macOS or ElevenLabs and narration-aware
-  activity sounds make agent conversations audible. Dedicated cues distinguish
-  thinking, tool start, tool completion, and tool failure. ElevenLabs voices are
-  loaded from the account catalog and can be previewed; tests always replace
-  network and playback boundaries with silent adapters.
-- The app has no Dock icon, server, Voice Activation account, audio archive,
-  run-history database, or shell-evaluation layer.
+| Guide | Use it to |
+| --- | --- |
+| [Wake profiles](wake-profiles.md) | Configure wake matching, passive listening, push-to-talk, capture timing, and voice cancellation. |
+| [Command targets](command-targets.md) | Pass recognized text to a direct executable without shell evaluation. |
+| [Agent providers](agent-providers.md) | Configure, discover, authenticate, and constrain an ACP provider. |
+| [Agent conversations](agent-conversations.md) | Use the panel, follow-ups, permissions, narration, cancellation, and retained output. |
+| [Sound design](sound-design.md) | Understand capture, thinking, and tool cues and when they play. |
+
+## Understand the system
+
+| Guide | Use it to |
+| --- | --- |
+| [Architecture](architecture.md) | Locate package, subsystem, state-flow, and adapter ownership. |
+| [ACP agent harness](agent-harness.md) | Read the process, wire, session, permission, cancellation, recovery, and delivery contract. |
+| [Concurrency and lifecycle](concurrency-and-lifecycle.md) | Trace actor isolation, identities, callbacks, queues, cancellation order, and shutdown. |
+| [Privacy and security](privacy-and-security.md) | Understand data paths, trust boundaries, credentials, persistence, redaction, and retention. |
+| [Diagnostics](diagnostics.md) | Inspect and safely share the structured runtime trace. |
+
+## Contribute
+
+| Guide | Use it to |
+| --- | --- |
+| [Development](development.md) | Set up the toolchain, navigate the repository, and make a focused change. |
+| [Testing](testing.md) | Place tests, run focused suites, choose proportional gates, and report evidence. |
+| [Packaging](packaging.md) | Build, sign, verify, install, and provision the application bundle. |
+| [Documentation](documentation.md) | Choose the owning guide and review documentation against live evidence. |
+
+## Terminology
+
+- A **profile** combines one wake phrase, one command or agent target, an accent,
+  an enabled state, and an optional push-to-talk shortcut.
+- **Passive wake** is continuous on-device recognition used only to detect the
+  enabled profiles' wake phrases.
+- A **capture** is one recognized utterance being collected for a profile or an
+  active agent conversation.
+- A **conversation** is one retained agent session and its visible timeline. It
+  may contain several turns.
+- A **turn** is one user request and the corresponding agent work inside a
+  conversation.
+
+## Related guides
+
+- [Project README](../README.md)

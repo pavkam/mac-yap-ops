@@ -28,6 +28,12 @@ including ACP startup. Provider-exposed reasoning, plans, and tool activity
 collect inside that card. The next answer settles and collapses it; select the
 card to inspect its retained details.
 
+Responses render with a native GitHub-flavored Markdown parser, including
+headings, nested and task lists, tables, block quotes, links, inline code, and
+fenced code blocks. Text remains selectable. Agent-provided images are shown as
+omitted and never trigger a network request; only user-clicked `http` and
+`https` links can open externally.
+
 Voice Activation displays only thought content the provider sends through ACP;
 it does not claim access to private chain-of-thought. Token bursts publish to the
 panel at most 20 times per second so streaming remains responsive without
@@ -39,14 +45,16 @@ enables it again.
 
 ## Continue by voice or push-to-talk
 
-Speak normally after the first request. A final recognition result or 1.5
-seconds without a transcript change submits the utterance as the next turn. The
-profile's push-to-talk binding is another input method for the same conversation.
+Speak normally after the first request. A final recognition result or the
+conversation-capture inactivity boundary submits the utterance as the next turn.
+The profile's push-to-talk binding is another input method for the same
+conversation. [Wake profiles](wake-profiles.md) owns the capture timing.
 
 Speaking while a turn is still active cancels that work before the follow-up
-starts. Up to 16 recognized follow-ups can wait behind active cancellation and
-work. If the queue is full, the panel shows a bounded notice and leaves the
-current turn running.
+starts. Recognized follow-ups wait in a bounded queue behind active cancellation
+and work. If the queue is full, the panel shows a bounded notice and leaves the
+current turn running. [Privacy and security](privacy-and-security.md) owns the
+retention limit.
 
 Speaking during narration stops playback and keeps the utterance in the normal
 recognition path. Conversation capture requests Apple's best-effort input voice
@@ -132,8 +140,8 @@ limits.
 ## Recover after provider failure
 
 Each profile reuses its own initialized ACP session while its configuration is
-unchanged. Voice Activation retains at most four idle profile sessions and
-evicts the least recently used one under pressure.
+unchanged. Voice Activation keeps a bounded least-recently-used set of idle
+profile sessions and evicts an idle one under pressure.
 
 If a provider forgets a cached session before producing output or requesting
 permission, Voice Activation creates a new process and retries that prompt once.
@@ -144,8 +152,10 @@ If a connection fails after useful output, the output remains visible and the
 conversation microphone stays live. The next follow-up creates a fresh provider
 session.
 
-Startup also has a 12-second deadline and one fresh-process retry. A second stall
-fails visibly instead of leaving the panel on **Starting the agent**.
+Startup also has a bounded deadline and one fresh-process retry. A second stall
+fails visibly instead of leaving the panel on **Starting the agent**. See
+[ACP agent harness](agent-harness.md) for the session, retry, and timeout
+contracts.
 
 ## Related guides
 

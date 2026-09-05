@@ -99,7 +99,10 @@ between transport ingestion and the app.
 
 `AgentRunPresentation` reduces typed lifecycle and ACP events into one bounded
 conversation timeline. The panel presenter rejects stale run actions and hosts
-the timeline in a non-activating floating panel. `AgentConversationAudioPresenter`
+the timeline in a non-activating floating panel. Its app-owned Markdown boundary
+uses MarkdownUI's `cmark-gfm` parser with semantic panel styling, non-networking
+image providers, and an `http`/`https` link allowlist; no WebKit surface or raw
+HTML execution enters the panel. `AgentConversationAudioPresenter`
 maps the same typed lifecycle into narration and activity cues without making
 the presentation model own audio playback.
 

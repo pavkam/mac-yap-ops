@@ -75,9 +75,10 @@ request by voice. See [Agent conversations](agent-conversations.md).
 
 ## Add a profile system prompt
 
-The optional system prompt is profile configuration and is limited to 8 KiB of
-UTF-8. Use it for stable instructions such as response style, project priorities,
-or safety constraints—not for a one-time task.
+The optional system prompt is bounded profile configuration. Use it for stable
+instructions such as response style, project priorities, or safety constraints,
+not for a one-time task. [ACP agent harness](agent-harness.md) owns the exact
+prompt limit and rejection behavior.
 
 For Codex, Voice Activation merges the prompt into the adapter's `CODEX_CONFIG`
 as `developer_instructions` before launch. Other ACP v1 providers receive it in

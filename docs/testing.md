@@ -61,6 +61,10 @@ presentation and layout, Markdown rendering policy, hot-key conversion, speech
 request policy, audio orchestration, narration, Keychain and login-item
 adapters, diagnostics, resources, and visible state mapping.
 
+Markdown coverage exercises representative GFM structure, real SwiftUI raster
+rendering, incomplete streaming snapshots, bounded long code, safe link schemes,
+and fail-closed block and inline images without network access.
+
 Audio and speech tests use silent players and controlled clients. Network clients
 use injected transports. Tests of Keychain and Service Management use stores or
 services that cannot mutate the developer Mac.

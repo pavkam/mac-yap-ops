@@ -69,11 +69,12 @@ The initial executable is `/usr/bin/open` and its argument is
 | Executable | Detected command or absolute provider-process path. |
 | Working folder | Absolute project directory sent during ACP session creation. |
 | Permission policy | Ask, scoped allow, or scoped deny behavior. |
-| System prompt | Optional profile instructions, limited to 8 KiB of UTF-8. |
+| System prompt | Optional bounded instructions saved with the profile. |
 | Adapter arguments | Explicit provider-process arguments with no shell parsing. |
 
-See [Agent providers](agent-providers.md) for setup and authentication. See
-[ACP agent harness](agent-harness.md) for the wire and lifecycle contract.
+See [Agent providers](agent-providers.md) for setup, authentication, and prompt
+usage. [ACP agent harness](agent-harness.md) owns the exact prompt bound plus the
+wire and lifecycle contract.
 
 ## Validation summary
 

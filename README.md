@@ -5,14 +5,15 @@ SPDX-License-Identifier: MIT
 
 # Voice Activation
 
-A native macOS menu-bar voice launcher for configurable wake phrases,
-push-to-talk commands, and live conversations with local coding agents through
-Agent Client Protocol (ACP). It transcribes speech, runs direct commands, streams
-Markdown agent output, and keeps the conversation controllable by voice.
+## What it does
 
-It is intentionally focused: native speech recognition, colored wake profiles,
-push-to-talk, direct argument execution, and streamed local-agent runs without
-a Voice Activation server or account.
+Voice Activation is a native macOS menu-bar app for wake phrases,
+push-to-talk commands, and voice-driven conversations with local coding agents
+through Agent Client Protocol (ACP).
+
+It transcribes an utterance, routes it to a direct executable or ACP provider,
+and keeps the foreground application focused while capture and conversation
+state remain visible.
 
 ## Requirements
 
@@ -20,164 +21,64 @@ a Voice Activation server or account.
 - Swift 6.2 or later
 - Xcode Command Line Tools or Xcode
 
-## Build and run
+## Quick start
+
+From the repository root:
 
 ```bash
-cd ~/Development/voice-activation
 make test
 make run
 ```
 
-The app bundle is created at `.build/VoiceActivation.app`. It runs only in the
-menu bar and requests Microphone and Speech Recognition access when voice input
-is first enabled.
+The app bundle is written to `.build/VoiceActivation.app`. Voice Activation has
+no Dock icon; use its menu-bar icon and grant Microphone and Speech Recognition
+access when prompted.
 
-An ad-hoc signature is used by default. macOS privacy grants may need to be
-given again after rebuilding an ad-hoc-signed bundle. To use an installed
-signing identity:
+Wait for **Ready**, say `computer`, then speak a query. The initial profile opens
+the recognized text as a Google search. For clone, permission, signing, and
+push-to-talk details, see [Getting started](docs/getting-started.md).
 
-```bash
-SIGN_IDENTITY="Apple Development: Your Name (TEAMID)" make app
-```
+## Core capabilities
 
-## Use
+- Multiple colored profiles, each with a wake phrase, command or agent target,
+  passive-wake toggle, and optional push-to-talk shortcut.
+- Explicit direct-process arguments with literal or URL-encoded recognized text
+  and no shell evaluation.
+- Cursor, Codex, Claude, and custom ACP v1 providers with editable executable,
+  working folder, system prompt, and permission policy.
+- A non-activating conversation panel with ordered turns, bounded follow-ups,
+  provider-exposed thinking and tools, spoken permission choices, cancellation,
+  session recovery, and retained output controls.
+- Selectable GitHub-flavored Markdown responses with safe link handling and
+  agent-provided images omitted instead of fetched from the network.
+- Optional macOS or ElevenLabs reply speech, barge-in, activity cues, and
+  profile-aware push-to-talk follow-ups.
+- Structured local diagnostics, Launch at Login, and signed SwiftPM app-bundle
+  packaging.
 
-- Passive wake is on by default. Grant the requested permissions and the app
-  listens for **“computer”** immediately. Each saved wake phrase has its own
-  row in the polished menu-bar control panel, so phrases can be enabled or
-  disabled independently while their push-to-talk shortcuts remain visible.
-  **Pause all** stops every passive wake listener without changing those
-  individual choices; **Resume all** restores them.
-- Say `computer`, then the command text. The command is submitted after speech
-  recognition finalizes or the transcript remains unchanged for 1.5 seconds.
-- Add as many wake profiles as needed. Each phrase has its own command or agent
-  target and accent color; the matched color carries through capture and agent
-  execution. Newly added phrases are enabled by default.
-- While recording, a compact animated microphone floats above the current app,
-  expands to show a rolling tail of the live transcription, offers a cancel
-  button, and plays distinct sounds when capture starts and ends.
-- Say only `cancel`, `stop`, or `dismiss` to discard the capture. Repeating the
-  same word twice cancels immediately, even before recognition finalizes.
-  Numbers remain command content, so phrases such as `stop 123` are submitted
-  normally instead of being mistaken for cancellation.
-- Give any wake profile its own push-to-talk shortcut. Hold that shortcut, speak
-  without the wake phrase, then release; the profile’s target and color are used.
-  Each assigned binding appears beside its phrase in the menu.
-- Open **Settings…** from the menu to add or remove wake profiles, choose their
-  command or agent targets, change colors and shortcuts, set the locale, or
-  enable launch at login.
+## Privacy and safety
 
-Passive listening requires on-device recognition for the selected locale and
-fails closed if the Mac does not support it. Push-to-talk may use Apple's speech
-service when on-device recognition is unavailable.
+Passive wake recognition is forced on-device. Interactive command,
+push-to-talk, and conversation capture may use Apple's normal speech service
+policy. Voice Activation has no application server or account.
 
-## Wake profiles
+Direct commands and ACP providers launch as explicit processes without a shell.
+They run with the signed-in user's access, and a provider may contact its own
+services. Provider authentication stays with its CLI. The optional ElevenLabs
+key stays in macOS Keychain.
 
-The default opens a Google search:
+The app does not maintain a conversation-history database or audio archive.
+Diagnostics exclude prompts, transcripts, credentials, provider content, and
+audio. See [Privacy and security](docs/privacy-and-security.md) for the complete
+data, persistence, and retention boundaries.
 
-```text
-Wake phrase: computer
-URL:         https://www.google.com/search?q={urlText}
-Color:       Blue
-```
+## Documentation
 
-- `{text}` inserts the transcription literally into that argument.
-- `{urlText}` inserts an RFC 3986 percent-encoded query value.
-
-For a custom URL scheme:
-
-```text
-Wake phrase: ask assistant
-URL:         my-app://command?prompt={urlText}
-Color:       Purple
-```
-
-The app opens profile URLs directly with `/usr/bin/open`. It never invokes a
-shell, so punctuation in speech cannot become shell syntax.
-
-## Local coding agents
-
-Set a profile's **Target** to **Agent**, then choose Cursor, Codex, Claude, or a
-custom ACP v1 executable. A fresh Agent target selects the first installed
-provider it can find. The executable field resolves command names from the
-app's inherited `PATH` and common Homebrew, local, ChatGPT, and NVM locations;
-**Detect** retries discovery, while the folder button selects an executable
-directly. Select an absolute working folder, choose a default permission policy,
-add an optional profile-specific system prompt, and save.
-
-The app keeps the foreground application focused while a floating panel streams
-an ordered Markdown timeline. Each work burst starts with one animated
-**Thinking** card, including the ACP startup delay. Reasoning and tool calls
-collect inside that card instead of flooding the timeline; it collapses when
-the next answer arrives and expands on demand. Permission prompts disappear as
-soon as a choice is made. Say `allow`, `allow all`, `deny`, or `deny all` to answer the oldest
-visible permission request without touching the panel. New output follows the
-bottom of the panel until you deliberately scroll upward. Drag the panel by its
-header to move it out of the way, or minimize it with an animated transition to
-a movable live-status pill at the top-right below the menu bar. The pill stays
-above other windows and restores the full conversation to its saved pre-minimize
-location with one click.
-
-The microphone stays live after the first response, including while a reply is
-being read aloud. Speaking interrupts narration and submits the utterance as a
-follow-up after the normal final-result or inactivity boundary. Conversation
-capture enables Apple's best-effort voice processing to reduce synthesized
-reply echo. Speak another request—or use the profile's push-to-talk binding—to
-continue in the same ACP session and timeline. **Stop turn** cancels only the
-current work; **End conversation**
-returns to passive wake listening. Saying only `cancel`, `stop`, or `dismiss`
-always ends the whole conversation and returns to passive wake listening.
-Up to 16 follow-ups may wait behind active work; the panel reports when that
-bounded queue is full instead of growing memory without limit.
-
-Each profile keeps its own ACP session. The app retains at most four live
-profile sessions, evicts the least recently used idle one, and recovers once
-when a provider forgets a cached session before any agent work begins. Recovery
-and cache-eviction context resets are visible in the conversation; prompts are
-never replayed after output or a permission request. If a connection dies after
-producing useful output, that output remains visible and the conversation stays
-live. The next follow-up starts a fresh provider session.
-
-ACP startup is bounded as well. A stalled handshake is terminated after 12
-seconds and retried once with a fresh process. If that retry also stalls, the
-turn fails visibly instead of leaving the conversation on **Starting the
-agent** forever.
-
-Every ACP prompt includes a Markdown presentation contract and asks the agent to
-keep progress narration to one short conversational sentence per work batch.
-Individual commands and routine tool results belong inside the expandable
-**Thinking** card, not in a running monologue.
-
-Settings can read replies aloud as they stream, using either the matching macOS
-system voice or an ElevenLabs voice loaded from the account catalog. The
-selected voice can be previewed before saving, with manual Voice ID entry as a
-fallback when the catalog is unavailable. Complete sentences are queued
-immediately; unfinished progress text is also queued when tool or thought work
-starts, with a 350-millisecond fallback when no semantic boundary arrives.
-ElevenLabs prepares two segments concurrently outside the UI actor while
-preserving playback order. The first thinking cue plays as soon as a request is
-accepted, before ACP startup; later pulses continue during cloud synthesis and
-pause only while speech plays. Active effects stop before delegate-tracked
-playback begins, without rebuilding the microphone session in front of the first
-syllable. A bundled sound palette distinguishes listening,
-thinking, and tool transitions without making runtime effect-generation calls.
-Voice cancellation says “Stopped” when
-reply speech is enabled, and tests inject silent audio players, so CI never emits
-speaker sounds.
-Closing the completed panel keeps its bounded output available from **Open** in
-the menu. **Delete** is available both there and in the conversation panel; it
-hides the panel and releases that retained output from memory.
-Copied output contains the request, response Markdown, and bounded diagnostics.
-Its response section separates conversation turns and excludes provider thought
-updates.
-
-Agent authentication stays with the provider CLI. The optional ElevenLabs API
-key is stored in macOS Keychain rather than source code or preferences. Voice
-Activation stores no prompt history, agent output, or raw tool payloads. See the
-[ACP agent harness guide](docs/agent-harness.md) for configuration, safety
-bounds, lifecycle details, and supported protocol behavior.
-The [sound-design guide](docs/sound-design.md) documents every cue and its
-playback contract.
+- [Getting started](docs/getting-started.md)
+- [Documentation index](docs/index.md)
+- [Configuration reference](docs/configuration.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [Privacy and security](docs/privacy-and-security.md)
 
 ## Development
 
@@ -188,10 +89,9 @@ make app
 make check
 ```
 
-## Documentation
-
-See the [documentation index](docs/index.md) for installation, configuration,
-architecture, troubleshooting, and development guides.
+See [Development](docs/development.md), [Testing](docs/testing.md), and
+[Packaging](docs/packaging.md) for the contributor workflows and verification
+matrix.
 
 ## License
 
