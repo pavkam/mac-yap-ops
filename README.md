@@ -105,10 +105,16 @@ app's inherited `PATH` and common Homebrew, local, ChatGPT, and NVM locations;
 directly. Select an absolute working folder, choose a default permission policy,
 add an optional profile-specific system prompt, and save.
 
-The app keeps the foreground application focused while a floating panel streams
-an ordered Markdown timeline. Each work burst starts with one animated
-**Thinking** card, including the ACP startup delay. Reasoning and tool calls
-collect inside that card instead of flooding the timeline; it collapses when
+The app keeps the foreground application focused while a floating, result-first
+panel streams an ordered Markdown timeline. Generated images, PDFs, documents,
+and other resources appear in a **Results** shelf immediately below the request.
+Embedded images and existing local files can show native previews; remote links
+are never fetched for a preview. **Open** is always an explicit action, and local
+file links also offer **Reveal in Finder** from their context menu.
+
+Each work burst starts with one collapsible **Thinking** row, including the ACP
+startup delay. Reasoning and tool calls
+collect inside that row instead of flooding the timeline; it collapses when
 the next answer arrives and expands on demand. Permission prompts disappear as
 soon as a choice is made. Say `allow`, `allow all`, `deny`, or `deny all` to answer the oldest
 visible permission request without touching the panel. New output follows the
@@ -167,13 +173,17 @@ speaker sounds.
 Closing the completed panel keeps its bounded output available from **Open** in
 the menu. **Delete** is available both there and in the conversation panel; it
 hides the panel and releases that retained output from memory.
-Copied output contains the request, response Markdown, and bounded diagnostics.
+Copied output contains the request, response Markdown, result names and linked
+URIs, and bounded diagnostics; it never copies embedded result bytes.
 Its response section separates conversation turns and excludes provider thought
 updates.
 
 Agent authentication stays with the provider CLI. The optional ElevenLabs API
 key is stored in macOS Keychain rather than source code or preferences. Voice
-Activation stores no prompt history, agent output, or raw tool payloads. See the
+Activation stores no prompt history, agent output, or raw tool payloads. Opening
+an embedded result materializes only that selected item into a private temporary
+run directory; it is removed when the result is deleted, another run replaces
+it, or the app shuts down. See the
 [ACP agent harness guide](docs/agent-harness.md) for configuration, safety
 bounds, lifecycle details, and supported protocol behavior.
 The [sound-design guide](docs/sound-design.md) documents every cue and its

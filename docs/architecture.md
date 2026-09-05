@@ -157,7 +157,9 @@ utterance create a fresh session.
 
 The client accepts ACP v1 newline-delimited UTF-8 JSON-RPC, preserves integer,
 string, and null request identifiers, and converts stable updates into typed
-`AgentRunEvent` values. A two-stage bounded delivery path separates transport
+`AgentRunEvent` values. Agent-message and tool-result image, resource-link, and
+embedded resource blocks become bounded `AgentArtifact` values instead of raw
+provider dictionaries. A two-stage bounded delivery path separates transport
 ingestion from consumer callbacks so a slow panel cannot grow memory without
 limit. Each delivery consumer runs at user-initiated priority rather than
 inheriting the quality of service of the speech or process callback that created
@@ -183,15 +185,20 @@ credential, ACP delivery, narration, synthesis, and main-actor handoff records
 include priority and monotonic stage timing where relevant.
 
 `AgentRunPresentation` applies only events carrying the active run identifier,
-retains bounded output, diagnostics, tools, plans, and simultaneous permission
-requests, and reduces visible text and tool events into one ordered timeline.
+retains bounded output, diagnostics, tools, plans, artifacts, and simultaneous
+permission requests, and reduces visible text and tool events into one ordered
+timeline.
 It creates one active thinking group as soon as each turn starts. Provider
 reasoning and tool updates mutate details inside that group; the next answer
 settles it and remains after the work that preceded it. Token bursts publish to
 SwiftUI at no more than 20 updates per second. `AgentRunPanelController` hosts
-the Markdown renderer and expandable activity model in a non-activating floating
-`NSPanel`. The recording overlay passes its exact final frame into the initial
-panel morph. Minimization
+the Markdown renderer, result shelf, and expandable activity model in a
+non-activating floating `NSPanel`. The shelf asks ImageIO for embedded-image
+previews and Quick Look only for existing local file URLs; remote resources are
+never preview-fetched. Explicit Open materializes retained data in owner-only
+temporary run directories, and the presenter owns their cleanup on delete, run
+replacement, and shutdown. The recording overlay passes its exact final frame
+into the initial panel morph. Minimization
 stores the expanded frame separately from the top-right notification geometry,
 so restoration returns to the user's previous location.
 
@@ -299,14 +306,18 @@ resource, and recovery contract.
 - The agent panel uses the same non-activating window contract, supports pointer
   permissions, turn cancellation, and conversation exit without stealing
   keyboard focus. It follows live output only when already at the bottom and
-  remains visible after completion for selection and copying. The borderless
-  panel overlays a native AppKit drag surface on its noninteractive header region
-  and hands mouse-down events to the Window Server. Whole-background dragging
-  stays disabled so SwiftUI controls remain clickable. Minimizing animates the
+  remains visible after completion for selection, result opening, and copying.
+  Its preferred 680 by 560 point surface adapts down to the display's complete
+  visible frame, uses one semantic material or an opaque Reduce Transparency
+  fallback, and keeps generated results ahead of implementation activity. The
+  borderless panel overlays a native AppKit drag surface on its noninteractive
+  header region and hands mouse-down events to the Window Server.
+  Whole-background dragging stays disabled so SwiftUI controls remain clickable.
+  Minimizing animates the
   same window and model to a compact persistent status presentation at the
   visible screen's top-right below the menu bar;
-  restoring expands from the compact panel's current top-right anchor so a
-  user-moved pill does not jump back to its old location.
+  restoring returns to the saved expanded location on its owning display and
+  adapts the size when that display's visible area has changed.
 - Conversation recognition offers exact spoken permission commands to the app
   model before submitting an utterance as a follow-up. The model resolves the
   oldest presented request by typed ACP option kind, so transport code never

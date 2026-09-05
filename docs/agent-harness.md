@@ -178,6 +178,8 @@ The client handles every stable ACP v1 update discriminator:
 - user and agent message chunks;
 - agent thought chunks exposed by the provider;
 - tool calls and tool-call updates;
+- image, resource-link, and embedded resource content from agent messages and
+  tool results;
 - complete plan replacements;
 - available commands, mode, configuration, and session metadata updates;
 - usage updates.
@@ -231,12 +233,13 @@ the key window. Pointer controls work without moving keyboard focus away from
 the user's current application.
 
 The panel opens at the recording overlay's bottom-centred screen and animates
-to a 620 by 420 point material surface. A native drag surface covers only the
+to a preferred 680 by 560 point material surface, shrinking to the complete
+visible frame on a smaller display. A native drag surface covers only the
 noninteractive provider region and hands mouse-down events to the Window Server,
 so the panel moves without taking keyboard focus or intercepting SwiftUI controls.
 The minimize control animates it to the screen's top-right below the menu bar and
 morphs it into a 372 by 84 point persistent status pill with the provider, latest
-activity, phase animation, and live elapsed time. The pill remains movable and
+activity, phase, and live elapsed time. The pill remains movable and
 restores the full conversation at the expanded panel's saved pre-minimize
 location. Screen changes clamp that saved frame into the current available
 visible area.
@@ -245,9 +248,11 @@ The expanded surface contains:
 
 - provider, running phase, elapsed time, and profile accent;
 - the immutable spoken request;
+- a result-first adaptive shelf for generated images, PDFs, documents, and
+  resource links, with native previews when local data is available;
 - a live, selectable Markdown timeline that preserves the wire order of agent
   text and tool activity;
-- one animated **Thinking** card per work burst, created before ACP startup and
+- one collapsible **Thinking** row per work burst, created before ACP startup and
   containing expandable reasoning and tool details;
 - permission choices when required;
 - a live microphone row that shows the current follow-up transcription;
@@ -290,11 +295,19 @@ message. Reasoning and tool calls between two answers collect into one bounded
 atomically and clear at the start of the next turn. Tool updates retain their
 identity inside the group; if a provider omits a terminal tool update, turn
 settlement still stops the animation.
+
+Artifact cards never use remote content for previews. ImageIO decodes retained
+embedded images off the main actor, while Quick Look receives only existing local
+file URLs. Linked `file`, `http`, and `https` resources can be opened explicitly;
+only local file links can be revealed in Finder. Opening retained embedded data
+creates a private per-run, per-result temporary file with owner-only permissions.
+Closing the panel retains it with the conversation, while delete, run replacement,
+and app shutdown remove the applicable temporary files.
 Simultaneous permissions remain independently actionable, and app-authored
 truncation or protocol notices cannot be mistaken for provider output. The
 copyable response section separates turns and excludes thought updates, which
 remain visible only in the timeline; the full export also includes the request
-and bounded diagnostics.
+and bounded diagnostics plus result names and linked URIs, never embedded bytes.
 
 Direct command profiles keep the current short execution state and do not open
 the agent panel.
@@ -382,12 +395,18 @@ follow-up active. A failed connection is never reused.
   data, 256 control entries, and 32 pending permissions. Output and diagnostics
   discard their oldest UTF-8-safe content with typed notices; control or
   permission overflow fails the run explicitly.
+- One artifact URI retains at most 4 KiB, its media type 256 bytes, each display
+  string 8 KiB, and one decoded embedded payload 768 KiB. The delivery channel
+  retains at most 4 MiB of whole artifacts and evicts the oldest with one typed,
+  coalesced notice.
 - Copyable response output retains at most 512 KiB of UTF-8. The rendered
   timeline retains at most 64 KiB and 256 visible activity items, with an
   explicit marker when older activity is omitted.
 - Standard-error diagnostics retain the newest 16 KiB.
 - The presentation retains the latest 32 tool calls; older completed calls are
   summarized by count.
+- The presentation retains at most 32 results and 4 MiB of embedded result data;
+  the oldest whole result is omitted first and the UI reports the bounded count.
 - The presentation retains the latest 16 app-authored or protocol notices and
   suppresses an immediately repeated notice.
 - UI publication is coalesced to at most 20 updates per second during token
@@ -396,7 +415,8 @@ follow-up active. A failed connection is never reused.
   transiently allocate its JSON representation before typed delivery applies
   the retained-queue limits above.
 - No audio, prompt history, run history, raw tool payload, or agent output is
-  written to disk by Voice Activation.
+  written to durable storage by Voice Activation. A user explicitly opening an
+  embedded result creates only the selected temporary file described above.
 - The optional ElevenLabs API key is stored as a generic password in macOS
   Keychain. It is not stored in source, `UserDefaults`, logs, or copied output.
 
