@@ -153,8 +153,8 @@ An unsupported attribute is absence, not failure. `kAXErrorAPIDisabled` maps to 
 | `Sources/VoiceActivationApp/AppModel.swift` | Modify | Compose adapter and expose saved enablement/status |
 | `Sources/VoiceActivationApp/AppModel+Configuration.swift` | Modify | Refresh trust and enablement without triggering a prompt |
 | `Sources/VoiceActivationCore/AppPreferences.swift` | Modify | Persist `capturesMacContext`, default `true` |
-| `Sources/VoiceActivationApp/MacContextSettingsSection.swift` | Create | Context toggle, status, and explicit Enable Accessibility button without growing the 679-line settings owner |
-| `Sources/VoiceActivationApp/SettingsView.swift` | Modify minimally | Compose the extracted section and remain below the 700-line cap |
+| `Sources/VoiceActivationApp/Settings/MacContextSettingsSection.swift` | Create | Context toggle, status, and explicit Enable Accessibility button in the current Settings module |
+| `Sources/VoiceActivationApp/Settings/SettingsView.swift` | Modify minimally | Compose the focused section and remain below the 700-line cap |
 | `Sources/VoiceActivationApp/VoiceActivationApp.swift` | Modify | Construct one shared snapshotter/access controller |
 | `Tests/VoiceActivationCoreTests/MacContextSnapshotTests.swift` | Create | Value validation and deterministic bounds |
 | `Tests/VoiceActivationCoreTests/MacContextPromptEncoderTests.swift` | Create | Exact context JSON/block order |
@@ -489,12 +489,12 @@ git commit -m "feat: bind Mac context to voice turns"
 
 **Files:**
 - Create: `Sources/VoiceActivationApp/MacContextAccessController.swift`
-- Create: `Sources/VoiceActivationApp/MacContextSettingsSection.swift`
+- Create: `Sources/VoiceActivationApp/Settings/MacContextSettingsSection.swift`
 - Modify: `Sources/VoiceActivationCore/AppPreferences.swift`
 - Modify: `Sources/VoiceActivationApp/AppModel.swift`
 - Modify: `Sources/VoiceActivationApp/AppModel+Configuration.swift`
 - Modify: `Sources/VoiceActivationApp/AppModel+Lifecycle.swift`
-- Modify: `Sources/VoiceActivationApp/SettingsView.swift`
+- Modify: `Sources/VoiceActivationApp/Settings/SettingsView.swift`
 - Modify: `Sources/VoiceActivationApp/VoiceActivationApp.swift`
 - Test: `Tests/VoiceActivationCoreTests/AppPreferencesTests.swift`
 - Test: `Tests/VoiceActivationAppTests/AppModelSettingsTests.swift`
@@ -522,19 +522,19 @@ git commit -m "feat: bind Mac context to voice turns"
 
 - [ ] **Step 2: Run `swift test --filter 'AppPreferencesTests|AppModelTests.requestMacContextAccess'`.** Expect RED on the missing preference and access dependency.
 - [ ] **Step 3: Implement `MacContextAccessController`.** Status checks use `AXIsProcessTrusted()`; the explicit request uses `AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary)`. Do not call the prompting variant at launch, wake, or prompt time.
-- [ ] **Step 4: Add `MacContextSettingsSection`.** Keep the fields and controls in the new file and add only its composition call to `SettingsView.swift`, preserving the 700-line hard cap. Use a standard toggle labeled “Include focused Mac context in agent requests,” plain copy stating exactly which fields leave the app for the selected ACP provider, a status label, and an “Enable Accessibility…” button only while untrusted. The button must not claim access was granted because Apple's prompt is asynchronous.
+- [ ] **Step 4: Add `MacContextSettingsSection`.** Keep the fields and controls in the new Settings-module file and add only its composition call to `Settings/SettingsView.swift`, preserving the 700-line hard cap. Use a standard toggle labeled “Include focused Mac context in agent requests,” plain copy stating exactly which fields leave the app for the selected ACP provider, a status label, and an “Enable Accessibility…” button only while untrusted. The button must not claim access was granted because Apple's prompt is asynchronous.
 - [ ] **Step 5: Wire AppModel save/start.** Update coordinator enablement only after a successful settings save. Refresh trust when Settings appears and when the app becomes active; never poll.
 - [ ] **Step 6: Run the focused suites.** Expect GREEN with no real system prompt or user defaults domain touched.
 - [ ] **Step 7: Commit the user control.**
 
 ```bash
 git add Sources/VoiceActivationApp/MacContextAccessController.swift \
-  Sources/VoiceActivationApp/MacContextSettingsSection.swift \
+  Sources/VoiceActivationApp/Settings/MacContextSettingsSection.swift \
   Sources/VoiceActivationCore/AppPreferences.swift \
   Sources/VoiceActivationApp/AppModel.swift \
   Sources/VoiceActivationApp/AppModel+Configuration.swift \
   Sources/VoiceActivationApp/AppModel+Lifecycle.swift \
-  Sources/VoiceActivationApp/SettingsView.swift \
+  Sources/VoiceActivationApp/Settings/SettingsView.swift \
   Sources/VoiceActivationApp/VoiceActivationApp.swift \
   Tests/VoiceActivationCoreTests/AppPreferencesTests.swift \
   Tests/VoiceActivationAppTests/AppModelSettingsTests.swift
