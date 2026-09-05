@@ -59,6 +59,9 @@ extension AgentRunPresentation {
                     "timeline_item_count": String(snapshot.timeline.count),
                     "output_character_count": String(snapshot.output.count),
                     "tool_count": String(snapshot.tools.count),
+                    "artifact_count": String(snapshot.artifacts.count),
+                    "artifact_byte_count": String(retainedArtifactBytes),
+                    "omitted_artifact_count": String(snapshot.omittedArtifactCount),
                     "permission_count": String(snapshot.permissions.count),
                     "task_priority": String(Task.currentPriority.rawValue),
                 ])

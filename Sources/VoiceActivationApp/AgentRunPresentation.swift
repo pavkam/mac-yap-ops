@@ -14,6 +14,8 @@ final class AgentRunPresentation {
     static let maximumOutputBytes = 512 * 1_024
     static let maximumDiagnosticBytes = 16 * 1_024
     static let maximumTools = 32
+    static let maximumArtifacts = 32
+    static let maximumArtifactBytes = 4 * 1_024 * 1_024
     static let maximumTimelineTextBytes = 64 * 1_024
     static let maximumTimelineItems = 256
     static let maximumThinkingDetailsPerGroup = 128
@@ -44,7 +46,9 @@ final class AgentRunPresentation {
             notices: notices,
             elapsedSeconds: elapsedSeconds,
             evictedToolCount: evictedToolCount,
-            ignoredToolUpdateCount: ignoredToolUpdateCount)
+            ignoredToolUpdateCount: ignoredToolUpdateCount,
+            artifacts: artifacts,
+            omittedArtifactCount: omittedArtifactCount)
     }
 
     let startsElapsedTimer: Bool
@@ -67,6 +71,9 @@ final class AgentRunPresentation {
         marker: "… earlier diagnostics omitted …\n")
     var plan: [AgentPlanEntry] = []
     var tools: [AgentToolPresentation] = []
+    var artifacts: [AgentArtifactPresentation] = []
+    var retainedArtifactBytes = 0
+    var omittedArtifactCount: UInt64 = 0
     var timeline: [AgentRunTimelineItem] = []
     var timelineHasOmittedActivity = false
     var permissions: [AgentPermissionPresentation] = []
@@ -125,6 +132,9 @@ final class AgentRunPresentation {
         diagnosticBuffer.removeAll()
         plan = []
         tools = []
+        artifacts = []
+        retainedArtifactBytes = 0
+        omittedArtifactCount = 0
         timeline = []
         _ = activeThinkingGroup()
         timelineHasOmittedActivity = false
@@ -155,6 +165,7 @@ final class AgentRunPresentation {
                 ])
             return
         }
+        let artifactMetrics = event.presentationArtifactMetrics
         diagnosticsRecorder.record(
             category: .ui,
             event: "agent_presentation.event_received",
@@ -163,6 +174,8 @@ final class AgentRunPresentation {
                 "run_id": runID.uuidString,
                 "event_kind": event.presentationDiagnosticName,
                 "delta_character_count": String(event.presentationCharacterCount),
+                "artifact_count": String(artifactMetrics.count),
+                "artifact_byte_count": String(artifactMetrics.bytes),
                 "task_priority": String(Task.currentPriority.rawValue),
             ])
         if event.isTokenDelta {
@@ -391,6 +404,9 @@ final class AgentRunPresentation {
         diagnosticBuffer.removeAll(keepingCapacity: false)
         plan.removeAll(keepingCapacity: false)
         tools.removeAll(keepingCapacity: false)
+        artifacts.removeAll(keepingCapacity: false)
+        retainedArtifactBytes = 0
+        omittedArtifactCount = 0
         timeline.removeAll(keepingCapacity: false)
         timelineHasOmittedActivity = false
         permissions.removeAll(keepingCapacity: false)
