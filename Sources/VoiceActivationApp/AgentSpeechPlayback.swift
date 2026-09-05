@@ -97,6 +97,7 @@ protocol AgentSystemSpeechPlaying: AnyObject {
     func play(
         text: String,
         localeID: String,
+        voiceID: String?,
         completion: @escaping @MainActor () -> Void
     ) -> Bool
     func stop()
@@ -125,13 +126,15 @@ final class SystemAgentSpeechPlayer: NSObject, AgentSystemSpeechPlaying,
     func play(
         text: String,
         localeID: String,
+        voiceID: String?,
         completion: @escaping @MainActor () -> Void
     ) -> Bool {
         if utterance != nil {
             stop()
         }
         let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = AVSpeechSynthesisVoice(language: localeID)
+        utterance.voice = voiceID.flatMap(AVSpeechSynthesisVoice.init(identifier:))
+            ?? AVSpeechSynthesisVoice(language: localeID)
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 0.94
         utterance.pitchMultiplier = 1.02
         self.utterance = utterance
@@ -140,7 +143,11 @@ final class SystemAgentSpeechPlayer: NSObject, AgentSystemSpeechPlaying,
         diagnostics.record(
             category: .audio,
             event: "system_speech.started",
-            fields: ["character_count": String(text.count)])
+            fields: [
+                "character_count": String(text.count),
+                "selected_voice_available": String(
+                    voiceID == nil || utterance.voice?.identifier == voiceID),
+            ])
         return true
     }
 

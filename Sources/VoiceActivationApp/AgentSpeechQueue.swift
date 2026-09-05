@@ -12,14 +12,31 @@ enum AgentSpeechQueueState: Equatable {
 }
 
 struct AgentSpeechConfiguration: Equatable, Sendable {
-    let provider: AgentSpeechProvider
-    let elevenLabsAPIKey: String
-    let elevenLabsVoiceID: String
+    let selection: TextToSpeechVoiceSelection
+    let credential: String?
+
+    init(selection: TextToSpeechVoiceSelection, credential: String?) {
+        self.selection = selection
+        let trimmedCredential = credential?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.credential = trimmedCredential?.isEmpty == false ? trimmedCredential : nil
+    }
+
+    init(
+        provider: AgentSpeechProvider,
+        elevenLabsAPIKey: String,
+        elevenLabsVoiceID: String
+    ) {
+        let backendID: TextToSpeechBackendID = provider == .system ? .system : .elevenLabs
+        self.init(
+            selection: TextToSpeechVoiceSelection(
+                backendID: backendID,
+                voiceID: provider == .system ? nil : elevenLabsVoiceID),
+            credential: provider == .system ? nil : elevenLabsAPIKey)
+    }
 
     static let systemDefault = AgentSpeechConfiguration(
-        provider: .system,
-        elevenLabsAPIKey: "",
-        elevenLabsVoiceID: "")
+        selection: TextToSpeechVoiceSelection(backendID: .system, voiceID: nil),
+        credential: nil)
 }
 
 struct AgentSpeechRequest: Equatable, Sendable {
@@ -45,12 +62,12 @@ final class AgentSpeechQueue: AgentSpeechQueueing {
     var onStateChange: ((AgentSpeechQueueState) -> Void)?
 
     private enum Preparation {
-        case cloud(Data)
-        case system
+        case audio(Data)
+        case system(voiceID: String?)
     }
 
-    private struct PreparedCloudAudio: Sendable {
-        let data: Data
+    private struct TimedPreparation: Sendable {
+        let value: PreparedTextToSpeech
         let readyAtUptime: UInt64
     }
 
@@ -58,11 +75,11 @@ final class AgentSpeechQueue: AgentSpeechQueueing {
         let id: UInt64
         var request: AgentSpeechRequest
         let enqueuedAtUptime: UInt64
-        var synthesis: Task<PreparedCloudAudio, any Error>?
+        var synthesis: Task<TimedPreparation, any Error>?
         var preparation: Preparation?
     }
 
-    private let synthesizer: any ElevenLabsSpeechSynthesizing
+    private let backendRegistry: TextToSpeechBackendRegistry
     private let audioPlayer: any AgentAudioDataPlaying
     private let systemSpeechPlayer: any AgentSystemSpeechPlaying
     private let diagnostics: any VoiceActivationDiagnosticRecording
@@ -73,12 +90,14 @@ final class AgentSpeechQueue: AgentSpeechQueueing {
     private var nextID: UInt64 = 0
 
     init(
+        backendRegistry: TextToSpeechBackendRegistry? = nil,
         synthesizer: any ElevenLabsSpeechSynthesizing = ElevenLabsSpeechClient(),
         audioPlayer: any AgentAudioDataPlaying = SystemAgentAudioDataPlayer(),
         systemSpeechPlayer: any AgentSystemSpeechPlaying = SystemAgentSpeechPlayer(),
         diagnostics: any VoiceActivationDiagnosticRecording = VoiceActivationDiagnostics.shared
     ) {
-        self.synthesizer = synthesizer
+        self.backendRegistry = backendRegistry ?? .live(
+            elevenLabsSynthesizer: synthesizer)
         self.audioPlayer = audioPlayer
         self.systemSpeechPlayer = systemSpeechPlayer
         self.diagnostics = diagnostics
@@ -104,7 +123,7 @@ final class AgentSpeechQueue: AgentSpeechQueueing {
             event: "speech.queue_enqueued",
             fields: [
                 "request_id": String(appended.id),
-                "provider": boundedRequest.configuration.provider.rawValue,
+                "backend": boundedRequest.configuration.selection.backendID.rawValue,
                 "character_count": String(boundedRequest.text.count),
                 "pending_count": String(pending.count),
                 "coalesced": String(appended.coalesced),
@@ -162,51 +181,27 @@ final class AgentSpeechQueue: AgentSpeechQueueing {
 
     private func makePendingRequest(_ request: AgentSpeechRequest) -> PendingRequest {
         nextID &+= 1
-        let preparation: Preparation? =
-            request.configuration.provider == .system
-            ? .system
-            : nil
         return PendingRequest(
             id: nextID,
             request: request,
             enqueuedAtUptime: DispatchTime.now().uptimeNanoseconds,
             synthesis: nil,
-            preparation: preparation)
+            preparation: nil)
     }
 
     private func startPrefetching() {
-        var availableSlots =
-            Self.maximumConcurrentSynthesisRequests
+        var availableSlots = Self.maximumConcurrentSynthesisRequests
             - pending.reduce(into: 0) { count, request in
-                if request.synthesis != nil {
-                    count += 1
-                }
+                if request.synthesis != nil { count += 1 }
             }
         guard availableSlots > 0 else { return }
 
         for index in pending.indices
         where pending[index].preparation == nil && pending[index].synthesis == nil {
             let pendingRequest = pending[index]
-            let configuration = pendingRequest.request.configuration
-            guard configuration.provider == .elevenLabs,
-                !configuration.elevenLabsAPIKey.isEmpty,
-                !configuration.elevenLabsVoiceID.isEmpty
-            else {
-                pending[index].preparation = .system
-                diagnostics.record(
-                    category: .audio,
-                    event: "speech.synthesis_bypassed",
-                    fields: [
-                        "request_id": String(pendingRequest.id),
-                        "reason": configuration.provider == .system
-                            ? "system_provider"
-                            : "incomplete_cloud_configuration",
-                    ])
-                continue
-            }
-
             let request = pendingRequest.request
-            let synthesizer = synthesizer
+            let configuration = request.configuration
+            let registry = backendRegistry
             let diagnostics = diagnostics
             let requestID = pendingRequest.id
             let enqueuedAtUptime = pendingRequest.enqueuedAtUptime
@@ -217,20 +212,26 @@ final class AgentSpeechQueue: AgentSpeechQueueing {
                     event: "speech.synthesis_started",
                     fields: [
                         "request_id": String(requestID),
-                        "provider": configuration.provider.rawValue,
+                        "backend": configuration.selection.backendID.rawValue,
                         "character_count": String(request.text.count),
                         "queue_wait_ms": String(
-                            Self.milliseconds(
-                                from: enqueuedAtUptime,
-                                to: startedAtUptime)),
+                            Self.milliseconds(from: enqueuedAtUptime, to: startedAtUptime)),
                         "task_priority": String(Task.currentPriority.rawValue),
                     ])
                 do {
-                    let data = try await synthesizer.audio(
-                        text: request.text,
-                        apiKey: configuration.elevenLabsAPIKey,
-                        voiceID: configuration.elevenLabsVoiceID)
+                    let value = try await registry.prepare(
+                        TextToSpeechPreparationRequest(
+                            text: request.text,
+                            localeID: request.localeID,
+                            voiceID: configuration.selection.voiceID),
+                        backendID: configuration.selection.backendID,
+                        credential: configuration.credential)
+                    try Task.checkCancellation()
                     let readyAtUptime = DispatchTime.now().uptimeNanoseconds
+                    let byteCount = switch value {
+                    case .audio(let data): data.count
+                    case .systemVoice: 0
+                    }
                     diagnostics.record(
                         category: .audio,
                         event: "speech.synthesis_finished",
@@ -238,26 +239,22 @@ final class AgentSpeechQueue: AgentSpeechQueueing {
                             "request_id": String(requestID),
                             "outcome": "success",
                             "duration_ms": String(
-                                Self.milliseconds(
-                                    from: startedAtUptime,
-                                    to: readyAtUptime)),
-                            "audio_byte_count": String(data.count),
+                                Self.milliseconds(from: startedAtUptime, to: readyAtUptime)),
+                            "audio_byte_count": String(byteCount),
                             "task_priority": String(Task.currentPriority.rawValue),
                         ])
-                    return PreparedCloudAudio(data: data, readyAtUptime: readyAtUptime)
+                    return TimedPreparation(value: value, readyAtUptime: readyAtUptime)
                 } catch {
                     let failedAtUptime = DispatchTime.now().uptimeNanoseconds
                     diagnostics.record(
                         category: .audio,
                         event: "speech.synthesis_finished",
-                        level: .error,
+                        level: error is CancellationError ? .info : .error,
                         fields: [
                             "request_id": String(requestID),
                             "outcome": error is CancellationError ? "cancelled" : "failure",
                             "duration_ms": String(
-                                Self.milliseconds(
-                                    from: startedAtUptime,
-                                    to: failedAtUptime)),
+                                Self.milliseconds(from: startedAtUptime, to: failedAtUptime)),
                             "error_type": String(describing: type(of: error)),
                             "task_priority": String(Task.currentPriority.rawValue),
                         ])
@@ -276,16 +273,14 @@ final class AgentSpeechQueue: AgentSpeechQueueing {
                 }
             }
             availableSlots -= 1
-            if availableSlots == 0 {
-                break
-            }
+            if availableSlots == 0 { break }
         }
     }
 
     private func completeSynthesis(
         requestID: UInt64,
         generation activeGeneration: UInt64,
-        result: Result<PreparedCloudAudio, any Error>
+        result: Result<TimedPreparation, any Error>
     ) {
         guard generation == activeGeneration,
             let index = pending.firstIndex(where: { $0.id == requestID })
@@ -302,9 +297,20 @@ final class AgentSpeechQueue: AgentSpeechQueueing {
         }
         pending[index].synthesis = nil
         switch result {
-        case .success(let preparedAudio) where !preparedAudio.data.isEmpty:
+        case .success(let prepared):
             let receivedAtUptime = DispatchTime.now().uptimeNanoseconds
-            pending[index].preparation = .cloud(preparedAudio.data)
+            let byteCount: Int
+            switch prepared.value {
+            case .audio(let data) where !data.isEmpty:
+                pending[index].preparation = .audio(data)
+                byteCount = data.count
+            case .systemVoice(let voiceID):
+                pending[index].preparation = .system(voiceID: voiceID)
+                byteCount = 0
+            case .audio:
+                pending[index].preparation = .system(voiceID: nil)
+                byteCount = 0
+            }
             diagnostics.record(
                 category: .audio,
                 event: "speech.synthesis_result_received",
@@ -312,14 +318,14 @@ final class AgentSpeechQueue: AgentSpeechQueueing {
                     "request_id": String(requestID),
                     "main_delivery_ms": String(
                         Self.milliseconds(
-                            from: preparedAudio.readyAtUptime,
+                            from: prepared.readyAtUptime,
                             to: receivedAtUptime)),
-                    "audio_byte_count": String(preparedAudio.data.count),
+                    "audio_byte_count": String(byteCount),
                     "task_priority": String(Task.currentPriority.rawValue),
                     "run_loop_mode": RunLoop.current.currentMode?.rawValue ?? "none",
                 ])
-        case .success, .failure:
-            pending[index].preparation = .system
+        case .failure:
+            pending[index].preparation = .system(voiceID: nil)
             diagnostics.record(
                 category: .audio,
                 event: "speech.synthesis_fallback_selected",
@@ -344,16 +350,17 @@ final class AgentSpeechQueue: AgentSpeechQueueing {
         pending.removeFirst()
         startPrefetching()
         switch preparation {
-        case .cloud(let data):
+        case .audio(let data):
             startCloudPlayback(
                 data,
                 request: first.request,
                 requestID: first.id,
                 continuingSpeech: continuingSpeech)
-        case .system:
+        case .system(let voiceID):
             startSystemPlayback(
                 request: first.request,
                 requestID: first.id,
+                voiceID: voiceID,
                 continuingSpeech: continuingSpeech)
         }
     }
@@ -396,6 +403,7 @@ final class AgentSpeechQueue: AgentSpeechQueueing {
             startSystemPlayback(
                 request: request,
                 requestID: requestID,
+                voiceID: nil,
                 continuingSpeech: continuingSpeech)
             return
         }
@@ -413,6 +421,7 @@ final class AgentSpeechQueue: AgentSpeechQueueing {
     private func startSystemPlayback(
         request: AgentSpeechRequest,
         requestID: UInt64,
+        voiceID: String?,
         continuingSpeech: Bool
     ) {
         diagnostics.record(
@@ -430,7 +439,8 @@ final class AgentSpeechQueue: AgentSpeechQueueing {
         let activeGeneration = generation
         let started = systemSpeechPlayer.play(
             text: request.text,
-            localeID: request.localeID
+            localeID: request.localeID,
+            voiceID: voiceID
         ) { [weak self] in
             self?.completePlayback(
                 requestID: requestID,

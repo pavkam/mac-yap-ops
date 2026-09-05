@@ -105,16 +105,19 @@ private final class ControlledAudioPlayer: AgentAudioDataPlaying {
 private final class ControlledSystemSpeechPlayer: AgentSystemSpeechPlaying {
     private(set) var texts: [String] = []
     private(set) var localeIDs: [String] = []
+    private(set) var voiceIDs: [String?] = []
     private(set) var stopCount = 0
     private var completion: (@MainActor () -> Void)?
 
     func play(
         text: String,
         localeID: String,
+        voiceID: String?,
         completion: @escaping @MainActor () -> Void
     ) -> Bool {
         texts.append(text)
         localeIDs.append(localeID)
+        voiceIDs.append(voiceID)
         self.completion = completion
         return true
     }
@@ -158,7 +161,8 @@ struct AgentSpeechQueueTests {
         #expect(payloads == [Data("Track this.".utf8)])
     }
 
-    @MainActor @Test func enqueue_WhenSystemVoiceIsSelected_WaitsForCompletionBeforeNextSegment() {
+    @MainActor @Test
+    func enqueue_WhenSystemVoiceIsSelected_WaitsForCompletionBeforeNextSegment() async throws {
         let systemPlayer = ControlledSystemSpeechPlayer()
         let queue = AgentSpeechQueue(
             synthesizer: ControlledSpeechSynthesizer(),
@@ -167,16 +171,20 @@ struct AgentSpeechQueueTests {
 
         queue.enqueue(systemRequest("First."))
         queue.enqueue(systemRequest("Second."))
+        try await waitUntil { systemPlayer.texts == ["First."] }
         #expect(systemPlayer.texts == ["First."])
 
         systemPlayer.finish()
+        try await waitUntil { systemPlayer.texts == ["First.", "Second."] }
         #expect(systemPlayer.texts == ["First.", "Second."])
         systemPlayer.finish()
         queue.stop()
     }
 
     @MainActor @Test
-    func enqueue_WhenProducerExceedsTheQueueBound_CoalescesTheNewestSpeechWithoutLosingIt() {
+    func enqueue_WhenProducerExceedsTheQueueBound_CoalescesTheNewestSpeechWithoutLosingIt()
+        async throws
+    {
         let systemPlayer = ControlledSystemSpeechPlayer()
         let queue = AgentSpeechQueue(
             synthesizer: ControlledSpeechSynthesizer(),
@@ -186,13 +194,40 @@ struct AgentSpeechQueueTests {
         for index in 0...65 {
             queue.enqueue(systemRequest("Segment \(index)."))
         }
-        for _ in 0..<65 {
+        for expectedCount in 1...64 {
+            try await waitUntil { systemPlayer.texts.count == expectedCount }
             systemPlayer.finish()
         }
 
-        #expect(systemPlayer.texts.count == 65)
+        #expect(systemPlayer.texts.count == 64)
         #expect(systemPlayer.texts.first == "Segment 0.")
-        #expect(systemPlayer.texts.last == "Segment 64. Segment 65.")
+        #expect(systemPlayer.texts.last == "Segment 63. Segment 64. Segment 65.")
+        queue.stop()
+    }
+
+    @MainActor @Test func enqueue_WithExplicitSystemVoice_PreservesItsStableIdentifier()
+        async throws
+    {
+        let systemPlayer = ControlledSystemSpeechPlayer()
+        let queue = AgentSpeechQueue(
+            synthesizer: ControlledSpeechSynthesizer(),
+            audioPlayer: ControlledAudioPlayer(),
+            systemSpeechPlayer: systemPlayer)
+        let voiceID = "com.apple.voice.compact.en-GB.Daniel"
+
+        queue.enqueue(
+            AgentSpeechRequest(
+                text: "Use Daniel.",
+                localeID: "en-GB",
+                configuration: AgentSpeechConfiguration(
+                    selection: TextToSpeechVoiceSelection(
+                        backendID: .system,
+                        voiceID: voiceID),
+                    credential: nil)))
+        try await waitUntil { systemPlayer.texts == ["Use Daniel."] }
+
+        #expect(systemPlayer.voiceIDs == [voiceID])
+        systemPlayer.finish()
         queue.stop()
     }
 

@@ -97,7 +97,7 @@ final class AgentConversationAudioOrchestrator: AgentConversationAudioPlaying {
             event: "conversation_audio.speech_enqueued",
             fields: [
                 "character_count": String(value.count),
-                "provider": configuration.provider.rawValue,
+                "backend": configuration.selection.backendID.rawValue,
             ])
         speechQueue.enqueue(
             AgentSpeechRequest(
