@@ -344,12 +344,12 @@ struct AgentRunPanelPresenterTests {
         let model = AgentRunPanelModel()
         model.begin(runningSnapshot(runID: UUID()))
         let renderer = ImageRenderer(content: AgentRunPanelView(model: model))
-        renderer.proposedSize = ProposedViewSize(width: 620, height: 420)
+        renderer.proposedSize = ProposedViewSize(width: 680, height: 560)
 
         let image = try #require(renderer.cgImage)
 
-        #expect(image.width == 620)
-        #expect(image.height == 420)
+        #expect(image.width == 680)
+        #expect(image.height == 560)
     }
 
     @MainActor @Test func view_WhenRendered_DrawsChromeToEveryPanelEdge() throws {
@@ -357,7 +357,7 @@ struct AgentRunPanelPresenterTests {
         model.begin(runningSnapshot(runID: UUID()))
         let renderer = ImageRenderer(content: AgentRunPanelView(model: model))
         renderer.scale = 1
-        renderer.proposedSize = ProposedViewSize(width: 620, height: 420)
+        renderer.proposedSize = ProposedViewSize(width: 680, height: 560)
         let image = try #require(renderer.cgImage)
         let bitmap = NSBitmapImageRep(cgImage: image)
         let edgePoints = [

@@ -30,7 +30,9 @@ final class AgentRunPanelController: AgentRunPanelDisplaying {
             previewLoader: previewLoader,
             previewScale: NSScreen.main?.backingScaleFactor ?? 2)
         panel = AgentRunPanel(
-            contentRect: NSRect(origin: .zero, size: AgentRunPanelLayout.expandedSize),
+            contentRect: NSRect(
+                origin: .zero,
+                size: AgentRunPanelLayout.preferredExpandedSize),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false)
@@ -57,11 +59,11 @@ final class AgentRunPanelController: AgentRunPanelDisplaying {
             ])
         currentRunID = snapshot.runID
         placement.reset()
-        model.begin(snapshot)
         let visibleFrame =
             handoff?.visibleScreenFrame ?? NSScreen.main?.visibleFrame
-            ?? NSRect(origin: .zero, size: AgentRunPanelLayout.expandedSize)
+            ?? NSRect(origin: .zero, size: AgentRunPanelLayout.preferredExpandedSize)
         let targetFrame = AgentRunPanelLayout.expandedFrame(in: visibleFrame)
+        model.begin(snapshot, expandedSize: targetFrame.size)
         panel.setFrame(handoff?.sourceFrame ?? targetFrame, display: true)
         panel.orderFrontRegardless()
         animate(to: targetFrame)
@@ -111,6 +113,7 @@ final class AgentRunPanelController: AgentRunPanelDisplaying {
             fallbackVisibleFrame: visibleFrame)
         panel.orderFrontRegardless()
         withAnimation(.snappy(duration: AgentRunPanelLayout.transitionDuration)) {
+            model.setExpandedSize(targetFrame.size)
             model.setMinimized(false)
         }
         animate(to: targetFrame)
@@ -122,7 +125,7 @@ final class AgentRunPanelController: AgentRunPanelDisplaying {
 
     private var visibleFrame: NSRect {
         panel.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
-            ?? NSRect(origin: .zero, size: AgentRunPanelLayout.expandedSize)
+            ?? NSRect(origin: .zero, size: AgentRunPanelLayout.preferredExpandedSize)
     }
 
     private func animate(to frame: NSRect) {

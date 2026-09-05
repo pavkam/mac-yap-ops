@@ -38,7 +38,7 @@ struct AgentRunPanelAnimationTests {
         let running = runningSnapshot(runID: UUID())
         model.begin(running)
         let hostingView = NSHostingView(rootView: AgentRunActionDockHarness(model: model))
-        hostingView.frame = NSRect(x: 0, y: 0, width: 620, height: 58)
+        hostingView.frame = NSRect(x: 0, y: 0, width: 680, height: 58)
         let window = NSWindow(
             contentRect: hostingView.frame,
             styleMask: [.borderless],

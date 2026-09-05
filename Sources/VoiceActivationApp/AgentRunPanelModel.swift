@@ -12,6 +12,7 @@ final class AgentRunPanelModel {
     var snapshot: AgentRunSnapshot?
     var isAutoFollowing = true
     private(set) var isMinimized = false
+    private(set) var expandedSize = AgentRunPanelLayout.preferredExpandedSize
     var resolvingPermissions: Set<AgentPermissionKey> = []
     private(set) var expandedThinkingIDs: Set<UUID> = []
     private(set) var artifactPreviewStates: [UUID: AgentArtifactPreviewState] = [:]
@@ -40,11 +41,15 @@ final class AgentRunPanelModel {
         elapsedStartedAt = now()
     }
 
-    func begin(_ snapshot: AgentRunSnapshot) {
+    func begin(
+        _ snapshot: AgentRunSnapshot,
+        expandedSize: CGSize = AgentRunPanelLayout.preferredExpandedSize)
+    {
         cancelAllPreviewTasks()
         artifactPreviewStates.removeAll(keepingCapacity: true)
         elapsedStartedAt = now().addingTimeInterval(-TimeInterval(snapshot.elapsedSeconds))
         self.snapshot = snapshot
+        self.expandedSize = expandedSize
         isAutoFollowing = true
         isMinimized = false
         resolvingPermissions = []
@@ -139,6 +144,10 @@ final class AgentRunPanelModel {
         artifactPreviewStates[artifactID]?.status
     }
 
+    func previewState(for artifactID: UUID) -> AgentArtifactPreviewState? {
+        artifactPreviewStates[artifactID]
+    }
+
     func preview(for artifactID: UUID) -> AgentArtifactPreview? {
         guard case let .available(preview) = artifactPreviewStates[artifactID] else {
             return nil
@@ -153,6 +162,11 @@ final class AgentRunPanelModel {
             category: .ui,
             event: "agent_panel.minimized_changed",
             fields: ["minimized": String(isMinimized)])
+    }
+
+    func setExpandedSize(_ expandedSize: CGSize) {
+        guard expandedSize.width > 0, expandedSize.height > 0 else { return }
+        self.expandedSize = expandedSize
     }
 
     func selectPermission(_ permission: AgentPermissionPresentation, optionID: String) {
