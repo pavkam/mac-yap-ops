@@ -71,7 +71,8 @@ extension VoiceActivationCoordinatorTests {
         fixture.speech.emit("continue from there", isFinal: true)
         await waitUntil { await fixture.agentRunner.recordedInvocations().count == 2 }
         #expect(await fixture.agentRunner.recordedInvocations().map(\.prompt) == [
-            "inspect", "continue from there",
+            AgentPrompt(request: "inspect", context: nil),
+            AgentPrompt(request: "continue from there", context: nil),
         ])
         await fixture.agentRunner.complete(runIndex: 1)
     }

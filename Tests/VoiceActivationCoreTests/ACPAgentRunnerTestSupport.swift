@@ -17,7 +17,7 @@ extension ACPAgentRunnerTests {
             try await runner.run(
                 profileID: profileID,
                 configuration: configuration,
-                prompt: prompt,
+                prompt: AgentPrompt(request: prompt, context: nil),
                 onEvent: { _ in })
         }
     }
@@ -101,14 +101,12 @@ extension ACPAgentRunnerTests {
             params: .object([
                 "sessionId": .string(sessionID),
                 "prompt": .array([
-                    .object([
-                        "type": .string("text"),
-                        "text": .string(ACPClientConnection.markdownPresentationInstruction),
-                    ]),
-                    .object([
-                        "type": .string("text"),
-                        "text": .string(text),
-                    ]),
+                    ACPClientConnection.encodedPromptBlock(for: .text(
+                        role: .instruction,
+                        value: ACPClientConnection.markdownPresentationInstruction)),
+                    ACPClientConnection.encodedPromptBlock(for: .text(
+                        role: .request,
+                        value: text)),
                 ]),
             ]))
     }

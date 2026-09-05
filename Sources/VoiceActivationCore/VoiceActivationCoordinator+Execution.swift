@@ -261,7 +261,7 @@ extension VoiceActivationCoordinator {
                 let result = try await agentRunner.run(
                     profileID: profile.id,
                     configuration: configuration,
-                    prompt: prompt,
+                    prompt: AgentPrompt(request: prompt, context: nil),
                     onEvent: { [weak self] event in
                         let receivedAtUptime = DispatchTime.now().uptimeNanoseconds
                         await mainRunLoopScheduler.perform { [weak self] in

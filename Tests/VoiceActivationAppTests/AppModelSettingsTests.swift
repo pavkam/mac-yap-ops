@@ -332,7 +332,9 @@ extension AppModelTests {
 
         let invocation = try #require(await runner.recordedInvocations().first)
         #expect(invocation.profileID == profile.id)
-        #expect(invocation.prompt == "inspect this repository")
+        #expect(invocation.prompt == AgentPrompt(
+            request: "inspect this repository",
+            context: nil))
 
         fixture.model.wakeProfiles[0].agentHarness.executablePath = "/agents/changed"
         let saved = await fixture.model.saveSettings()

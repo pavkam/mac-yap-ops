@@ -7,6 +7,186 @@ import Testing
 
 
 extension ACPClientConnectionTests {
+    @Test func promptContent_WhenRolesAreEncoded_UsesNamespacedRoleMetadata() {
+        let contents: [(AgentPromptContent, ACPJSONValue)] = [
+            (
+                .text(role: .instruction, value: "Instruction"),
+                .object([
+                    "type": .string("text"),
+                    "text": .string("Instruction"),
+                    "_meta": .object([
+                        "ciobanu.org.voiceActivation": .object([
+                            "promptBlockRole": .string("instruction"),
+                        ]),
+                    ]),
+                ]),
+            ),
+            (
+                .text(role: .continuity, value: "Continuity"),
+                .object([
+                    "type": .string("text"),
+                    "text": .string("Continuity"),
+                    "_meta": .object([
+                        "ciobanu.org.voiceActivation": .object([
+                            "promptBlockRole": .string("continuity"),
+                        ]),
+                    ]),
+                ]),
+            ),
+            (
+                .text(role: .macContext, value: "Context"),
+                .object([
+                    "type": .string("text"),
+                    "text": .string("Context"),
+                    "_meta": .object([
+                        "ciobanu.org.voiceActivation": .object([
+                            "promptBlockRole": .string("mac_context"),
+                        ]),
+                    ]),
+                ]),
+            ),
+            (
+                .resourceLink(role: .macResource, uri: "file:///tmp/notes.md", name: "notes.md"),
+                .object([
+                    "type": .string("resource_link"),
+                    "uri": .string("file:///tmp/notes.md"),
+                    "name": .string("notes.md"),
+                    "_meta": .object([
+                        "ciobanu.org.voiceActivation": .object([
+                            "promptBlockRole": .string("mac_resource"),
+                        ]),
+                    ]),
+                ]),
+            ),
+            (
+                .text(role: .request, value: "Request"),
+                .object([
+                    "type": .string("text"),
+                    "text": .string("Request"),
+                    "_meta": .object([
+                        "ciobanu.org.voiceActivation": .object([
+                            "promptBlockRole": .string("request"),
+                        ]),
+                    ]),
+                ]),
+            ),
+        ]
+
+        for (content, expected) in contents {
+            #expect(ACPClientConnection.encodedPromptBlock(for: content) == expected)
+        }
+    }
+
+    @Test func prompt_WhenMacContextExists_SendsOrderedRoleTaggedBlocksWithinFrameBound()
+        async throws
+    {
+        let transport = FakeACPTransport()
+        let connection = try await establishConnection(transport: transport)
+        let recorder = AgentEventRecorder()
+        let context = MacContextSnapshot.normalized(
+            state: .complete,
+            target: .init(
+                processIdentifier: 42,
+                applicationName: "Editor",
+                bundleIdentifier: "com.example.Editor"),
+            windowTitle: "Notes",
+            documentURL: "https://example.test/notes",
+            selectedText: "Selected words",
+            resources: [.init(uri: "file:///tmp/notes.md", name: "notes.md")])
+        let promptTask = Task {
+            try await connection.prompt(
+                AgentPrompt(request: "Summarize this", context: context),
+                onEvent: { event in await recorder.record(event) })
+        }
+
+        _ = await recorder.nextEvent()
+        let message = await transport.nextSentMessage()
+        guard case let .request(id, "session/prompt", .object(parameters)) = message,
+              case let .array(blocks) = parameters["prompt"],
+              blocks.count == 4,
+              case let .object(contextBlock) = blocks[1]
+        else {
+            Issue.record("Expected ordered typed prompt blocks")
+            return
+        }
+        #expect(id == .integer(3))
+        #expect(blocks[0] == ACPClientConnection.encodedPromptBlock(for: .text(
+            role: .instruction,
+            value: ACPClientConnection.markdownPresentationInstruction)))
+        #expect(contextBlock["type"] == .string("text"))
+        #expect(contextBlock["_meta"] == .object([
+            "ciobanu.org.voiceActivation": .object([
+                "promptBlockRole": .string("mac_context"),
+            ]),
+        ]))
+        guard case let .string(contextText) = contextBlock["text"] else {
+            Issue.record("Expected context text")
+            return
+        }
+        let contextJSON = contextText.split(separator: "\n", maxSplits: 1).last ?? ""
+        #expect(contextJSON.utf8.count < MacContextSnapshot.maximumEncodedBytes)
+        #expect(blocks[2] == .object([
+            "type": .string("resource_link"),
+            "uri": .string("file:///tmp/notes.md"),
+            "name": .string("notes.md"),
+            "_meta": .object([
+                "ciobanu.org.voiceActivation": .object([
+                    "promptBlockRole": .string("mac_resource"),
+                ]),
+            ]),
+        ]))
+        #expect(blocks[3] == ACPClientConnection.encodedPromptBlock(for: .text(
+            role: .request,
+            value: "Summarize this")))
+        #expect((await transport.allRawFrames().last?.count ?? 0) < ACPLineFramer.maximumFrameBytes)
+
+        try await transport.feed(promptResponse(id: 3, stopReason: "end_turn"))
+        _ = try await promptTask.value
+        await connection.close()
+    }
+
+    @Test func prompt_WhenContextIsSent_RecordsOnlyPromptSizeAndCountMetadata() async throws {
+        let transport = FakeACPTransport()
+        let diagnostics = ConnectionDiagnosticRecorder()
+        let connection = try await establishConnection(
+            transport: transport,
+            diagnostics: diagnostics)
+        let recorder = AgentEventRecorder()
+        let request = "Summarize the private selection"
+        let selectedText = "private selection value"
+        let context = MacContextSnapshot.normalized(
+            state: .complete,
+            target: .init(
+                processIdentifier: 42,
+                applicationName: "Editor",
+                bundleIdentifier: "com.example.Editor"),
+            windowTitle: nil,
+            documentURL: nil,
+            selectedText: selectedText,
+            resources: [])
+        let promptTask = Task {
+            try await connection.prompt(
+                AgentPrompt(request: request, context: context),
+                onEvent: { event in await recorder.record(event) })
+        }
+
+        _ = await recorder.nextEvent()
+        _ = await transport.nextSentMessage()
+        try await transport.feed(promptResponse(id: 3, stopReason: "end_turn"))
+        _ = try await promptTask.value
+
+        let entry = try #require(diagnostics.snapshot().first {
+            $0.event == "acp_client.prompt_started"
+        })
+        #expect(entry.fields["request_byte_count"] == String(request.utf8.count))
+        #expect(Int(entry.fields["context_block_byte_count"] ?? "") ?? 0 > 0)
+        #expect(entry.fields["resource_link_count"] == "0")
+        #expect(entry.fields["content_block_count"] == "3")
+        #expect(!entry.fields.values.contains { $0.contains(request) })
+        #expect(!entry.fields.values.contains { $0.contains(selectedText) })
+        await connection.close()
+    }
+
     @Test func connect_WhenAgentSupportsV1_InitializesAndCreatesSessionWithAmbientAuth() async throws {
         let transport = FakeACPTransport()
         let configuration = try makeConfiguration()
@@ -294,7 +474,9 @@ extension ACPClientConnectionTests {
         let gate = AgentEventGate()
         let completed = AgentEventSignal()
         let promptTask = Task {
-            let result = try await connection.prompt("Wait for delivery") { event in
+            let result = try await connection.prompt(AgentPrompt(
+                request: "Wait for delivery",
+                context: nil)) { event in
                 if event == .agentMessageDelta(messageID: nil, text: "First") {
                     await gate.pause()
                 }
@@ -349,7 +531,7 @@ extension ACPClientConnectionTests {
         let recorder = AgentEventRecorder()
         let gate = AgentEventGate()
         let promptTask = Task {
-            try await connection.prompt("Overflow") { event in
+            try await connection.prompt(AgentPrompt(request: "Overflow", context: nil)) { event in
                 if case .connected = event {
                     await gate.pause()
                 }
@@ -431,7 +613,7 @@ extension ACPClientConnectionTests {
 
         await #expect(throws: ACPClientError.promptTooLarge(maximumBytes: 8_192)) {
             try await connection.prompt(
-                String(repeating: "a", count: 8_193),
+                AgentPrompt(request: String(repeating: "a", count: 8_193), context: nil),
                 onEvent: { event in await recorder.record(event) })
         }
 

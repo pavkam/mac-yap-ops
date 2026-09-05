@@ -134,7 +134,7 @@ actor ControlledAgentRunner: AgentHarnessRunning {
     struct Invocation: Equatable, Sendable {
         let profileID: UUID
         let configuration: AgentHarnessConfiguration
-        let prompt: String
+        let prompt: AgentPrompt
     }
 
     struct PermissionResolution: Equatable, Sendable {
@@ -156,7 +156,7 @@ actor ControlledAgentRunner: AgentHarnessRunning {
     func run(
         profileID: UUID,
         configuration: AgentHarnessConfiguration,
-        prompt: String,
+        prompt: AgentPrompt,
         onEvent: @escaping @Sendable (AgentRunEvent) async -> Void
     ) async throws -> AgentRunResult {
         guard activeRunIndex == nil else {

@@ -37,14 +37,14 @@ public protocol AgentHarnessRunning: Sendable {
     /// - Parameters:
     ///   - profileID: The wake profile that owns the cached session.
     ///   - configuration: The harness launch and permission configuration.
-    ///   - prompt: The user utterance and configured instructions.
+    ///   - prompt: The typed user request and its optional captured Mac context.
     ///   - onEvent: An asynchronous sink for ordered streaming events.
     /// - Returns: The turn's terminal stop reason.
     /// - Throws: A transport, protocol, launch, or cancellation error.
     func run(
         profileID: UUID,
         configuration: AgentHarnessConfiguration,
-        prompt: String,
+        prompt: AgentPrompt,
         onEvent: @escaping @Sendable (AgentRunEvent) async -> Void
     ) async throws -> AgentRunResult
 

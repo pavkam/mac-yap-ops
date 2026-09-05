@@ -116,7 +116,7 @@ actor AppModelAgentRunnerSpy: AgentHarnessRunning {
     struct Invocation: Equatable, Sendable {
         let profileID: UUID
         let configuration: AgentHarnessConfiguration
-        let prompt: String
+        let prompt: AgentPrompt
     }
 
     private var invocations: [Invocation] = []
@@ -132,7 +132,7 @@ actor AppModelAgentRunnerSpy: AgentHarnessRunning {
     func run(
         profileID: UUID,
         configuration: AgentHarnessConfiguration,
-        prompt: String,
+        prompt: AgentPrompt,
         onEvent: @escaping @Sendable (AgentRunEvent) async -> Void
     ) async throws -> AgentRunResult {
         invocations.append(
@@ -188,7 +188,7 @@ actor AppModelPermissionAgentRunnerSpy: AgentHarnessRunning {
     func run(
         profileID: UUID,
         configuration: AgentHarnessConfiguration,
-        prompt: String,
+        prompt: AgentPrompt,
         onEvent: @escaping @Sendable (AgentRunEvent) async -> Void
     ) async throws -> AgentRunResult {
         await onEvent(

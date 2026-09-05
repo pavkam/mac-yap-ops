@@ -148,14 +148,14 @@ public actor ACPAgentRunner: AgentHarnessRunning {
     /// - Parameters:
     ///   - profileID: The owner of the reusable ACP session.
     ///   - configuration: The validated process and permission configuration.
-    ///   - prompt: The complete prompt sent to the harness.
+    ///   - prompt: The typed request and optional Mac context sent to the harness.
     ///   - onEvent: Receives ordered streaming output and control events.
     /// - Returns: The terminal result reported by the harness.
     /// - Throws: ``ACPAgentRunnerError`` or an underlying transport/protocol error.
     public func run(
         profileID: UUID,
         configuration: AgentHarnessConfiguration,
-        prompt: String,
+        prompt: AgentPrompt,
         onEvent: @escaping @Sendable (AgentRunEvent) async -> Void
     ) async throws
         -> AgentRunResult
@@ -183,7 +183,7 @@ public actor ACPAgentRunner: AgentHarnessRunning {
             fields: [
                 "turn_id": token.uuidString,
                 "profile_id": profileID.uuidString,
-                "input_character_count": String(prompt.count),
+                "request_byte_count": String(prompt.request.utf8.count),
                 "cached_session_count": String(records.count),
                 "task_priority": String(Task.currentPriority.rawValue),
             ])

@@ -98,7 +98,7 @@ extension VoiceActivationCoordinatorTests {
             ControlledAgentRunner.Invocation(
                 profileID: agentProfile.id,
                 configuration: try makeAgentConfiguration(),
-                prompt: "inspect the parser"),
+                prompt: AgentPrompt(request: "inspect the parser", context: nil)),
         ])
         guard case let .started(runID, startedProfile, prompt) = lifecycleEvents.first else {
             Issue.record("Expected an agent run start")
@@ -145,8 +145,8 @@ extension VoiceActivationCoordinatorTests {
         await waitUntil { await fixture.agentRunner.recordedInvocations().count == 2 }
 
         #expect(await fixture.agentRunner.recordedInvocations().map(\.prompt) == [
-            "inspect the parser",
-            "now show me the tests",
+            AgentPrompt(request: "inspect the parser", context: nil),
+            AgentPrompt(request: "now show me the tests", context: nil),
         ])
         #expect(lifecycleEvents.contains(.followUpSubmitted(
             runID: runID,
@@ -170,8 +170,8 @@ extension VoiceActivationCoordinatorTests {
         }
 
         #expect(await fixture.agentRunner.recordedInvocations().map(\.prompt) == [
-            "inspect this",
-            "actually run the tests",
+            AgentPrompt(request: "inspect this", context: nil),
+            AgentPrompt(request: "actually run the tests", context: nil),
         ])
         await fixture.agentRunner.complete(runIndex: 0)
         await fixture.agentRunner.complete(runIndex: 1)
@@ -281,8 +281,8 @@ extension VoiceActivationCoordinatorTests {
         let invocations = await fixture.agentRunner.recordedInvocations()
         #expect(speechCancellationCount == 1)
         #expect(invocations.map(\.prompt) == [
-            "explain this",
-            "thank you",
+            AgentPrompt(request: "explain this", context: nil),
+            AgentPrompt(request: "thank you", context: nil),
         ])
         guard invocations.count == 2 else { return }
         await fixture.agentRunner.complete(runIndex: 1)

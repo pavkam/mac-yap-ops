@@ -56,7 +56,7 @@ public enum ACPClientError: Error, Equatable, LocalizedError, Sendable {
 
 /// Owns protocol state, ordered writes, and one active prompt over an ACP transport.
 public actor ACPClientConnection {
-    /// The maximum accepted UTF-8 prompt payload.
+    /// The maximum accepted UTF-8 size for the untouched recognized request.
     public static let maximumPromptBytes = 8_192
     /// The maximum retained UTF-8 size for one remote diagnostic summary.
     public static let maximumDiagnosticBytes = 256
@@ -142,24 +142,16 @@ public actor ACPClientConnection {
     /// Sends one prompt and streams ordered events until the harness returns a stop reason.
     ///
     /// - Parameters:
-    ///   - prompt: The complete user prompt, excluding the protocol system instruction.
+    ///   - prompt: The typed request and optional context, excluding the protocol system instruction.
     ///   - onEvent: Receives ordered streaming output and control events.
     /// - Returns: The terminal result reported by the harness.
     /// - Throws: ``ACPClientError`` when the prompt or connection cannot complete safely.
     public func prompt(
-        _ prompt: String,
+        _ prompt: AgentPrompt,
         onEvent: @escaping @Sendable (AgentRunEvent) async -> Void
     ) async throws -> AgentRunResult {
         let promptStartedAt = DispatchTime.now().uptimeNanoseconds
-        diagnostics.record(
-            category: .acp,
-            event: "acp_client.prompt_started",
-            fields: [
-                "connection_id": connectionID.uuidString,
-                "input_character_count": String(prompt.count),
-                "has_session": String(sessionID != nil),
-            ])
-        guard prompt.utf8.count <= Self.maximumPromptBytes else {
+        guard prompt.request.utf8.count <= Self.maximumPromptBytes else {
             diagnostics.record(
                 category: .acp,
                 event: "acp_client.prompt_rejected",
@@ -167,10 +159,34 @@ public actor ACPClientConnection {
                 fields: [
                     "connection_id": connectionID.uuidString,
                     "reason": "too_large",
-                    "input_byte_count": String(prompt.utf8.count),
+                    "request_byte_count": String(prompt.request.utf8.count),
                 ])
             throw ACPClientError.promptTooLarge(maximumBytes: Self.maximumPromptBytes)
         }
+        let blocks = try MacContextPromptEncoder.content(
+            for: prompt,
+            systemInstruction: systemInstruction())
+        let contextBlockByteCount = blocks.reduce(into: 0) { count, block in
+            if case let .text(role: .macContext, value: value) = block {
+                count += value.utf8.count
+            }
+        }
+        let resourceLinkCount = blocks.reduce(into: 0) { count, block in
+            if case .resourceLink = block {
+                count += 1
+            }
+        }
+        diagnostics.record(
+            category: .acp,
+            event: "acp_client.prompt_started",
+            fields: [
+                "connection_id": connectionID.uuidString,
+                "request_byte_count": String(prompt.request.utf8.count),
+                "context_block_byte_count": String(contextBlockByteCount),
+                "resource_link_count": String(resourceLinkCount),
+                "content_block_count": String(blocks.count),
+                "has_session": String(sessionID != nil),
+            ])
         try ensureOpen()
         guard activeTurnToken == nil else {
             throw ACPClientError.promptAlreadyActive
@@ -199,16 +215,7 @@ public actor ACPClientConnection {
             let result = try await sendPromptRequest(
                 params: .object([
                     "sessionId": .string(sessionID),
-                    "prompt": .array([
-                        .object([
-                            "type": .string("text"),
-                            "text": .string(systemInstruction()),
-                        ]),
-                        .object([
-                            "type": .string("text"),
-                            "text": .string(prompt),
-                        ]),
-                    ]),
+                    "prompt": .array(blocks.map(Self.encodedPromptBlock(for:))),
                 ]))
             let object = try requiredObject(result, named: "session/prompt result")
             let encodedReason = try requiredString(
@@ -251,6 +258,36 @@ public actor ACPClientConnection {
                     "error_type": String(describing: type(of: error)),
                 ])
             throw clientError
+        }
+    }
+
+    static func encodedPromptBlock(for content: AgentPromptContent) -> ACPJSONValue {
+        let metadata: ACPJSONValue = .object([
+            "ciobanu.org.voiceActivation": .object([
+                "promptBlockRole": .string(role(for: content).rawValue),
+            ]),
+        ])
+        switch content {
+        case let .text(_, value):
+            return .object([
+                "type": .string("text"),
+                "text": .string(value),
+                "_meta": metadata,
+            ])
+        case let .resourceLink(_, uri, name):
+            return .object([
+                "type": .string("resource_link"),
+                "uri": .string(uri),
+                "name": .string(name),
+                "_meta": metadata,
+            ])
+        }
+    }
+
+    private static func role(for content: AgentPromptContent) -> AgentPromptBlockRole {
+        switch content {
+        case let .text(role, _), let .resourceLink(role, _, _):
+            role
         }
     }
 

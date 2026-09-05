@@ -75,7 +75,7 @@ extension VoiceActivationCoordinatorTests {
         let invocation = await fixture.agentRunner.recordedInvocations()[0]
         #expect(invocation.profileID == selectedProfile.id)
         #expect(invocation.configuration.displayName == "Selected")
-        #expect(invocation.prompt == "fix the tests")
+        #expect(invocation.prompt == AgentPrompt(request: "fix the tests", context: nil))
         await fixture.agentRunner.complete(runIndex: 0)
     }
 
@@ -314,7 +314,10 @@ extension VoiceActivationCoordinatorTests {
         }
 
         #expect(await fixture.agentRunner.cancelCount == 1)
-        #expect(await fixture.agentRunner.recordedInvocations().map(\.prompt) == ["first", "second"])
+        #expect(await fixture.agentRunner.recordedInvocations().map(\.prompt) == [
+            AgentPrompt(request: "first", context: nil),
+            AgentPrompt(request: "second", context: nil),
+        ])
         await fixture.agentRunner.complete(runIndex: 0)
         await fixture.agentRunner.complete(runIndex: 1)
     }

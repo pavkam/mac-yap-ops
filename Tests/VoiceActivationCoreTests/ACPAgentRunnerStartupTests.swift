@@ -93,7 +93,7 @@ extension ACPAgentRunnerTests {
             try await runner.run(
                 profileID: profileID,
                 configuration: configuration,
-                prompt: "Continue safely",
+                prompt: AgentPrompt(request: "Continue safely", context: nil),
                 onEvent: { event in await recorder.record(event) })
         }
         #expect(await staleTransport.nextSentMessage() == promptRequest(
@@ -154,7 +154,7 @@ extension ACPAgentRunnerTests {
             try await runner.run(
                 profileID: profileID,
                 configuration: configuration,
-                prompt: "Recover startup",
+                prompt: AgentPrompt(request: "Recover startup", context: nil),
                 onEvent: { event in await recorder.record(event) })
         }
 
