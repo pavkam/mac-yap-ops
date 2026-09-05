@@ -24,17 +24,9 @@ header in its first 12 lines. Non-commentable binary resources are declared in
 `REUSE.toml`.
 
 Update the owning guide when behavior, configuration, privacy, diagnostics,
-packaging, or developer commands change:
-
-| Topic | Guide |
-| --- | --- |
-| User workflow and requirements | `README.md` |
-| Architecture and concurrency | `docs/architecture.md` |
-| Builds, CI, packaging, tests | `docs/development.md` |
-| ACP wire/lifecycle/providers | `docs/agent-harness.md` |
-| Runtime diagnosis | `docs/troubleshooting.md` |
-| Settings and persistence | `docs/configuration.md` |
-| Capture/activity/reply audio | `docs/sound-design.md` |
+packaging, tests, or developer commands change. The canonical topic-to-guide
+map and evidence rules live in `docs/documentation.md`; do not duplicate that
+map in agent guidance.
 
 ## Commands
 
