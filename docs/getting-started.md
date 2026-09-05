@@ -96,9 +96,9 @@ change a profile's **Target** to **Agent** in Settings. Choose the provider,
 confirm its executable and working folder, select a permission policy, and save.
 
 The first agent request opens a non-activating conversation panel and keeps the
-microphone available for follow-ups. Continue with [Agent providers](agent-providers.md)
-for setup and [Agent conversations](agent-conversations.md) for the interaction
-model.
+microphone available for follow-ups. Continue with
+[Agent providers](agent-providers.md) for setup and
+[Agent conversations](agent-conversations.md) for the interaction model.
 
 ## Related guides
 
