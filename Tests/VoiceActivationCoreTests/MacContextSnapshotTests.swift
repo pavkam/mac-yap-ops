@@ -54,6 +54,75 @@ struct MacContextSnapshotTests {
         #expect(snapshot.documentURL == nil)
     }
 
+    @Test func normalized_WhenFileURLIsRelative_OmitsIt() {
+        let snapshot = MacContextSnapshot.normalized(
+            state: .complete,
+            target: .init(processIdentifier: 42, applicationName: "Finder", bundleIdentifier: nil),
+            windowTitle: nil,
+            documentURL: "file:relative.txt",
+            selectedText: nil,
+            resources: [])
+
+        #expect(snapshot.documentURL == nil)
+    }
+
+    @Test(arguments: [256, 257])
+    func normalized_WhenBundleIdentifierIsAtOrOverBound_RetainsOnlyTheBoundedPrefix(
+        byteCount: Int)
+    {
+        let bundleIdentifier = String(repeating: "b", count: byteCount)
+        let snapshot = MacContextSnapshot.normalized(
+            state: .complete,
+            target: .init(
+                processIdentifier: 42,
+                applicationName: "Editor",
+                bundleIdentifier: bundleIdentifier),
+            windowTitle: nil,
+            documentURL: nil,
+            selectedText: nil,
+            resources: [])
+
+        let expected = byteCount == 256 ? bundleIdentifier : String(repeating: "b", count: 256)
+        #expect(snapshot.bundleIdentifier == expected)
+        #expect(snapshot.truncatedFields == (byteCount == 256 ? [] : ["application.bundleIdentifier"]))
+    }
+
+    @Test(arguments: [2_048, 2_049])
+    func normalized_WhenDocumentURIIsAtOrOverBound_RetainsOnlyAnAllowedBoundedURI(
+        byteCount: Int)
+    {
+        let prefix = "https://example.test/"
+        let uri = prefix + String(repeating: "u", count: byteCount - prefix.utf8.count)
+        let snapshot = MacContextSnapshot.normalized(
+            state: .complete,
+            target: .init(processIdentifier: 42, applicationName: "Browser", bundleIdentifier: nil),
+            windowTitle: nil,
+            documentURL: uri,
+            selectedText: nil,
+            resources: [])
+
+        #expect(snapshot.documentURL == (byteCount == 2_048 ? uri : nil))
+        #expect(snapshot.truncatedFields == (byteCount == 2_048 ? [] : ["documentURL"]))
+    }
+
+    @Test(arguments: [256, 257])
+    func normalized_WhenResourceNameIsAtOrOverBound_RetainsOnlyTheBoundedPrefix(
+        byteCount: Int)
+    {
+        let name = String(repeating: "n", count: byteCount)
+        let snapshot = MacContextSnapshot.normalized(
+            state: .complete,
+            target: .init(processIdentifier: 42, applicationName: "Finder", bundleIdentifier: nil),
+            windowTitle: nil,
+            documentURL: nil,
+            selectedText: nil,
+            resources: [.init(uri: "file:///tmp/notes.txt", name: name)])
+
+        let expected = byteCount == 256 ? name : String(repeating: "n", count: 256)
+        #expect(snapshot.resources == [.init(uri: "file:///tmp/notes.txt", name: expected)])
+        #expect(snapshot.truncatedFields == (byteCount == 256 ? [] : ["resources"]))
+    }
+
     @Test func normalized_WhenResourceURIsRepeat_RetainsFirstResourceInAccessibilityOrder() {
         let snapshot = MacContextSnapshot.normalized(
             state: .complete,
@@ -89,4 +158,27 @@ struct MacContextSnapshotTests {
             .init(uri: "https://example.test/notes", name: "First"),
         ])
     }
+
+    @Test(arguments: [
+        CaptureStateWireCase(state: .complete, wireValue: "complete"),
+        CaptureStateWireCase(
+            state: .accessibilityNotAuthorized,
+            wireValue: "accessibility_not_authorized"),
+        CaptureStateWireCase(state: .targetUnavailable, wireValue: "target_unavailable"),
+        CaptureStateWireCase(state: .timedOut, wireValue: "timed_out"),
+        CaptureStateWireCase(state: .accessibilityFailed, wireValue: "accessibility_failed"),
+    ])
+    func coding_WhenCaptureStateIsEncoded_UsesTheSpecifiedWireValue(
+        fixture: CaptureStateWireCase) throws
+    {
+        let encoded = try JSONEncoder().encode(fixture.state)
+
+        #expect(String(decoding: encoded, as: UTF8.self) == "\"\(fixture.wireValue)\"")
+        #expect(try JSONDecoder().decode(MacContextCaptureState.self, from: encoded) == fixture.state)
+    }
+}
+
+struct CaptureStateWireCase: Sendable {
+    let state: MacContextCaptureState
+    let wireValue: String
 }

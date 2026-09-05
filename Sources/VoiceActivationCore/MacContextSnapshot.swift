@@ -212,7 +212,7 @@ public struct MacContextSnapshot: Codable, Equatable, Sendable {
 
         let normalizedURL: URL
         switch scheme {
-        case "file" where !url.path.isEmpty:
+        case "file" where url.path.hasPrefix("/"):
             normalizedURL = url.standardizedFileURL
         case "http", "https":
             guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false),
