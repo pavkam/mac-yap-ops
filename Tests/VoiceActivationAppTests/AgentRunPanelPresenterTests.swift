@@ -15,6 +15,8 @@ private final class AgentRunPanelDisplaySpy: AgentRunPanelDisplaying {
     private(set) var updates: [AgentRunSnapshot] = []
     private(set) var shown: [UUID] = []
     private(set) var hidden: [UUID] = []
+    private(set) var discarded: [UUID] = []
+    private(set) var shutdownCount = 0
     private(set) var minimized: [UUID] = []
     private(set) var restored: [UUID] = []
 
@@ -25,6 +27,8 @@ private final class AgentRunPanelDisplaySpy: AgentRunPanelDisplaying {
     func update(_ snapshot: AgentRunSnapshot) { updates.append(snapshot) }
     func show(runID: UUID) { shown.append(runID) }
     func hide(runID: UUID) { hidden.append(runID) }
+    func discard(runID: UUID) { discarded.append(runID) }
+    func shutdown() { shutdownCount += 1 }
     func minimize(runID: UUID) { minimized.append(runID) }
     func restore(runID: UUID) { restored.append(runID) }
 }
@@ -217,7 +221,7 @@ struct AgentRunPanelPresenterTests {
         #expect(display.shown == [runID])
     }
 
-    @MainActor @Test func delete_WhenRunIsTerminal_HidesAndForgetsItExactlyOnce() {
+    @MainActor @Test func delete_WhenRunIsTerminal_DiscardsAndForgetsItExactlyOnce() {
         let display = AgentRunPanelDisplaySpy()
         let presenter = AgentRunPanelPresenter(
             display: display,
@@ -234,7 +238,8 @@ struct AgentRunPanelPresenterTests {
         display.onAction?(.delete(runID: UUID()))
         presenter.show(runID: runID)
 
-        #expect(display.hidden == [runID])
+        #expect(display.discarded == [runID])
+        #expect(display.hidden.isEmpty)
         #expect(display.shown.isEmpty)
         #expect(deletedRuns == [runID])
     }
@@ -313,6 +318,21 @@ struct AgentRunPanelPresenterTests {
         #expect(!panel.isMovableByWindowBackground)
     }
 
+    @MainActor @Test func panel_WhenReduceMotionIsEnabled_CompletesHandoffWithoutAnimation() {
+        let visibleFrame = NSRect(x: 0, y: 0, width: 1_200, height: 800)
+        let sourceFrame = NSRect(x: 900, y: 700, width: 240, height: 64)
+        let controller = AgentRunPanelController(shouldReduceMotion: { true })
+
+        controller.begin(
+            runningSnapshot(runID: UUID()),
+            from: RecordingOverlayHandoff(
+                visibleScreenFrame: visibleFrame,
+                sourceFrame: sourceFrame))
+
+        #expect(controller.panelForTesting.frame == AgentRunPanelLayout.expandedFrame(
+            in: visibleFrame))
+    }
+
     @MainActor @Test func dragSurface_WhenPressed_StartsNativeWindowDragImmediately() throws {
         let window = AgentRunPanelDragWindowSpy(
             contentRect: NSRect(x: 0, y: 0, width: 320, height: 80),
@@ -344,12 +364,12 @@ struct AgentRunPanelPresenterTests {
         let model = AgentRunPanelModel()
         model.begin(runningSnapshot(runID: UUID()))
         let renderer = ImageRenderer(content: AgentRunPanelView(model: model))
-        renderer.proposedSize = ProposedViewSize(width: 620, height: 420)
+        renderer.proposedSize = ProposedViewSize(width: 680, height: 560)
 
         let image = try #require(renderer.cgImage)
 
-        #expect(image.width == 620)
-        #expect(image.height == 420)
+        #expect(image.width == 680)
+        #expect(image.height == 560)
     }
 
     @MainActor @Test func view_WhenRendered_DrawsChromeToEveryPanelEdge() throws {
@@ -357,7 +377,7 @@ struct AgentRunPanelPresenterTests {
         model.begin(runningSnapshot(runID: UUID()))
         let renderer = ImageRenderer(content: AgentRunPanelView(model: model))
         renderer.scale = 1
-        renderer.proposedSize = ProposedViewSize(width: 620, height: 420)
+        renderer.proposedSize = ProposedViewSize(width: 680, height: 560)
         let image = try #require(renderer.cgImage)
         let bitmap = NSBitmapImageRep(cgImage: image)
         let edgePoints = [

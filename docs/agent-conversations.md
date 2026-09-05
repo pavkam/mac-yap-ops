@@ -47,6 +47,20 @@ New activity follows the bottom while the view is already pinned there. A
 deliberate upward scroll pauses automatic following; returning to the bottom
 enables it again.
 
+## Use generated results
+
+Generated images, PDFs, documents, and resource links appear in a result shelf
+immediately after the request, ahead of the conversation details. Each card uses
+a native image or Quick Look preview when local data is available and otherwise
+shows a quiet file-type treatment. Preview work stays off the main actor and
+never downloads remote content.
+
+Use **Open** for an embedded result, local file, or `http`/`https` resource.
+Local linked files also offer **Reveal in Finder**. Embedded results are written
+only when opened, into an owner-only temporary run directory. Closing preserves
+them with retained output; deleting the result, replacing the run, or quitting
+removes app-owned temporary files.
+
 ## Continue by voice or push-to-talk
 
 Speak normally after the first request. A final recognition result or the
@@ -135,7 +149,8 @@ completion, and failure have distinct deduplicated cues.
 ## Copy retained output
 
 **Copy output** includes the initial request, user-visible response Markdown
-separated by turn, and bounded diagnostics. Provider thought updates remain
+separated by turn, result names and linked URIs, and bounded diagnostics. It
+never includes embedded result bytes. Provider thought updates remain
 inspectable in the timeline but are excluded from the response section.
 
 Copyable output, diagnostics, tools, timeline text, and visible activity are all

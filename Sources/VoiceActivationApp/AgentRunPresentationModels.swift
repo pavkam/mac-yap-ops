@@ -57,6 +57,7 @@ struct AgentToolPresentation: Equatable, Identifiable, Sendable {
     var title: String
     var kind: AgentToolKind?
     var status: AgentToolCallStatus?
+    var content: [String] = []
     var isSettled = false
 
     var isWorking: Bool {
@@ -65,6 +66,23 @@ struct AgentToolPresentation: Equatable, Identifiable, Sendable {
 
     var isFinished: Bool {
         isSettled || status == .completed || status == .failed
+    }
+}
+
+/// One generated result with identity stable across provider updates.
+struct AgentArtifactPresentation: Equatable, Identifiable, Sendable {
+    let id: UUID
+    var artifact: AgentArtifact
+
+    var embeddedByteCount: Int {
+        switch artifact.payload {
+        case .image(let data, _), .embeddedBlob(let data):
+            data.count
+        case .embeddedText(let text):
+            text.utf8.count
+        case .linked:
+            0
+        }
     }
 }
 
@@ -168,12 +186,63 @@ struct AgentRunSnapshot: Equatable, Sendable {
     let elapsedSeconds: Int
     let evictedToolCount: UInt64
     let ignoredToolUpdateCount: UInt64
+    let artifacts: [AgentArtifactPresentation]
+    let omittedArtifactCount: UInt64
+
+    init(
+        runID: UUID,
+        profileID: UUID,
+        accent: WakeProfileAccent,
+        prompt: String,
+        providerName: String,
+        phase: AgentRunPhase,
+        voiceInput: String,
+        output: String,
+        timeline: [AgentRunTimelineItem],
+        diagnostics: String,
+        plan: [AgentPlanEntry],
+        tools: [AgentToolPresentation],
+        permissions: [AgentPermissionPresentation],
+        notices: [String],
+        elapsedSeconds: Int,
+        evictedToolCount: UInt64,
+        ignoredToolUpdateCount: UInt64,
+        artifacts: [AgentArtifactPresentation] = [],
+        omittedArtifactCount: UInt64 = 0)
+    {
+        self.runID = runID
+        self.profileID = profileID
+        self.accent = accent
+        self.prompt = prompt
+        self.providerName = providerName
+        self.phase = phase
+        self.voiceInput = voiceInput
+        self.output = output
+        self.timeline = timeline
+        self.diagnostics = diagnostics
+        self.plan = plan
+        self.tools = tools
+        self.permissions = permissions
+        self.notices = notices
+        self.elapsedSeconds = elapsedSeconds
+        self.evictedToolCount = evictedToolCount
+        self.ignoredToolUpdateCount = ignoredToolUpdateCount
+        self.artifacts = artifacts
+        self.omittedArtifactCount = omittedArtifactCount
+    }
 
     /// A plain-text export containing only the retained request, response, and diagnostics.
     var copyText: String {
         var sections = ["Request\n\(prompt)"]
         if !output.isEmpty {
             sections.append("Response\n\(output)")
+        }
+        if !artifacts.isEmpty {
+            let lines = artifacts.map { result in
+                result.artifact.uri.map { "- \(result.artifact.name) — \($0)" }
+                    ?? "- \(result.artifact.name)"
+            }
+            sections.append("Results\n" + lines.joined(separator: "\n"))
         }
         if !diagnostics.isEmpty {
             sections.append("Diagnostics\n\(diagnostics)")

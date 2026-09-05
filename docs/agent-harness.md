@@ -107,6 +107,7 @@ typed events:
 - user and agent message chunks;
 - provider-exposed thought chunks;
 - tool calls and tool-call updates;
+- images, resource links, and embedded text or binary resources;
 - complete plan replacements;
 - available commands;
 - mode and configuration changes;
@@ -121,6 +122,25 @@ its meaning.
 Prompt completion does not publish success until every accepted event has
 drained through both delivery stages. This preserves wire order even when the
 consumer is slower than the provider.
+
+## Deliver generated results
+
+Image, `resource_link`, and embedded resource content blocks become typed result
+artifacts instead of Markdown or unstructured tool text. The decoder validates
+their metadata and payloads before admission. Tool calls and updates may carry
+both bounded display text and independently delivered artifacts.
+
+The delivery queue keeps artifacts whole and uses a separate byte budget. Under
+pressure it evicts the oldest complete result and emits one coalesced truncation
+notice. The presentation deduplicates stable results, retains the newest bounded
+set, and never folds embedded bytes into copied output.
+
+Preview generation is local-only. ImageIO decodes retained image bytes off the
+main actor, while Quick Look receives only existing local file URLs. Linked
+`file`, `http`, and `https` resources open only after explicit user action, and
+only local files can be revealed in Finder. Opening embedded data creates an
+owner-only temporary file. Delete, run replacement, and app shutdown remove the
+app-owned temporary files; closing the panel keeps them with retained output.
 
 ## Resolve permissions
 
@@ -204,11 +224,18 @@ cache.
 | Simultaneous pending permissions | 32 | Cancel the excess request. |
 | Options in one permission | 64 | Cancel the request. |
 | Entries in one plan update | 64 | Retain a bounded plan. |
+| One artifact URI | 4 KiB UTF-8 | Reject the artifact. |
+| One artifact MIME type | 256 bytes UTF-8 | Reject the artifact. |
+| One artifact display string | 8 KiB UTF-8 | Reject the artifact. |
+| One embedded artifact payload | 768 KiB | Reject the artifact. |
+| Tool display content | 32 entries / 64 KiB UTF-8 | Retain a bounded prefix and publish a typed notice. |
 | Pending output delivery | 512 KiB UTF-8 | Discard oldest valid UTF-8 and publish a typed notice. |
 | Pending diagnostic delivery | 16 KiB UTF-8 | Discard oldest valid UTF-8 and publish a typed notice. |
+| Pending artifact delivery | 4 MiB | Discard oldest complete artifacts and publish a typed notice. |
 | Pending control delivery | 512 KiB | Fail explicitly rather than lose required control. |
 | Pending delivery entries | 256 | Evict lossy text first; fail if required control still exceeds the cap. |
 | Retained process standard error | 16 KiB UTF-8 | Keep the newest valid tail. |
+| Retained presentation artifacts | 32 entries / 4 MiB | Keep the newest complete results and publish a typed notice. |
 | Cached idle profile sessions | 4 | Close the least recently used idle record. |
 
 The frame limit bounds parser input. Decoding one accepted frame may

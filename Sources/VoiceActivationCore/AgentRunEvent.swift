@@ -39,6 +39,79 @@ public enum AgentToolCallStatus: String, Codable, Equatable, Sendable {
     case failed
 }
 
+/// The retained body of a result artifact produced by an ACP agent.
+public enum AgentArtifactPayload: Equatable, Sendable {
+    /// Inline image bytes with their required media type.
+    case image(data: Data, mimeType: String)
+    /// Inline UTF-8 resource text.
+    case embeddedText(String)
+    /// Inline binary resource bytes.
+    case embeddedBlob(Data)
+    /// A resource referenced only by its URI.
+    case linked
+}
+
+/// A bounded file, image, or document result produced by an ACP agent.
+public struct AgentArtifact: Equatable, Sendable {
+    /// The provider-supplied resource URI, when one exists.
+    public let uri: String?
+    /// The bounded display and materialization name.
+    public let name: String
+    /// An optional bounded user-facing title.
+    public let title: String?
+    /// Optional bounded descriptive text supplied for the result.
+    public let descriptiveText: String?
+    /// The declared media type, when supplied.
+    public let mimeType: String?
+    /// The provider-declared byte size, when supplied.
+    public let declaredSize: UInt64?
+    /// The retained inline or linked payload.
+    public let payload: AgentArtifactPayload
+
+    /// Creates a bounded agent result artifact.
+    ///
+    /// - Parameters:
+    ///   - uri: The optional provider-supplied URI.
+    ///   - name: The display and materialization name.
+    ///   - title: An optional user-facing title.
+    ///   - descriptiveText: Optional descriptive text.
+    ///   - mimeType: The optional declared media type.
+    ///   - declaredSize: The optional provider-declared size.
+    ///   - payload: The retained inline or linked payload.
+    public init(
+        uri: String?,
+        name: String,
+        title: String?,
+        descriptiveText: String?,
+        mimeType: String?,
+        declaredSize: UInt64?,
+        payload: AgentArtifactPayload)
+    {
+        self.uri = uri
+        self.name = name
+        self.title = title
+        self.descriptiveText = descriptiveText
+        self.mimeType = mimeType
+        self.declaredSize = declaredSize
+        self.payload = payload
+    }
+}
+
+/// User-presentable content attached to an ACP tool call.
+public enum AgentToolCallContent: Equatable, Sendable {
+    /// A regular text result.
+    case text(String)
+    /// A file, image, or document result.
+    case artifact(AgentArtifact)
+}
+
+enum AgentArtifactLimits {
+    static let maximumURIBytes = 4 * 1_024
+    static let maximumMIMETypeBytes = 256
+    static let maximumDisplayTextBytes = 8 * 1_024
+    static let maximumEmbeddedPayloadBytes = 768 * 1_024
+}
+
 /// The initial description of an ACP tool call.
 public struct AgentToolCall: Equatable, Sendable {
     /// The bounded opaque identifier used to correlate updates.
@@ -49,6 +122,8 @@ public struct AgentToolCall: Equatable, Sendable {
     public let kind: AgentToolKind?
     /// The initial lifecycle state, when supplied by the harness.
     public let status: AgentToolCallStatus?
+    /// Ordered user-presentable results supplied with the call.
+    public let content: [AgentToolCallContent]
 
     /// Creates an initial tool-call description.
     ///
@@ -57,16 +132,19 @@ public struct AgentToolCall: Equatable, Sendable {
     ///   - title: The human-readable operation title.
     ///   - kind: The semantic operation kind.
     ///   - status: The initial lifecycle state.
+    ///   - content: Ordered user-presentable results supplied with the call.
     public init(
         id: String,
         title: String,
         kind: AgentToolKind? = nil,
-        status: AgentToolCallStatus? = nil)
+        status: AgentToolCallStatus? = nil,
+        content: [AgentToolCallContent] = [])
     {
         self.id = id
         self.title = title
         self.kind = kind
         self.status = status
+        self.content = content
     }
 }
 
@@ -80,6 +158,8 @@ public struct AgentToolCallUpdate: Equatable, Sendable {
     public let kind: AgentToolKind?
     /// A replacement lifecycle state, when supplied.
     public let status: AgentToolCallStatus?
+    /// Ordered user-presentable results supplied with the update.
+    public let content: [AgentToolCallContent]
 
     /// Creates a partial tool-call update.
     ///
@@ -88,16 +168,19 @@ public struct AgentToolCallUpdate: Equatable, Sendable {
     ///   - title: An optional replacement title.
     ///   - kind: An optional replacement semantic kind.
     ///   - status: An optional replacement lifecycle state.
+    ///   - content: Ordered user-presentable results supplied with the update.
     public init(
         id: String,
         title: String? = nil,
         kind: AgentToolKind? = nil,
-        status: AgentToolCallStatus? = nil)
+        status: AgentToolCallStatus? = nil,
+        content: [AgentToolCallContent] = [])
     {
         self.id = id
         self.title = title
         self.kind = kind
         self.status = status
+        self.content = content
     }
 }
 
@@ -212,6 +295,8 @@ public struct AgentPermissionRequest: Equatable, Sendable {
 public enum AgentRunEventDeliveryNoticeKind: Equatable, Sendable {
     /// User-visible agent output was truncated.
     case outputTruncated
+    /// File, image, or document results were discarded under pressure.
+    case artifactTruncated
     /// Diagnostic-only output was truncated.
     case diagnosticTruncated
     /// Control events were truncated and the turn can no longer proceed safely.
@@ -258,6 +343,8 @@ public enum AgentRunEvent: Equatable, Sendable {
     case agentMessageDelta(messageID: String?, text: String)
     /// A streaming fragment of agent reasoning that may be collapsed in the UI.
     case thoughtDelta(messageID: String?, text: String)
+    /// A file, image, or document result produced by the agent.
+    case artifact(AgentArtifact)
     /// A newly announced tool call.
     case toolCall(AgentToolCall)
     /// A partial update for an existing tool call.

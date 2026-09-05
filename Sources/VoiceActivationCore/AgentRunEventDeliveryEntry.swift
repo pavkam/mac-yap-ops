@@ -16,6 +16,7 @@ struct AgentRunEventDeliveryEntry {
     private var textKind: AgentRunEventDeliveryTextKind?
     private var textBuffer: AgentRunEventDeliveryTextBuffer?
     private(set) var outputBytes: Int
+    private(set) var artifactBytes: Int
     private(set) var diagnosticBytes: Int
     private(set) var controlBytes: Int
 
@@ -48,6 +49,11 @@ struct AgentRunEventDeliveryEntry {
         textKind = nil
         textBuffer = nil
         outputBytes = 0
+        artifactBytes = if case let .artifact(artifact) = event {
+            Self.artifactByteCount(artifact)
+        } else {
+            0
+        }
         diagnosticBytes = 0
         controlBytes = Self.controlByteCount(for: event)
     }
@@ -63,10 +69,12 @@ struct AgentRunEventDeliveryEntry {
         switch textKind {
         case let .agentMessage(messageID), let .thought(messageID):
             outputBytes = buffer.count
+            artifactBytes = 0
             diagnosticBytes = 0
             controlBytes = messageID?.utf8.count ?? 0
         case .diagnostic:
             outputBytes = 0
+            artifactBytes = 0
             diagnosticBytes = buffer.count
             controlBytes = 0
         }
@@ -123,10 +131,16 @@ struct AgentRunEventDeliveryEntry {
             return agentName.utf8.count + sessionID.utf8.count
         case let .agentMessageDelta(messageID, _), let .thoughtDelta(messageID, _):
             return messageID?.utf8.count ?? 0
+        case .artifact:
+            return 0
         case let .toolCall(toolCall):
-            return toolCall.id.utf8.count + toolCall.title.utf8.count
+            return toolCall.id.utf8.count
+                + toolCall.title.utf8.count
+                + toolContentByteCount(toolCall.content)
         case let .toolCallUpdate(update):
-            return update.id.utf8.count + (update.title?.utf8.count ?? 0)
+            return update.id.utf8.count
+                + (update.title?.utf8.count ?? 0)
+                + toolContentByteCount(update.content)
         case let .plan(entries):
             return entries.reduce(0) { saturatingAdd($0, $1.content.utf8.count) }
         case let .metadata(kind, summary):
@@ -135,6 +149,7 @@ struct AgentRunEventDeliveryEntry {
             return 0
         case let .permissionRequested(request):
             var count = request.toolCall.id.utf8.count + (request.toolCall.title?.utf8.count ?? 0)
+            count = saturatingAdd(count, toolContentByteCount(request.toolCall.content))
             if case let .string(id) = request.requestID {
                 count = saturatingAdd(count, id.utf8.count)
             }
@@ -148,6 +163,37 @@ struct AgentRunEventDeliveryEntry {
         case .deliveryNotice:
             return 0
         }
+    }
+
+    private static func toolContentByteCount(_ content: [AgentToolCallContent]) -> Int {
+        content.reduce(0) { count, item in
+            switch item {
+            case let .text(text):
+                saturatingAdd(count, text.utf8.count)
+            case .artifact:
+                count
+            }
+        }
+    }
+
+    private static func artifactByteCount(_ artifact: AgentArtifact) -> Int {
+        var count = artifact.uri?.utf8.count ?? 0
+        count = saturatingAdd(count, artifact.name.utf8.count)
+        count = saturatingAdd(count, artifact.title?.utf8.count ?? 0)
+        count = saturatingAdd(count, artifact.descriptiveText?.utf8.count ?? 0)
+        count = saturatingAdd(count, artifact.mimeType?.utf8.count ?? 0)
+        switch artifact.payload {
+        case let .image(data, mimeType):
+            count = saturatingAdd(count, data.count)
+            count = saturatingAdd(count, mimeType.utf8.count)
+        case let .embeddedText(text):
+            count = saturatingAdd(count, text.utf8.count)
+        case let .embeddedBlob(data):
+            count = saturatingAdd(count, data.count)
+        case .linked:
+            break
+        }
+        return count
     }
 }
 

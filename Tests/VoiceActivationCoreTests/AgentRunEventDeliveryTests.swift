@@ -265,6 +265,155 @@ struct AgentRunEventDeliveryTests {
         #expect(await recorder.recordedEvents() == expected)
     }
 
+    @Test func send_WhenToolUpdateContainsArtifact_DeliversStatusThenArtifact() async {
+        let recorder = DeliveryEventRecorder()
+        let artifact = resultArtifact(index: 1, payloadByteCount: 16)
+        let delivery = AgentRunEventDelivery { event in await recorder.record(event) }
+        let update = AgentToolCallUpdate(
+            id: "render",
+            status: .completed,
+            content: [.text("Rendered"), .artifact(artifact)])
+
+        #expect(delivery.send(.toolCallUpdate(update)) == .accepted)
+        await delivery.finish(.drain)
+
+        #expect(await recorder.recordedEvents() == [
+            .toolCallUpdate(AgentToolCallUpdate(
+                id: "render",
+                status: .completed,
+                content: [.text("Rendered")])),
+            .artifact(artifact),
+        ])
+    }
+
+    @Test func send_WhenToolHasThousandsOfTextBlocks_BoundsRenderableEntries() async {
+        let recorder = DeliveryEventRecorder()
+        let delivery = AgentRunEventDelivery { event in await recorder.record(event) }
+        let content = (0..<10_000).map { index in
+            AgentToolCallContent.text(index.isMultiple(of: 2) ? "" : "x")
+        }
+
+        #expect(delivery.send(.toolCall(AgentToolCall(
+            id: "render",
+            title: "Render",
+            content: content))) == .accepted)
+        await delivery.finish(.drain)
+
+        let events = await recorder.recordedEvents()
+        guard case let .deliveryNotice(notice) = events.first,
+              case let .toolCall(tool) = events.last
+        else {
+            Issue.record("Expected one bounded tool call and its truncation notice")
+            return
+        }
+        #expect(tool.content.count == 32)
+        #expect(tool.content.allSatisfy { $0 == .text("x") })
+        #expect(notice.kind == .controlTruncated)
+        #expect(notice.discardedEntries == 4_968)
+    }
+
+    @Test func send_WhenToolTextBlocksReachByteBudget_BoundsRetainedText() async {
+        let recorder = DeliveryEventRecorder()
+        let delivery = AgentRunEventDelivery { event in await recorder.record(event) }
+        let block = String(repeating: "x", count: 16 * 1_024)
+
+        #expect(delivery.send(.toolCall(AgentToolCall(
+            id: "render",
+            title: "Render",
+            content: Array(repeating: .text(block), count: 40)))) == .accepted)
+        await delivery.finish(.drain)
+
+        let events = await recorder.recordedEvents()
+        guard case let .toolCall(tool) = events.last else {
+            Issue.record("Expected a bounded tool call")
+            return
+        }
+        let retainedBytes = tool.content.reduce(0) { count, item in
+            guard case let .text(text) = item else { return count }
+            return count + text.utf8.count
+        }
+        #expect(tool.content.count == 4)
+        #expect(retainedBytes == 64 * 1_024)
+    }
+
+    @Test func send_WhenArtifactPressureExceedsBound_DiscardsWholeOldestResults() async {
+        let recorder = DeliveryEventRecorder()
+        let gate = DeliveryHandlerGate()
+        let delivery = AgentRunEventDelivery { event in
+            await gate.wait()
+            await recorder.record(event)
+        }
+        #expect(delivery.send(.connected(agentName: "Agent", sessionID: "session")) == .accepted)
+        await gate.waitUntilEntered()
+
+        for index in 0..<33 {
+            #expect(delivery.send(.artifact(resultArtifact(
+                index: index,
+                payloadByteCount: 160 * 1_024))) == .accepted)
+        }
+
+        let snapshot = delivery.snapshotForTesting
+        #expect(snapshot.pendingArtifactBytes
+            <= AgentRunEventDelivery.maximumPendingArtifactBytes)
+        #expect(snapshot.discardedArtifactBytes > 0)
+        #expect(snapshot.discardedArtifactEntries > 0)
+
+        await gate.open()
+        await delivery.finish(.drain)
+        let delivered = await recorder.recordedEvents()
+        let artifactNotices = delivered.filter { event in
+            guard case let .deliveryNotice(notice) = event else { return false }
+            return notice.kind == .artifactTruncated
+        }
+        let retainedArtifacts = delivered.compactMap { event -> AgentArtifact? in
+            guard case let .artifact(artifact) = event else { return nil }
+            return artifact
+        }
+        #expect(artifactNotices.count == 1)
+        #expect(retainedArtifacts.count < 33)
+        #expect(!retainedArtifacts.contains { $0.uri == "file:///tmp/result-0.png" })
+        #expect(retainedArtifacts.allSatisfy { artifact in
+            guard case let .image(data, _) = artifact.payload else { return false }
+            return data.count == 160 * 1_024
+        })
+    }
+
+    @Test func send_WhenToolArtifactsAreInterleaved_DoesNotTurnDiscardablePressureFatal()
+        async
+    {
+        let gate = DeliveryHandlerGate()
+        let delivery = AgentRunEventDelivery { _ in await gate.wait() }
+        #expect(delivery.send(.connected(agentName: "Agent", sessionID: "session")) == .accepted)
+        await gate.waitUntilEntered()
+
+        for index in 0..<160 {
+            let update = AgentToolCallUpdate(
+                id: "tool-\(index)",
+                status: .completed,
+                content: [.artifact(resultArtifact(index: index, payloadByteCount: 1))])
+            #expect(delivery.send(.toolCallUpdate(update)) == .accepted)
+        }
+
+        let snapshot = delivery.snapshotForTesting
+        #expect(snapshot.state == .open)
+        #expect(snapshot.pendingEntryCount <= AgentRunEventDelivery.maximumPendingEntries)
+        #expect(snapshot.discardedArtifactEntries > 0)
+        await delivery.finish(.discard)
+        await gate.open()
+    }
+
+    @Test func send_WhenAlternateProducerBuildsOversizedArtifact_RejectsIt() async {
+        let delivery = AgentRunEventDelivery { _ in }
+        let artifact = resultArtifact(
+            index: 1,
+            payloadByteCount: AgentArtifactLimits.maximumEmbeddedPayloadBytes + 1)
+
+        #expect(delivery.send(.artifact(artifact)) == .invalid)
+        #expect(delivery.snapshotForTesting.pendingArtifactBytes == 0)
+
+        await delivery.finish(.discard)
+    }
+
     @Test func send_WhenControlOnlyReserveFills_FailsExplicitlyAfterAdmittedPrefix() async {
         let recorder = DeliveryEventRecorder()
         let gate = DeliveryHandlerGate()
@@ -339,5 +488,18 @@ struct AgentRunEventDeliveryTests {
         await delivery.waitForConsumerTerminationForTesting()
 
         #expect(delivery.snapshotForTesting.state == .discarded)
+    }
+
+    private func resultArtifact(index: Int, payloadByteCount: Int) -> AgentArtifact {
+        AgentArtifact(
+            uri: "file:///tmp/result-\(index).png",
+            name: "result-\(index).png",
+            title: nil,
+            descriptiveText: nil,
+            mimeType: "image/png",
+            declaredSize: UInt64(payloadByteCount),
+            payload: .image(
+                data: Data(repeating: UInt8(index % 255), count: payloadByteCount),
+                mimeType: "image/png"))
     }
 }

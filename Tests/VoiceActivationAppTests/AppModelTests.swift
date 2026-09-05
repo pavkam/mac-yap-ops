@@ -68,6 +68,7 @@ final class AppModelAgentPanelSpy: AgentRunPanelDisplaying {
     private(set) var updates: [AgentRunSnapshot] = []
     private(set) var shown: [UUID] = []
     private(set) var hidden: [UUID] = []
+    private(set) var discarded: [UUID] = []
 
     func begin(_ snapshot: AgentRunSnapshot, from handoff: RecordingOverlayHandoff?) {
         began.append(snapshot)
@@ -76,6 +77,8 @@ final class AppModelAgentPanelSpy: AgentRunPanelDisplaying {
     func update(_ snapshot: AgentRunSnapshot) { updates.append(snapshot) }
     func show(runID: UUID) { shown.append(runID) }
     func hide(runID: UUID) { hidden.append(runID) }
+    func discard(runID: UUID) { discarded.append(runID) }
+    func shutdown() {}
     func minimize(runID: UUID) {}
     func restore(runID: UUID) {}
 }

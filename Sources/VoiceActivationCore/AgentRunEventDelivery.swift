@@ -25,16 +25,20 @@ enum AgentRunEventDeliveryLifecycleState: Equatable, Sendable {
 struct AgentRunEventDeliverySnapshot: Equatable, Sendable {
     let state: AgentRunEventDeliveryLifecycleState
     let pendingOutputBytes: Int
+    let pendingArtifactBytes: Int
     let pendingDiagnosticBytes: Int
     let pendingControlBytes: Int
     let pendingEntryCount: Int
     let discardedOutputBytes: UInt64
     let discardedOutputEntries: UInt64
+    let discardedArtifactBytes: UInt64
+    let discardedArtifactEntries: UInt64
     let discardedDiagnosticBytes: UInt64
 }
 
 final class AgentRunEventDelivery: @unchecked Sendable {
     static let maximumPendingOutputBytes = 512 * 1_024
+    static let maximumPendingArtifactBytes = 4 * 1_024 * 1_024
     static let maximumPendingDiagnosticBytes = 16 * 1_024
     static let maximumPendingControlBytes = 512 * 1_024
     static let maximumPendingEntries = 256

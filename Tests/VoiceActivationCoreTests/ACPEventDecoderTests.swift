@@ -106,34 +106,70 @@ struct ACPEventDecoderTests {
         }
     }
 
-    @Test func event_WhenNonTextContentBlockIsValid_ReturnsMetadataWithoutRawPayload() throws {
-        let rawImage = String(repeating: "private-image-bytes", count: 1_000)
-        let fixtures: [(String, String)] = [
-            (
-                #"{"type":"image","data":"\#(rawImage)","mimeType":"image/png","uri":"file:///preview.png"}"#,
-                "Agent sent image content"),
-            (
-                #"{"type":"audio","data":"cHJpdmF0ZS1hdWRpbw==","mimeType":"audio/wav"}"#,
-                "Agent sent audio content"),
-            (
-                #"{"type":"resource_link","name":"Build log","uri":"file:///tmp/build.log","mimeType":"text/plain","size":12}"#,
-                "Agent sent resource_link content"),
-            (
-                #"{"type":"resource","resource":{"uri":"file:///tmp/result.txt","mimeType":"text/plain","text":"private resource text"}}"#,
-                "Agent sent resource content"),
-            (
-                #"{"type":"resource","resource":{"uri":"file:///tmp/result.bin","mimeType":"application/octet-stream","blob":"cHJpdmF0ZSByZXNvdXJjZQ=="}}"#,
-                "Agent sent resource content"),
-        ]
+    @Test func event_WhenAgentMessageContainsArtifact_ReturnsTypedArtifact() throws {
+        let decoder = ACPEventDecoder()
+        let image = AgentArtifact(
+            uri: "file:///tmp/preview.png",
+            name: "preview.png",
+            title: nil,
+            descriptiveText: nil,
+            mimeType: "image/png",
+            declaredSize: nil,
+            payload: .image(data: Data("png".utf8), mimeType: "image/png"))
+        let document = AgentArtifact(
+            uri: "file:///tmp/report.pdf",
+            name: "report.pdf",
+            title: "Security report",
+            descriptiveText: "Generated report",
+            mimeType: "application/pdf",
+            declaredSize: 1_024,
+            payload: .linked)
 
-        for (content, expectedSummary) in fixtures {
-            let update = #"{"sessionUpdate":"agent_message_chunk","content":\#(content)}"#
-            let event = try ACPEventDecoder().event(from: message(update: update))
+        #expect(try decoder.event(from: message(update:
+            #"{"sessionUpdate":"agent_message_chunk","messageId":"image-1","content":{"type":"image","data":"cG5n","mimeType":"image/png","uri":"file:///tmp/preview.png"}}"#
+        )) == .artifact(image))
+        #expect(try decoder.event(from: message(update:
+            #"{"sessionUpdate":"agent_message_chunk","content":{"type":"resource_link","uri":"file:///tmp/report.pdf","name":"report.pdf","title":"Security report","description":"Generated report","mimeType":"application/pdf","size":1024}}"#
+        )) == .artifact(document))
+    }
 
-            #expect(event == .metadata(
-                kind: "agent_message_chunk",
-                summary: expectedSummary))
+    @Test func event_WhenToolContentContainsResults_RetainsTextAndArtifactsInOrder() throws {
+        let decoder = ACPEventDecoder()
+        let document = AgentArtifact(
+            uri: "file:///tmp/report.pdf",
+            name: "report.pdf",
+            title: nil,
+            descriptiveText: nil,
+            mimeType: "application/pdf",
+            declaredSize: nil,
+            payload: .linked)
+        let content = #"[{"type":"content","content":{"type":"text","text":"Rendered"}},{"type":"content","content":{"type":"resource_link","uri":"file:///tmp/report.pdf","name":"report.pdf","mimeType":"application/pdf"}},{"type":"diff","path":"/tmp/a","newText":"x"},{"type":"terminal","terminalId":"term-1"}]"#
+
+        let initialEvent = try #require(try decoder.event(from: message(update:
+            #"{"sessionUpdate":"tool_call","toolCallId":"render","title":"Render","status":"in_progress","content":\#(content)}"#
+        )))
+        let updateEvent = try #require(try decoder.event(from: message(update:
+            #"{"sessionUpdate":"tool_call_update","toolCallId":"render","status":"completed","content":\#(content)}"#
+        )))
+
+        guard case let .toolCall(toolCall) = initialEvent,
+              case let .toolCallUpdate(toolUpdate) = updateEvent
+        else {
+            Issue.record("Expected typed tool events")
+            return
         }
+        #expect(toolCall.content == [.text("Rendered"), .artifact(document)])
+        #expect(toolUpdate.content == [.text("Rendered"), .artifact(document)])
+    }
+
+    @Test func event_WhenAudioContentBlockIsValid_ReturnsMetadataWithoutRawPayload() throws {
+        let update = #"{"sessionUpdate":"agent_message_chunk","content":{"type":"audio","data":"cHJpdmF0ZS1hdWRpbw==","mimeType":"audio/wav"}}"#
+
+        let event = try ACPEventDecoder().event(from: message(update: update))
+
+        #expect(event == .metadata(
+            kind: "agent_message_chunk",
+            summary: "Agent sent audio content"))
     }
 
     @Test func event_WhenNonTextContentBlockIsMalformed_Throws() throws {
@@ -152,6 +188,37 @@ struct ACPEventDecoderTests {
 
             #expect(throws: (any Error).self) {
                 try ACPEventDecoder().event(from: malformedMessage)
+            }
+        }
+    }
+
+    @Test func event_WhenArtifactContentExceedsItsBound_Throws() throws {
+        let oversizedURI = "file:///" + String(
+            repeating: "u",
+            count: AgentArtifactLimits.maximumURIBytes)
+        let oversizedMIMEType = String(
+            repeating: "m",
+            count: AgentArtifactLimits.maximumMIMETypeBytes + 1)
+        let oversizedTitle = String(
+            repeating: "t",
+            count: AgentArtifactLimits.maximumDisplayTextBytes + 1)
+        let oversizedBlob = Data(
+            repeating: 0x41,
+            count: AgentArtifactLimits.maximumEmbeddedPayloadBytes + 1).base64EncodedString()
+        let malformedContent = [
+            #"{"type":"image","data":"not base64!","mimeType":"image/png"}"#,
+            #"{"type":"resource_link","name":"report.pdf","uri":"file:///tmp/report.pdf","size":-1}"#,
+            #"{"type":"resource_link","name":"report.pdf","uri":"\#(oversizedURI)"}"#,
+            #"{"type":"resource_link","name":"report.pdf","uri":"file:///tmp/report.pdf","mimeType":"\#(oversizedMIMEType)"}"#,
+            #"{"type":"resource_link","name":"report.pdf","title":"\#(oversizedTitle)","uri":"file:///tmp/report.pdf"}"#,
+            #"{"type":"resource","resource":{"uri":"file:///tmp/result.bin","blob":"\#(oversizedBlob)"}}"#,
+        ]
+
+        for content in malformedContent {
+            let update = #"{"sessionUpdate":"agent_message_chunk","content":\#(content)}"#
+
+            #expect(throws: (any Error).self) {
+                try ACPEventDecoder().event(from: message(update: update))
             }
         }
     }

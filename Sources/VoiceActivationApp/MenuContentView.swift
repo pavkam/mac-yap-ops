@@ -268,8 +268,10 @@ struct MenuContentView: View {
             Spacer()
 
             Button {
-                model.shutdown()
-                NSApplication.shared.terminate(nil)
+                Task { @MainActor in
+                    await model.shutdown()
+                    NSApplication.shared.terminate(nil)
+                }
             } label: {
                 Label("Quit", systemImage: "power")
             }

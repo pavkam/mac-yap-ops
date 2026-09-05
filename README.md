@@ -46,11 +46,13 @@ push-to-talk details, see [Getting started](docs/getting-started.md).
   and no shell evaluation.
 - Cursor, Codex, Claude, and custom ACP v1 providers with editable executable,
   working folder, system prompt, and permission policy.
-- A non-activating conversation panel with ordered turns, bounded follow-ups,
-  provider-exposed thinking and tools, spoken permission choices, cancellation,
-  session recovery, and retained output controls.
-- Selectable GitHub-flavored Markdown responses with safe link handling and
-  agent-provided images omitted instead of fetched from the network.
+- A non-activating, result-first conversation panel with native previews for
+  generated images, PDFs, documents, and local resources; ordered turns,
+  bounded follow-ups, provider-exposed thinking and tools, spoken permission
+  choices, cancellation, session recovery, and retained output controls.
+- Selectable GitHub-flavored Markdown responses with safe link handling. Remote
+  Markdown images are omitted instead of fetched; typed ACP results are handled
+  by the local preview shelf.
 - Optional macOS or ElevenLabs reply speech with a global default or per-profile
   voice, plus barge-in, activity cues, and profile-aware follow-ups.
 - Structured local diagnostics, Launch at Login, and signed SwiftPM app-bundle
