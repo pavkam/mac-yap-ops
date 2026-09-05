@@ -19,6 +19,7 @@ extension AgentRunEvent {
         case .connected: "connected"
         case .agentMessageDelta: "agent_message_delta"
         case .thoughtDelta: "thought_delta"
+        case .artifact: "artifact"
         case .toolCall: "tool_call"
         case .toolCallUpdate: "tool_call_update"
         case .plan: "plan"
@@ -38,7 +39,7 @@ extension AgentRunEvent {
             message.count
         case .metadata(_, let summary), .unknown(_, let summary):
             summary.count
-        case .connected, .toolCall, .toolCallUpdate, .plan, .permissionRequested,
+        case .connected, .artifact, .toolCall, .toolCallUpdate, .plan, .permissionRequested,
             .deliveryNotice:
             0
         }

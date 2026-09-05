@@ -45,15 +45,19 @@ public struct ACPEventDecoder: Sendable {
                 summary: bounded("User message chunk\(suffix)"))
         case "agent_message_chunk":
             let chunk = try contentChunk(update)
-            guard let text = chunk.text else {
+            switch chunk.content {
+            case let .text(text):
+                return .agentMessageDelta(messageID: chunk.messageID, text: text)
+            case let .artifact(artifact):
+                return .artifact(artifact)
+            case .unsupported:
                 return .metadata(
                     kind: discriminator,
                     summary: bounded("Agent sent \(chunk.contentType) content"))
             }
-            return .agentMessageDelta(messageID: chunk.messageID, text: text)
         case "agent_thought_chunk":
             let chunk = try contentChunk(update)
-            guard let text = chunk.text else {
+            guard case let .text(text) = chunk.content else {
                 return .metadata(
                     kind: discriminator,
                     summary: bounded("Agent sent \(chunk.contentType) thought content"))
@@ -91,42 +95,110 @@ public struct ACPEventDecoder: Sendable {
         let contentType = try string(content["type"], named: "content.type")
         let messageID = try optionalOpaqueString(update["messageId"], named: "messageId")
 
+        return ContentChunk(
+            contentType: contentType,
+            messageID: messageID,
+            content: try decodedContentBlock(content))
+    }
+
+    private func decodedContentBlock(
+        _ content: [String: ACPJSONValue]) throws -> DecodedContentBlock
+    {
+        let contentType = try string(content["type"], named: "content.type")
+
         switch contentType {
         case "text":
-            return ContentChunk(
-                contentType: contentType,
-                messageID: messageID,
-                text: try string(content["text"], named: "content.text"))
+            return .text(try string(content["text"], named: "content.text"))
         case "image":
-            _ = try string(content["data"], named: "content.data")
-            _ = try string(content["mimeType"], named: "content.mimeType")
+            let mimeType = try boundedString(
+                content["mimeType"],
+                named: "content.mimeType",
+                maximumBytes: AgentArtifactLimits.maximumMIMETypeBytes)
+            let data = try embeddedData(content["data"], named: "content.data")
+            let uri = try optionalBoundedString(
+                content["uri"],
+                named: "content.uri",
+                maximumBytes: AgentArtifactLimits.maximumURIBytes)
+            return .artifact(AgentArtifact(
+                uri: uri,
+                name: artifactName(uri: uri, fallback: "Image"),
+                title: nil,
+                descriptiveText: nil,
+                mimeType: mimeType,
+                declaredSize: nil,
+                payload: .image(data: data, mimeType: mimeType)))
         case "audio":
-            _ = try string(content["data"], named: "content.data")
-            _ = try string(content["mimeType"], named: "content.mimeType")
+            _ = try embeddedData(content["data"], named: "content.data")
+            _ = try boundedString(
+                content["mimeType"],
+                named: "content.mimeType",
+                maximumBytes: AgentArtifactLimits.maximumMIMETypeBytes)
+            return .unsupported(contentType)
         case "resource_link":
-            _ = try string(content["name"], named: "content.name")
-            _ = try string(content["uri"], named: "content.uri")
+            let uri = try boundedString(
+                content["uri"],
+                named: "content.uri",
+                maximumBytes: AgentArtifactLimits.maximumURIBytes)
+            return .artifact(AgentArtifact(
+                uri: uri,
+                name: try boundedString(
+                    content["name"],
+                    named: "content.name",
+                    maximumBytes: AgentArtifactLimits.maximumDisplayTextBytes),
+                title: try optionalBoundedString(
+                    content["title"],
+                    named: "content.title",
+                    maximumBytes: AgentArtifactLimits.maximumDisplayTextBytes),
+                descriptiveText: try optionalBoundedString(
+                    content["description"],
+                    named: "content.description",
+                    maximumBytes: AgentArtifactLimits.maximumDisplayTextBytes),
+                mimeType: try optionalBoundedString(
+                    content["mimeType"],
+                    named: "content.mimeType",
+                    maximumBytes: AgentArtifactLimits.maximumMIMETypeBytes),
+                declaredSize: try optionalUnsignedInteger(content["size"], named: "content.size"),
+                payload: .linked))
         case "resource":
-            try validateEmbeddedResource(content)
+            return .artifact(try embeddedResource(content))
         default:
             throw malformed("content.type")
         }
-
-        return ContentChunk(contentType: contentType, messageID: messageID, text: nil)
     }
 
-    private func validateEmbeddedResource(_ content: [String: ACPJSONValue]) throws {
+    private func embeddedResource(_ content: [String: ACPJSONValue]) throws -> AgentArtifact {
         let resource = try object(content["resource"], named: "content.resource")
-        _ = try string(resource["uri"], named: "content.resource.uri")
+        let uri = try boundedString(
+            resource["uri"],
+            named: "content.resource.uri",
+            maximumBytes: AgentArtifactLimits.maximumURIBytes)
+        let mimeType = try optionalBoundedString(
+            resource["mimeType"],
+            named: "content.resource.mimeType",
+            maximumBytes: AgentArtifactLimits.maximumMIMETypeBytes)
+        let payload: AgentArtifactPayload
 
-        if case .string = resource["text"] {
-            return
-        }
-        if case .string = resource["blob"] {
-            return
+        if let text = try optionalString(resource["text"], named: "content.resource.text") {
+            guard text.utf8.count <= AgentArtifactLimits.maximumEmbeddedPayloadBytes else {
+                throw malformed("content.resource.text")
+            }
+            payload = .embeddedText(text)
+        } else if resource.keys.contains("blob") {
+            payload = .embeddedBlob(try embeddedData(
+                resource["blob"],
+                named: "content.resource.blob"))
+        } else {
+            throw malformed("content.resource.text or content.resource.blob")
         }
 
-        throw malformed("content.resource.text or content.resource.blob")
+        return AgentArtifact(
+            uri: uri,
+            name: artifactName(uri: uri, fallback: "Resource"),
+            title: nil,
+            descriptiveText: nil,
+            mimeType: mimeType,
+            declaredSize: nil,
+            payload: payload)
     }
 
     private func toolCall(_ update: [String: ACPJSONValue]) throws -> AgentToolCall {
@@ -134,7 +206,8 @@ public struct ACPEventDecoder: Sendable {
             id: try opaqueString(update["toolCallId"], named: "toolCallId"),
             title: try string(update["title"], named: "title"),
             kind: try optionalRawValue(update["kind"], named: "kind"),
-            status: try optionalRawValue(update["status"], named: "status"))
+            status: try optionalRawValue(update["status"], named: "status"),
+            content: try toolContent(update["content"]))
     }
 
     private func toolCallUpdate(_ update: [String: ACPJSONValue]) throws -> AgentToolCallUpdate {
@@ -142,7 +215,41 @@ public struct ACPEventDecoder: Sendable {
             id: try opaqueString(update["toolCallId"], named: "toolCallId"),
             title: try optionalString(update["title"], named: "title"),
             kind: try optionalRawValue(update["kind"], named: "kind"),
-            status: try optionalRawValue(update["status"], named: "status"))
+            status: try optionalRawValue(update["status"], named: "status"),
+            content: try toolContent(update["content"]))
+    }
+
+    private func toolContent(_ value: ACPJSONValue?) throws -> [AgentToolCallContent] {
+        guard let value else {
+            return []
+        }
+
+        return try array(value, named: "content").compactMap { wrapperValue in
+            let wrapper = try object(wrapperValue, named: "tool content")
+            switch try string(wrapper["type"], named: "tool content.type") {
+            case "content":
+                let content = try object(wrapper["content"], named: "tool content.content")
+                switch try decodedContentBlock(content) {
+                case let .text(text):
+                    return .text(text)
+                case let .artifact(artifact):
+                    return .artifact(artifact)
+                case .unsupported:
+                    return nil
+                }
+            case "diff":
+                _ = try string(wrapper["path"], named: "tool content.path")
+                _ = try string(wrapper["newText"], named: "tool content.newText")
+                return nil
+            case "terminal":
+                _ = try opaqueString(
+                    wrapper["terminalId"],
+                    named: "tool content.terminalId")
+                return nil
+            default:
+                throw malformed("tool content.type")
+            }
+        }
     }
 
     private func plan(_ update: [String: ACPJSONValue]) throws -> [AgentPlanEntry] {
@@ -307,6 +414,49 @@ public struct ACPEventDecoder: Sendable {
         return try string(value, named: name)
     }
 
+    private func boundedString(
+        _ value: ACPJSONValue?,
+        named name: String,
+        maximumBytes: Int) throws -> String
+    {
+        let result = try string(value, named: name)
+        guard result.utf8.count <= maximumBytes else {
+            throw malformed(name)
+        }
+        return result
+    }
+
+    private func optionalBoundedString(
+        _ value: ACPJSONValue?,
+        named name: String,
+        maximumBytes: Int) throws -> String?
+    {
+        guard let value, value != .null else {
+            return nil
+        }
+        return try boundedString(value, named: name, maximumBytes: maximumBytes)
+    }
+
+    private func embeddedData(_ value: ACPJSONValue?, named name: String) throws -> Data {
+        let encoded = try string(value, named: name)
+        guard let data = Data(base64Encoded: encoded),
+              data.count <= AgentArtifactLimits.maximumEmbeddedPayloadBytes
+        else {
+            throw malformed(name)
+        }
+        return data
+    }
+
+    private func artifactName(uri: String?, fallback: String) -> String {
+        guard let uri,
+              let candidate = URL(string: uri)?.lastPathComponent.removingPercentEncoding,
+              !candidate.isEmpty
+        else {
+            return fallback
+        }
+        return candidate
+    }
+
     private func opaqueString(_ value: ACPJSONValue?, named name: String) throws -> String {
         let identifier = try string(value, named: name)
         guard identifier.utf8.count <= Self.maximumOpaqueIdentifierBytes else {
@@ -357,6 +507,16 @@ public struct ACPEventDecoder: Sendable {
         }
     }
 
+    private func optionalUnsignedInteger(
+        _ value: ACPJSONValue?,
+        named name: String) throws -> UInt64?
+    {
+        guard let value, value != .null else {
+            return nil
+        }
+        return try unsignedInteger(value, named: name)
+    }
+
     private func number(_ value: ACPJSONValue?, named name: String) throws -> String {
         switch value {
         case let .integer(number):
@@ -399,5 +559,11 @@ public struct ACPEventDecoder: Sendable {
 private struct ContentChunk: Sendable {
     let contentType: String
     let messageID: String?
-    let text: String?
+    let content: DecodedContentBlock
+}
+
+private enum DecodedContentBlock: Sendable {
+    case text(String)
+    case artifact(AgentArtifact)
+    case unsupported(String)
 }

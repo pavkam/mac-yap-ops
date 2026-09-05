@@ -19,6 +19,8 @@ extension AgentRunPresentation {
             appendResponseMessage(text, messageID: messageID)
         case .thoughtDelta(let messageID, let text):
             appendThinkingMessage(text, messageID: messageID)
+        case .artifact:
+            break
         case .toolCall(let tool):
             upsertTool(
                 AgentToolPresentation(

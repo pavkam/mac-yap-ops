@@ -35,6 +35,8 @@ enum AgentRunEventNormalizer {
         case let .thoughtDelta(messageID, text):
             try validate(identifier: messageID)
             return textEntries(kind: .thought(messageID), text: text)
+        case .artifact:
+            return AgentRunEventNormalization(entries: [AgentRunEventDeliveryEntry(event: event)])
         case let .diagnostic(text):
             return textEntries(kind: .diagnostic, text: text)
         case let .connected(agentName, sessionID):
@@ -52,7 +54,8 @@ enum AgentRunEventNormalizer {
                     id: toolCall.id,
                     title: bounded.value,
                     kind: toolCall.kind,
-                    status: toolCall.status)),
+                    status: toolCall.status,
+                    content: toolCall.content)),
                 discardedBytes: bounded.discardedBytes,
                 discardedEntries: 0)
         case let .toolCallUpdate(update):
@@ -65,7 +68,8 @@ enum AgentRunEventNormalizer {
                     id: update.id,
                     title: bounded?.value,
                     kind: update.kind,
-                    status: update.status)),
+                    status: update.status,
+                    content: update.content)),
                 discardedBytes: bounded?.discardedBytes ?? 0,
                 discardedEntries: 0)
         case let .plan(plan):
@@ -127,7 +131,8 @@ enum AgentRunEventNormalizer {
                     id: request.toolCall.id,
                     title: boundedTitle?.value,
                     kind: request.toolCall.kind,
-                    status: request.toolCall.status),
+                    status: request.toolCall.status,
+                    content: request.toolCall.content),
                 options: request.options)
             guard AgentRunEventDeliveryEntry.controlByteCount(for: .permissionRequested(normalized))
                     <= AgentRunEventDelivery.maximumPendingControlBytes

@@ -125,6 +125,7 @@ extension AppModel {
         case .connected: "connected"
         case .agentMessageDelta: "agent_message_delta"
         case .thoughtDelta: "thought_delta"
+        case .artifact: "artifact"
         case .toolCall: "tool_call"
         case .toolCallUpdate: "tool_call_update"
         case .plan: "plan"

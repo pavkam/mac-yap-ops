@@ -310,7 +310,7 @@ final class AgentConversationAudioPresenter {
             narration.markSemanticBoundary()
             handleToolSound(id: tool.id, status: tool.status)
             updateWorking(true)
-        case .thoughtDelta, .plan, .connected:
+        case .thoughtDelta, .artifact, .plan, .connected:
             narration.markSemanticBoundary()
             updateWorking(true)
         case .metadata, .diagnostic, .unknown, .deliveryNotice:
@@ -450,6 +450,7 @@ extension AgentRunEvent {
         case .connected: "connected"
         case .agentMessageDelta: "agent_message_delta"
         case .thoughtDelta: "thought_delta"
+        case .artifact: "artifact"
         case .toolCall: "tool_call"
         case .toolCallUpdate: "tool_call_update"
         case .plan: "plan"
