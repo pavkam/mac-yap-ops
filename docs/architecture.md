@@ -13,7 +13,12 @@ concurrency, privacy, and user-workflow details.
 
 ```text
 Sources/VoiceActivationCore/       Framework-independent policy and execution
+  Profiles/                        Profile identity and validation
+  TextToSpeech/                    Persisted backend and voice selections
 Sources/VoiceActivationApp/        macOS adapters, composition, presentation
+  Profiles/                        Profile presentation and editing models
+  Settings/                        Settings composition and profile editors
+  TextToSpeech/                    Registry, adapters, credentials, playback
 Tests/VoiceActivationCoreTests/    Core and protocol contracts
 Tests/VoiceActivationAppTests/     App, presentation, and adapter contracts
 ```
@@ -52,7 +57,9 @@ VoiceActivationApp
       ├─ RecordingOverlayPresenter → non-activating NSPanel
       ├─ AgentRunPresentation → AgentRunPanelPresenter
       ├─ AgentConversationAudioPresenter
-      │   ├─ AgentSpeechQueue → macOS speech or ElevenLabs
+      │   ├─ AgentSpeechQueue → TextToSpeechBackendRegistry
+      │   │   ├─ SystemTextToSpeechBackend
+      │   │   └─ ElevenLabsTextToSpeechBackend
       │   └─ AgentActivitySoundLoop
       ├─ PushToTalkShortcut
       ├─ LaunchAtLoginSetting
@@ -71,6 +78,11 @@ reduction for live conversations.
 `WakeProfileCollectionValidator` owns cross-profile uniqueness. The coordinator
 pins the matched profile before publishing capture state, so target, accent, and
 shortcut identity cannot drift during asynchronous permission work.
+
+Agent conversation audio resolves the selected profile's inherited, disabled,
+or explicit speech preference once when the conversation starts. Follow-up
+turns retain that backend, voice, and global backend credential snapshot even
+when Settings changes.
 
 The recording overlay is a retained, non-activating AppKit panel hosting one
 SwiftUI hierarchy. It follows the active screen, shows only capture state, and

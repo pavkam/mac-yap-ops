@@ -30,7 +30,12 @@ for Instruments and other Xcode-only manual workflows.
 
 ```text
 Sources/VoiceActivationCore/       State, validation, commands, ACP, preferences
+  Profiles/                        Profile identity and validation
+  TextToSpeech/                    Persisted backend and voice selections
 Sources/VoiceActivationApp/        macOS adapters, composition, UI, audio, logs
+  Profiles/                        Profile presentation and editing models
+  Settings/                        Settings composition and profile editors
+  TextToSpeech/                    Registry, adapters, credentials, playback
 Tests/VoiceActivationCoreTests/    Core behavior and protocol contracts
 Tests/VoiceActivationAppTests/     App, presentation, and adapter contracts
 Sources/VoiceActivationApp/Resources/ Bundle plist, icon, and sounds

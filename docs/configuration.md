@@ -24,27 +24,32 @@ immediately, without waiting for **Save Settings**.
 | --- | --- | --- |
 | Always listen | On | Runs passive wake recognition when at least one profile is enabled. |
 | Speech locale | Current macOS locale | Selects the Apple Speech recognizer and matching system voice. |
-| Read replies aloud | On | Queues user-facing agent output for speech. |
-| Voice provider | macOS | Uses the matching system voice unless ElevenLabs is selected. |
+| Read inherited replies aloud | On | Allows profiles set to Inherit to use the app-wide voice. |
+| Default reply voice | Automatic macOS voice | Selects the backend and voice inherited by profiles. |
 | Agent activity sounds | On | Plays bounded thinking and tool-transition cues. |
 | Launch at Login | Off in a fresh macOS registration | Registers the current bundle through Service Management. |
 
-ElevenLabs configuration includes an account API key and voice selection. The
-key is stored in macOS Keychain. The selected provider and Voice ID are saved in
-preferences. See [Agent conversations](agent-conversations.md) for playback and
-fallback behavior.
+Each profile may inherit the default reply voice, disable narration, or select
+an explicit macOS or ElevenLabs voice. The selected profile and resolved voice
+are pinned when its trigger or shortcut starts a conversation; follow-ups never
+switch profiles or voices. ElevenLabs uses one global API key stored in macOS
+Keychain, while backend and voice IDs are saved in preferences. See
+[Agent conversations](agent-conversations.md) for playback and fallback behavior.
 
 ## Wake-profile fields
 
 | Field | Meaning |
 | --- | --- |
+| Name | User-facing assistant identity shown in the menu and Settings. |
+| Icon | A curated or custom SF Symbol name, or one emoji. |
 | Enabled | Includes the phrase in passive wake recognition. |
-| Wake phrase | Phrase that must begin a recognized utterance. |
+| Trigger phrase | Phrase that must begin a recognized utterance. |
 | Target | Direct command or ACP agent. |
 | Accent | Color used in menu, capture, and conversation presentation. |
 | Push-to-talk | Optional profile-specific global shortcut. |
+| Reply voice | Inherit, Off, or one backend-specific voice. |
 
-The initial profile is enabled, blue, and named `computer`. It opens a Google
+The initial profile is enabled, blue, and named `Computer`. It opens a Google
 search and receives Control-Option-Space during first-run preference migration.
 See [Wake profiles](wake-profiles.md) for matching, enablement, shortcuts, and
 capture timing.

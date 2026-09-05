@@ -71,9 +71,6 @@ final class AppModel {
     }
     /// The in-memory ElevenLabs credential draft; persistence is Keychain-only.
     var elevenLabsAPIKey: String
-    /// The latest bounded ElevenLabs voice catalog returned for Settings.
-    var elevenLabsVoices: [ElevenLabsVoice] = []
-    var isLoadingElevenLabsVoices = false
     var isPreviewingElevenLabsVoice = false
     var elevenLabsVoiceStatus: String?
     var elevenLabsVoiceError: String?
@@ -109,12 +106,10 @@ final class AppModel {
     @ObservationIgnored let agentConversationAudioPlayer: any AgentConversationAudioPlaying
     @ObservationIgnored let agentConversationAudioPresenter: AgentConversationAudioPresenter
     @ObservationIgnored let agentSpeechCredentialStore: any AgentSpeechCredentialStoring
-    @ObservationIgnored let elevenLabsVoiceCatalog: any ElevenLabsVoiceCatalogLoading
     @ObservationIgnored let elevenLabsVoicePreview: any ElevenLabsVoicePreviewing
     @ObservationIgnored let textToSpeechBackendRegistry: TextToSpeechBackendRegistry
     @ObservationIgnored let agentSpeechSettingsState: AgentSpeechSettingsState
     @ObservationIgnored let diagnostics: any VoiceActivationDiagnosticRecording
-    @ObservationIgnored var elevenLabsVoiceCatalogGeneration = 0
     @ObservationIgnored var textToSpeechVoiceCatalogGenerations:
         [TextToSpeechBackendID: UInt64] = [:]
     @ObservationIgnored var agentLifecycleSequence: UInt64 = 0
@@ -191,7 +186,6 @@ final class AppModel {
         self.isDirectory = isDirectory
         self.permissionRequest = permissionRequest
         self.agentSpeechCredentialStore = agentSpeechCredentialStore
-        self.elevenLabsVoiceCatalog = elevenLabsVoiceCatalog
         self.elevenLabsVoicePreview = elevenLabsVoicePreview
         self.textToSpeechBackendRegistry = textToSpeechBackendRegistry ?? .live(
             elevenLabsCatalog: elevenLabsVoiceCatalog)
@@ -312,79 +306,6 @@ final class AppModel {
     /// Toggles passive listening from the menu without changing individual profile states.
     func togglePassiveListening() {
         setPassiveEnabled(!passiveEnabled)
-    }
-
-    /// Loads the cloud voice catalog using the current in-memory credential draft.
-    func loadElevenLabsVoices() async {
-        elevenLabsVoiceCatalogGeneration &+= 1
-        let generation = elevenLabsVoiceCatalogGeneration
-        let apiKey = elevenLabsAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        diagnostics.record(
-            category: .settings,
-            event: "app_model.voice_catalog_requested",
-            fields: [
-                "generation": String(generation),
-                "provider": agentSpeechProvider.rawValue,
-                "cloud_api_configured": String(!apiKey.isEmpty),
-            ])
-
-        guard agentSpeechProvider == .elevenLabs, !apiKey.isEmpty else {
-            elevenLabsVoices = []
-            isLoadingElevenLabsVoices = false
-            elevenLabsVoiceStatus = nil
-            elevenLabsVoiceError = nil
-            diagnostics.record(
-                category: .settings,
-                event: "app_model.voice_catalog_ignored",
-                fields: ["reason": "cloud_provider_not_configured"])
-            return
-        }
-
-        isLoadingElevenLabsVoices = true
-        elevenLabsVoiceStatus = nil
-        elevenLabsVoiceError = nil
-        do {
-            let voices = try await elevenLabsVoiceCatalog.voices(apiKey: apiKey)
-            try Task.checkCancellation()
-            guard generation == elevenLabsVoiceCatalogGeneration else { return }
-            elevenLabsVoices = voices
-            if elevenLabsVoiceID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                elevenLabsVoiceID = voices.first?.id ?? ""
-            }
-            elevenLabsVoiceStatus =
-                voices.isEmpty
-                ? "No voices were returned. You can still enter a voice ID manually."
-                : "\(voices.count) voice\(voices.count == 1 ? "" : "s") available."
-            diagnostics.record(
-                category: .settings,
-                event: "app_model.voice_catalog_loaded",
-                fields: [
-                    "generation": String(generation),
-                    "voice_count": String(voices.count),
-                ])
-        } catch is CancellationError {
-            // A newer catalog request owns the visible state.
-            diagnostics.record(
-                category: .settings,
-                event: "app_model.voice_catalog_cancelled",
-                fields: ["generation": String(generation)])
-        } catch {
-            guard generation == elevenLabsVoiceCatalogGeneration else { return }
-            elevenLabsVoices = []
-            elevenLabsVoiceError = error.localizedDescription
-            diagnostics.record(
-                category: .settings,
-                event: "app_model.voice_catalog_failed",
-                level: .error,
-                fields: [
-                    "generation": String(generation),
-                    "error_type": String(describing: type(of: error)),
-                ])
-        }
-        if generation == elevenLabsVoiceCatalogGeneration {
-            isLoadingElevenLabsVoices = false
-        }
     }
 
     /// Synthesizes and plays a short sample for the currently selected cloud voice.

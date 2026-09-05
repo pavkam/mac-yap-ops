@@ -22,7 +22,10 @@ extension AppModel {
         }
         agentRunPresentation.shutdown()
         agentConversationAudioPresenter.shutdown()
-        elevenLabsVoiceCatalogGeneration &+= 1
+        for backendID in Array(textToSpeechVoiceCatalogGenerations.keys) {
+            textToSpeechVoiceCatalogGenerations[backendID, default: 0] &+= 1
+        }
+        loadingTextToSpeechBackendIDs.removeAll()
         credentialLoadTask?.cancel()
         elevenLabsVoicePreview.stop()
         diagnostics.record(category: .app, event: "app_model.shutdown_finished")

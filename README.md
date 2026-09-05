@@ -7,13 +7,13 @@ SPDX-License-Identifier: MIT
 
 ## What it does
 
-Voice Activation is a native macOS menu-bar app for wake phrases,
-push-to-talk commands, and voice-driven conversations with local coding agents
-through Agent Client Protocol (ACP).
+Voice Activation is a native macOS menu-bar app for named assistant profiles,
+wake phrases, push-to-talk commands, and voice-driven conversations with local
+coding agents through Agent Client Protocol (ACP).
 
 It transcribes an utterance, routes it to a direct executable or ACP provider,
 and keeps the foreground application focused while capture and conversation
-state remain visible.
+state remain visible. It has no Voice Activation server or account.
 
 ## Requirements
 
@@ -40,8 +40,8 @@ push-to-talk details, see [Getting started](docs/getting-started.md).
 
 ## Core capabilities
 
-- Multiple colored profiles, each with a wake phrase, command or agent target,
-  passive-wake toggle, and optional push-to-talk shortcut.
+- Multiple named profiles, each with an icon, color, wake phrase, command or
+  agent target, passive-wake toggle, and optional push-to-talk shortcut.
 - Explicit direct-process arguments with literal or URL-encoded recognized text
   and no shell evaluation.
 - Cursor, Codex, Claude, and custom ACP v1 providers with editable executable,
@@ -51,8 +51,8 @@ push-to-talk details, see [Getting started](docs/getting-started.md).
   session recovery, and retained output controls.
 - Selectable GitHub-flavored Markdown responses with safe link handling and
   agent-provided images omitted instead of fetched from the network.
-- Optional macOS or ElevenLabs reply speech, barge-in, activity cues, and
-  profile-aware push-to-talk follow-ups.
+- Optional macOS or ElevenLabs reply speech with a global default or per-profile
+  voice, plus barge-in, activity cues, and profile-aware follow-ups.
 - Structured local diagnostics, Launch at Login, and signed SwiftPM app-bundle
   packaging.
 

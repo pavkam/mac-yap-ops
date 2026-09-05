@@ -13,11 +13,12 @@ push-to-talk, capture timing, and spoken capture cancellation.
 
 Every profile combines:
 
+- a user-facing name, SF Symbol or emoji, and accent color;
 - one wake phrase;
 - one command or agent target;
-- an accent used by the menu, recording overlay, and agent panel;
 - an enabled state for passive wake; and
-- an optional global push-to-talk shortcut.
+- an optional global push-to-talk shortcut; and
+- an inherited, disabled, or explicit reply voice.
 
 Add or remove profile cards in Settings, then select **Save Settings**. At least
 one valid profile must remain.
@@ -65,8 +66,8 @@ restores every previously saved registration.
 Hold a registered shortcut, speak without a wake phrase, and release the keys
 to submit through that profile. The press and release keep the same profile
 identity even while a macOS permission prompt is pending. During an open agent
-conversation, that profile's shortcut contributes a follow-up instead of
-starting another conversation.
+conversation, only the selected conversation profile's shortcut contributes a
+follow-up; another profile cannot take over the conversation.
 
 The first profile receives Control-Option-Space during first-run preference
 migration.

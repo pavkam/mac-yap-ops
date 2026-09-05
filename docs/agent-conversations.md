@@ -16,6 +16,10 @@ request. The recording overlay hands its screen and accent into a floating agent
 panel. The panel accepts pointer input but does not become the key or main
 window, so the foreground application keeps keyboard focus.
 
+The trigger selects one profile for the lifetime of the conversation. Every
+follow-up keeps that profile's agent session, identity, and reply voice; another
+trigger or a Settings change cannot switch it mid-conversation.
+
 The microphone remains active while the provider works, while a reply is read
 aloud, and after the turn finishes. Passive wake resumes only after the
 conversation ends.
@@ -110,16 +114,18 @@ Starting a new conversation replaces the previously retained presentation.
 
 ## Listen to replies
 
-When **Read replies aloud** is enabled, Voice Activation removes Markdown
-formatting and queues user-facing agent text while it streams. Complete sentences
-start immediately. An unfinished progress message is flushed when work moves to
-thought, tool, plan, or permission activity, with a 350 ms fallback when no
-semantic boundary arrives.
+Profiles can inherit the app-wide reply voice, disable narration, or select an
+explicit macOS or ElevenLabs voice. The resolved backend and voice are pinned at
+conversation start. An explicit profile voice remains enabled even when global
+inherited narration is off. ElevenLabs credentials are global and Keychain-backed.
 
-The macOS provider uses the selected locale's system voice. ElevenLabs uses the
-saved account voice and prepares at most two complete segments concurrently
-while preserving playback order. A failed cloud request falls back to the macOS
-voice.
+When narration is active, Voice Activation removes Markdown formatting and
+queues user-facing agent text while it streams. Complete sentences start
+immediately. An unfinished progress message is flushed when work moves to
+thought, tool, plan, or permission activity, with a 350 ms fallback when no
+semantic boundary arrives. ElevenLabs prepares at most two complete segments
+concurrently while preserving playback order. A failed backend request falls
+back to the automatic macOS voice for that segment.
 
 The thinking cue begins when the request is accepted, including ACP startup, and
 continues during cloud preparation. It pauses for permissions and audible

@@ -62,10 +62,16 @@ struct TextToSpeechVoiceSelectionEditor: View {
                 }
             }
 
-            if let error = model.textToSpeechVoiceErrors[selection.backendID] {
+            if let error = model.textToSpeechVoiceErrors[selection.backendID]
+                ?? (selection.backendID == .elevenLabs ? model.elevenLabsVoiceError : nil)
+            {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundStyle(.red)
+            } else if selection.backendID == .elevenLabs,
+                let status = model.elevenLabsVoiceStatus
+            {
+                Text(status).font(.caption).foregroundStyle(.secondary)
             }
         }
     }

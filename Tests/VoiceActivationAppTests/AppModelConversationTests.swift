@@ -175,33 +175,6 @@ extension AppModelTests {
         await waitUntil { fixture.model.elevenLabsAPIKey == "saved-key" }
     }
 
-    @MainActor @Test func loadElevenLabsVoices_WhenAPIKeyIsValid_SelectsFirstVoice() async throws {
-        let voices = [
-            ElevenLabsVoice(
-                id: "voice-1",
-                name: "Alexandra",
-                category: "premade",
-                description: "Warm"),
-            ElevenLabsVoice(
-                id: "voice-2",
-                name: "Morgan",
-                category: nil,
-                description: nil),
-        ]
-        let catalog = AppModelElevenLabsVoiceCatalogSpy(voices: voices)
-        let fixture = try Fixture(elevenLabsVoiceCatalog: catalog)
-        fixture.model.agentSpeechProvider = .elevenLabs
-        fixture.model.elevenLabsAPIKey = "catalog-key"
-        fixture.model.elevenLabsVoiceID = ""
-
-        await fixture.model.loadElevenLabsVoices()
-
-        #expect(fixture.model.elevenLabsVoices == voices)
-        #expect(fixture.model.elevenLabsVoiceID == "voice-1")
-        #expect(await catalog.requestedAPIKeys == ["catalog-key"])
-        #expect(!fixture.model.isLoadingElevenLabsVoices)
-    }
-
     @MainActor @Test func previewElevenLabsVoice_WhenVoiceIsSelected_UsesDraftCredentials()
         async throws
     {
