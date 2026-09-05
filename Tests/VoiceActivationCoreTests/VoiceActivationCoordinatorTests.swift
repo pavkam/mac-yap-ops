@@ -145,6 +145,7 @@ actor ControlledAgentRunner: AgentHarnessRunning {
 
     private(set) var cancelCount = 0
     private(set) var shutdownCount = 0
+    private var runAttempts = 0
     private var invocations: [Invocation] = []
     private var permissionResolutions: [PermissionResolution] = []
     private var eventHandlers: [@Sendable (AgentRunEvent) async -> Void] = []
@@ -159,6 +160,7 @@ actor ControlledAgentRunner: AgentHarnessRunning {
         prompt: AgentPrompt,
         onEvent: @escaping @Sendable (AgentRunEvent) async -> Void
     ) async throws -> AgentRunResult {
+        runAttempts += 1
         guard activeRunIndex == nil else {
             throw ControlledAgentRunnerError.turnAlreadyActive
         }
@@ -205,6 +207,10 @@ actor ControlledAgentRunner: AgentHarnessRunning {
 
     func recordedInvocations() -> [Invocation] {
         invocations
+    }
+
+    func recordedRunAttemptCount() -> Int {
+        runAttempts
     }
 
     func recordedPermissionResolutions() -> [PermissionResolution] {
@@ -262,6 +268,79 @@ enum ControlledAgentRunnerError: Error, LocalizedError {
             "The fake agent run failed."
         }
     }
+}
+
+@MainActor
+final class ControlledMacContextCapturer: MacContextCapturing {
+    private struct SuspendedCapture {
+        let snapshot: MacContextSnapshot
+        let continuation: CheckedContinuation<MacContextSnapshot, Never>
+    }
+
+    var target: MacContextTarget?
+    var nextSnapshot: MacContextSnapshot?
+    var suspendsCaptures = false
+    var resolvesCancellation = true
+    private(set) var currentTargetCallCount = 0
+    private(set) var capturedTargets: [MacContextTarget] = []
+    private(set) var cancelledCaptureIndices: [Int] = []
+    private var suspendedCaptures: [Int: SuspendedCapture] = [:]
+
+    init(target: MacContextTarget? = nil, snapshot: MacContextSnapshot? = nil) {
+        self.target = target
+        nextSnapshot = snapshot
+    }
+
+    func currentTarget() -> MacContextTarget? {
+        currentTargetCallCount += 1
+        return target
+    }
+
+    func capture(_ target: MacContextTarget) async -> MacContextSnapshot {
+        let captureIndex = capturedTargets.count
+        capturedTargets.append(target)
+        let frozenSnapshot = nextSnapshot ?? makeMacContextSnapshot(
+            target: target,
+            state: .targetUnavailable)
+        guard suspendsCaptures else { return frozenSnapshot }
+
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                suspendedCaptures[captureIndex] = SuspendedCapture(
+                    snapshot: frozenSnapshot,
+                    continuation: continuation)
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                self?.cancelCapture(at: captureIndex)
+            }
+        }
+    }
+
+    func completeCapture(at index: Int, with snapshot: MacContextSnapshot? = nil) {
+        guard let capture = suspendedCaptures.removeValue(forKey: index) else { return }
+        capture.continuation.resume(returning: snapshot ?? capture.snapshot)
+    }
+
+    private func cancelCapture(at index: Int) {
+        cancelledCaptureIndices.append(index)
+        guard resolvesCancellation else { return }
+        completeCapture(at: index)
+    }
+}
+
+func makeMacContextSnapshot(
+    target: MacContextTarget,
+    state: MacContextCaptureState = .complete,
+    selectedText: String? = nil
+) -> MacContextSnapshot {
+    MacContextSnapshot.normalized(
+        state: state,
+        target: target,
+        windowTitle: nil,
+        documentURL: nil,
+        selectedText: selectedText,
+        resources: [])
 }
 
 func makeAgentConfiguration(

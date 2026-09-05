@@ -102,6 +102,7 @@ public final class VoiceActivationCoordinator {
     let speechSession: any SpeechSessionProtocol
     let commandRunner: any CommandRunning
     let agentRunner: any AgentHarnessRunning
+    let macContextCapturer: any MacContextCapturing
     let configuration: () throws -> ActivationConfiguration
     let timing: ActivationTiming
     let diagnostics: any VoiceActivationDiagnosticRecording
@@ -123,7 +124,8 @@ public final class VoiceActivationCoordinator {
     var executionTask: Task<Void, Never>?
     var agentCancellationTask: Task<Void, Never>?
     var agentCancellationToken: UUID?
-    var pendingAgentPrompts: [String] = []
+    var activeAgentInput: PendingAgentInput?
+    var pendingAgentPrompts: [PendingAgentInput] = []
     var conversationUtterance = ""
     var conversationCaptureGeneration = 0
     var conversationInactivityTask: Task<Void, Never>?
@@ -140,12 +142,14 @@ public final class VoiceActivationCoordinator {
     ///   - speechSession: Owns the current microphone recognition session.
     ///   - commandRunner: Executes direct-command profiles.
     ///   - agentRunner: Runs and caches ACP agent sessions.
+    ///   - contextCapturer: Freezes bounded native context for admitted ACP turns.
     ///   - configuration: Supplies a fresh immutable settings snapshot when needed.
     ///   - diagnostics: Records privacy-safe lifecycle metadata.
     public convenience init(
         speechSession: any SpeechSessionProtocol,
         commandRunner: any CommandRunning,
         agentRunner: any AgentHarnessRunning = ACPAgentRunner(),
+        contextCapturer: any MacContextCapturing = EmptyMacContextCapturer(),
         configuration: @escaping () throws -> ActivationConfiguration,
         diagnostics: any VoiceActivationDiagnosticRecording = VoiceActivationDiagnostics.shared
     ) {
@@ -153,6 +157,7 @@ public final class VoiceActivationCoordinator {
             speechSession: speechSession,
             commandRunner: commandRunner,
             agentRunner: agentRunner,
+            contextCapturer: contextCapturer,
             configuration: configuration,
             timing: .standard,
             diagnostics: diagnostics)
@@ -162,6 +167,7 @@ public final class VoiceActivationCoordinator {
         speechSession: any SpeechSessionProtocol,
         commandRunner: any CommandRunning,
         agentRunner: any AgentHarnessRunning = ACPAgentRunner(),
+        contextCapturer: any MacContextCapturing = EmptyMacContextCapturer(),
         configuration: @escaping () throws -> ActivationConfiguration,
         timing: ActivationTiming,
         diagnostics: any VoiceActivationDiagnosticRecording = VoiceActivationDiagnostics.shared
@@ -169,6 +175,7 @@ public final class VoiceActivationCoordinator {
         self.speechSession = speechSession
         self.commandRunner = commandRunner
         self.agentRunner = agentRunner
+        self.macContextCapturer = contextCapturer
         self.configuration = configuration
         self.timing = timing
         self.diagnostics = diagnostics
@@ -257,6 +264,7 @@ public final class VoiceActivationCoordinator {
             }
 
             executionGeneration &+= 1
+            cancelAllAgentInputs()
             restartTask?.cancel()
             restartTask = nil
             executionTask?.cancel()
@@ -376,6 +384,7 @@ public final class VoiceActivationCoordinator {
 
         onAgentRunEvent?(.turnCancellationStarted(runID: runID))
         executionGeneration &+= 1
+        cancelActiveAgentInput()
         executionTask?.cancel()
         executionTask = nil
         beginAgentCancellation(runID: runID)
@@ -396,7 +405,7 @@ public final class VoiceActivationCoordinator {
     func requestAgentConversationEnd(result: AgentRunResult) {
         guard case .agent = executingAction, let runID = activeAgentRunID else { return }
         guard agentConversationEndResult == nil else { return }
-        pendingAgentPrompts.removeAll()
+        cancelPendingAgentInputs()
         agentConversationEndResult = result
         stopActiveSession()
         guard agentCancellationTask == nil else { return }
@@ -407,6 +416,7 @@ public final class VoiceActivationCoordinator {
 
         onAgentRunEvent?(.turnCancellationStarted(runID: runID))
         executionGeneration &+= 1
+        cancelActiveAgentInput()
         executionTask?.cancel()
         executionTask = nil
         beginAgentCancellation(runID: runID)
@@ -480,6 +490,7 @@ public final class VoiceActivationCoordinator {
     public func stop() {
         diagnostics.record(category: .app, event: "coordinator.stop_requested")
         executionGeneration &+= 1
+        cancelAllAgentInputs()
         passiveEnabled = false
         pushToTalkActive = false
         restartTask?.cancel()
@@ -489,7 +500,6 @@ public final class VoiceActivationCoordinator {
         agentCancellationTask?.cancel()
         agentCancellationTask = nil
         agentCancellationToken = nil
-        pendingAgentPrompts.removeAll()
         pushToTalkContinuesConversation = false
         agentConversationEndResult = nil
         agentSpeechOutputActive = false

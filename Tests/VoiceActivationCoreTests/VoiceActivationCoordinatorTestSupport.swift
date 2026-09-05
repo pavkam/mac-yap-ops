@@ -17,7 +17,8 @@ extension VoiceActivationCoordinatorTests {
         init(
             timing: ActivationTiming = .standard,
             profiles: [WakeProfile]? = nil,
-            agentRunner: ControlledAgentRunner = ControlledAgentRunner()) throws
+            agentRunner: ControlledAgentRunner = ControlledAgentRunner(),
+            contextCapturer: any MacContextCapturing = EmptyMacContextCapturer()) throws
         {
             self.agentRunner = agentRunner
             let template = try CommandTemplate(
@@ -27,6 +28,7 @@ extension VoiceActivationCoordinatorTests {
                 speechSession: speech,
                 commandRunner: runner,
                 agentRunner: agentRunner,
+                contextCapturer: contextCapturer,
                 configuration: {
                     if let profiles {
                         return ActivationConfiguration(profiles: profiles, localeID: "en-US")

@@ -262,7 +262,14 @@ extension VoiceActivationCoordinatorTests {
     @MainActor
     @Test func followUps_WhenCancellationIsBlocked_BoundsQueueAndPublishesRejection() async throws {
         let profile = try makeAgentProfile()
-        let fixture = try Fixture(profiles: [profile])
+        let target = MacContextTarget(
+            processIdentifier: 42,
+            applicationName: "Safari",
+            bundleIdentifier: nil)
+        let context = ControlledMacContextCapturer(
+            target: target,
+            snapshot: makeMacContextSnapshot(target: target))
+        let fixture = try Fixture(profiles: [profile], contextCapturer: context)
         var lifecycleEvents: [AgentRunLifecycleEvent] = []
         fixture.coordinator.onAgentRunEvent = { lifecycleEvents.append($0) }
         fixture.coordinator.setPassiveEnabled(true)
@@ -270,6 +277,7 @@ extension VoiceActivationCoordinatorTests {
         await waitUntil {
             await fixture.agentRunner.recordedInvocations().count == 1
         }
+        context.suspendsCaptures = true
         await fixture.agentRunner.delayCancellation()
 
         for index in 0...16 {
@@ -292,8 +300,11 @@ extension VoiceActivationCoordinatorTests {
         #expect(notices == [
             "Follow-up queue is full. Wait for the agent before speaking again.",
         ])
+        await waitUntil { context.capturedTargets.count == 17 }
+        #expect(context.currentTargetCallCount == 17)
 
         fixture.coordinator.stop()
+        await waitUntil { context.cancelledCaptureIndices.count == 16 }
         await fixture.agentRunner.releaseCancellation()
     }
 

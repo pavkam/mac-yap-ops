@@ -17,9 +17,18 @@ extension VoiceActivationCoordinator {
         }
 
         executionGeneration &+= 1
+        cancelAllAgentInputs()
         let activeExecutionGeneration = executionGeneration
         let pendingAgentCancellation = agentCancellationTask
         executionTask?.cancel()
+        let agentInput: PendingAgentInput?
+        if case .agent = action {
+            let input = makePendingAgentInput(text: transcript)
+            activeAgentInput = input
+            agentInput = input
+        } else {
+            agentInput = nil
+        }
         state = .executing
         lastTranscript = transcript
         diagnostics.record(
@@ -38,6 +47,7 @@ extension VoiceActivationCoordinator {
                 action: action,
                 profile: profile,
                 transcript: transcript,
+                agentInput: agentInput,
                 generation: activeExecutionGeneration)
             return
         }
@@ -55,6 +65,7 @@ extension VoiceActivationCoordinator {
                     action: action,
                     profile: profile,
                     transcript: transcript,
+                    agentInput: agentInput,
                     generation: activeExecutionGeneration)
             }
         }
@@ -64,9 +75,13 @@ extension VoiceActivationCoordinator {
         action: WakeProfileAction,
         profile: WakeProfile,
         transcript: String,
+        agentInput: PendingAgentInput?,
         generation: Int
     ) {
-        guard executionGeneration == generation else { return }
+        guard executionGeneration == generation else {
+            agentInput?.cancelContextCapture()
+            return
+        }
         executingAction = action
         diagnostics.record(
             category: .app,
@@ -96,6 +111,9 @@ extension VoiceActivationCoordinator {
                 }
             }
         case .agent(let agentConfiguration):
+            guard let agentInput, activeAgentInput?.id == agentInput.id else {
+                return
+            }
             let runID = UUID()
             diagnostics.record(
                 category: .agent,
@@ -107,7 +125,7 @@ extension VoiceActivationCoordinator {
                     "input_character_count": String(transcript.count),
                 ])
             activeAgentRunID = runID
-            pendingAgentPrompts.removeAll()
+            cancelPendingAgentInputs()
             agentConversationEndResult = nil
             onAgentRunEvent?(
                 .started(
@@ -115,7 +133,7 @@ extension VoiceActivationCoordinator {
                     profile: profile,
                     prompt: transcript))
             startAgentTurn(
-                prompt: transcript,
+                input: agentInput,
                 profile: profile,
                 configuration: agentConfiguration,
                 runID: runID,
@@ -148,7 +166,8 @@ extension VoiceActivationCoordinator {
                     message: "Follow-up queue is full. Wait for the agent before speaking again."))
             return
         }
-        pendingAgentPrompts.append(prompt)
+        let input = makePendingAgentInput(text: prompt)
+        pendingAgentPrompts.append(input)
         diagnostics.record(
             category: .agent,
             event: "coordinator.follow_up_queued",
@@ -164,6 +183,7 @@ extension VoiceActivationCoordinator {
         guard executionTask == nil else {
             onAgentRunEvent?(.turnCancellationStarted(runID: runID))
             executionGeneration &+= 1
+            cancelActiveAgentInput()
             executionTask?.cancel()
             executionTask = nil
             beginAgentCancellation(runID: runID)
@@ -182,9 +202,11 @@ extension VoiceActivationCoordinator {
             let runID = activeAgentRunID
         else { return }
 
-        let prompt = pendingAgentPrompts.removeFirst()
+        let input = pendingAgentPrompts.removeFirst()
         executionGeneration &+= 1
         let generation = executionGeneration
+        cancelActiveAgentInput()
+        activeAgentInput = input
         onAgentRunEvent?(.turnStarted(runID: runID))
         state = .executing
         diagnostics.record(
@@ -193,11 +215,11 @@ extension VoiceActivationCoordinator {
             fields: [
                 "run_id": runID.uuidString,
                 "generation": String(generation),
-                "character_count": String(prompt.count),
+                "character_count": String(input.text.count),
                 "remaining_pending_count": String(pendingAgentPrompts.count),
             ])
         startAgentTurn(
-            prompt: prompt,
+            input: input,
             profile: profile,
             configuration: configuration,
             runID: runID,
@@ -205,13 +227,23 @@ extension VoiceActivationCoordinator {
     }
 
     func startAgentTurn(
-        prompt: String,
+        input: PendingAgentInput,
         profile: WakeProfile,
         configuration: AgentHarnessConfiguration,
         runID: UUID,
         generation: Int
     ) {
         agentTurnHadActivity = false
+        let promptWithoutContext: AgentPrompt?
+        if input.contextCapture == nil,
+           executionGeneration == generation,
+           activeAgentRunID == runID,
+           activeAgentInput?.id == input.id
+        {
+            promptWithoutContext = AgentPrompt(request: input.text, context: nil)
+        } else {
+            promptWithoutContext = nil
+        }
         let scheduledAtUptime = DispatchTime.now().uptimeNanoseconds
         diagnostics.record(
             category: .agent,
@@ -219,7 +251,7 @@ extension VoiceActivationCoordinator {
             fields: [
                 "run_id": runID.uuidString,
                 "generation": String(generation),
-                "input_character_count": String(prompt.count),
+                "input_character_count": String(input.text.count),
                 "task_priority": String(Task.currentPriority.rawValue),
             ])
         let diagnostics = diagnostics
@@ -258,10 +290,22 @@ extension VoiceActivationCoordinator {
                         "launch_delay_ms": String(launchDelay),
                         "task_priority": String(Task.currentPriority.rawValue),
                     ])
+                let prompt: AgentPrompt
+                if let promptWithoutContext {
+                    prompt = promptWithoutContext
+                } else {
+                    guard let resolvedPrompt = await self?.resolveAgentPrompt(
+                        input: input,
+                        runID: runID,
+                        generation: generation)
+                    else { return }
+                    prompt = resolvedPrompt
+                }
+                try Task.checkCancellation()
                 let result = try await agentRunner.run(
                     profileID: profile.id,
                     configuration: configuration,
-                    prompt: AgentPrompt(request: prompt, context: nil),
+                    prompt: prompt,
                     onEvent: { [weak self] event in
                         let receivedAtUptime = DispatchTime.now().uptimeNanoseconds
                         await mainRunLoopScheduler.perform { [weak self] in
@@ -380,6 +424,7 @@ extension VoiceActivationCoordinator {
             ])
         onAgentRunEvent?(.turnCompleted(runID: runID, result: result))
         executionTask = nil
+        activeAgentInput = nil
         if pendingAgentPrompts.isEmpty {
             state = .executing
         } else {
@@ -411,6 +456,7 @@ extension VoiceActivationCoordinator {
             agentTurnHadActivity = false
             onAgentRunEvent?(.turnFailed(runID: runID, message: message))
             executionTask = nil
+            activeAgentInput = nil
             state = .executing
             return
         }
@@ -420,7 +466,7 @@ extension VoiceActivationCoordinator {
         executionTask = nil
         executingAction = nil
         activeAgentRunID = nil
-        pendingAgentPrompts.removeAll()
+        cancelAllAgentInputs()
         agentConversationEndResult = nil
         resetConversationCapture()
         conversationRestartTask?.cancel()
@@ -490,7 +536,7 @@ extension VoiceActivationCoordinator {
         executionTask = nil
         executingAction = nil
         activeAgentRunID = nil
-        pendingAgentPrompts.removeAll()
+        cancelAllAgentInputs()
         agentConversationEndResult = nil
         resetConversationCapture()
         conversationRestartTask?.cancel()
