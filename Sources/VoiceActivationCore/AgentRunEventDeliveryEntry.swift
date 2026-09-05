@@ -16,6 +16,7 @@ struct AgentRunEventDeliveryEntry {
     private var textKind: AgentRunEventDeliveryTextKind?
     private var textBuffer: AgentRunEventDeliveryTextBuffer?
     private(set) var outputBytes: Int
+    private(set) var artifactBytes: Int
     private(set) var diagnosticBytes: Int
     private(set) var controlBytes: Int
 
@@ -48,6 +49,11 @@ struct AgentRunEventDeliveryEntry {
         textKind = nil
         textBuffer = nil
         outputBytes = 0
+        artifactBytes = if case let .artifact(artifact) = event {
+            Self.artifactByteCount(artifact)
+        } else {
+            0
+        }
         diagnosticBytes = 0
         controlBytes = Self.controlByteCount(for: event)
     }
@@ -63,10 +69,12 @@ struct AgentRunEventDeliveryEntry {
         switch textKind {
         case let .agentMessage(messageID), let .thought(messageID):
             outputBytes = buffer.count
+            artifactBytes = 0
             diagnosticBytes = 0
             controlBytes = messageID?.utf8.count ?? 0
         case .diagnostic:
             outputBytes = 0
+            artifactBytes = 0
             diagnosticBytes = buffer.count
             controlBytes = 0
         }
@@ -123,8 +131,8 @@ struct AgentRunEventDeliveryEntry {
             return agentName.utf8.count + sessionID.utf8.count
         case let .agentMessageDelta(messageID, _), let .thoughtDelta(messageID, _):
             return messageID?.utf8.count ?? 0
-        case let .artifact(artifact):
-            return artifactByteCount(artifact)
+        case .artifact:
+            return 0
         case let .toolCall(toolCall):
             return toolCall.id.utf8.count
                 + toolCall.title.utf8.count
@@ -141,6 +149,7 @@ struct AgentRunEventDeliveryEntry {
             return 0
         case let .permissionRequested(request):
             var count = request.toolCall.id.utf8.count + (request.toolCall.title?.utf8.count ?? 0)
+            count = saturatingAdd(count, toolContentByteCount(request.toolCall.content))
             if case let .string(id) = request.requestID {
                 count = saturatingAdd(count, id.utf8.count)
             }
@@ -161,8 +170,8 @@ struct AgentRunEventDeliveryEntry {
             switch item {
             case let .text(text):
                 saturatingAdd(count, text.utf8.count)
-            case let .artifact(artifact):
-                saturatingAdd(count, artifactByteCount(artifact))
+            case .artifact:
+                count
             }
         }
     }

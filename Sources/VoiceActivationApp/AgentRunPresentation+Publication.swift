@@ -118,6 +118,7 @@ extension AgentRunPresentation {
         let subject =
             switch notice.kind {
             case .outputTruncated: "Earlier streamed output"
+            case .artifactTruncated: "Earlier results"
             case .diagnosticTruncated: "Earlier diagnostics"
             case .controlTruncated: "Oversized event details"
             }

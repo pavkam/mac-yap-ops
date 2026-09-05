@@ -295,6 +295,8 @@ public struct AgentPermissionRequest: Equatable, Sendable {
 public enum AgentRunEventDeliveryNoticeKind: Equatable, Sendable {
     /// User-visible agent output was truncated.
     case outputTruncated
+    /// File, image, or document results were discarded under pressure.
+    case artifactTruncated
     /// Diagnostic-only output was truncated.
     case diagnosticTruncated
     /// Control events were truncated and the turn can no longer proceed safely.

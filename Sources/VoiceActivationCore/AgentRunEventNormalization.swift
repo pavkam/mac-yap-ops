@@ -20,12 +20,14 @@ struct AgentRunEventNormalization {
 enum AgentRunEventNormalizationError: Error {
     case oversizedOpaqueIdentifier
     case oversizedPermission
+    case invalidArtifact
 }
 
 /// Applies UTF-8 limits to untrusted ACP event fields before they enter the queue.
 enum AgentRunEventNormalizer {
     private static let maximumControlTextBytes = 64 * 1_024
     private static let maximumPlanEntryBytes = 8 * 1_024
+    private static let maximumToolTextBytes = 16 * 1_024
 
     static func normalize(_ event: AgentRunEvent) throws -> AgentRunEventNormalization {
         switch event {
@@ -35,8 +37,9 @@ enum AgentRunEventNormalizer {
         case let .thoughtDelta(messageID, text):
             try validate(identifier: messageID)
             return textEntries(kind: .thought(messageID), text: text)
-        case .artifact:
-            return AgentRunEventNormalization(entries: [AgentRunEventDeliveryEntry(event: event)])
+        case let .artifact(artifact):
+            try validate(artifact: artifact)
+            return AgentRunEventNormalization(entries: [artifactEntry(artifact)])
         case let .diagnostic(text):
             return textEntries(kind: .diagnostic, text: text)
         case let .connected(agentName, sessionID):
@@ -49,29 +52,39 @@ enum AgentRunEventNormalizer {
         case let .toolCall(toolCall):
             try validate(identifier: toolCall.id)
             let bounded = boundedPrefix(toolCall.title, maximumBytes: maximumControlTextBytes)
-            return controlEntries(
+            let normalizedContent = try normalize(toolContent: toolCall.content)
+            var entries = controlEntries(
                 event: .toolCall(AgentToolCall(
                     id: toolCall.id,
                     title: bounded.value,
                     kind: toolCall.kind,
                     status: toolCall.status,
-                    content: toolCall.content)),
-                discardedBytes: bounded.discardedBytes,
-                discardedEntries: 0)
+                    content: normalizedContent.text)),
+                discardedBytes: saturatingAdd(
+                    bounded.discardedBytes,
+                    normalizedContent.discardedBytes),
+                discardedEntries: 0).entries
+            entries.append(contentsOf: normalizedContent.artifacts)
+            return AgentRunEventNormalization(entries: entries)
         case let .toolCallUpdate(update):
             try validate(identifier: update.id)
             let bounded = update.title.map {
                 boundedPrefix($0, maximumBytes: maximumControlTextBytes)
             }
-            return controlEntries(
+            let normalizedContent = try normalize(toolContent: update.content)
+            var entries = controlEntries(
                 event: .toolCallUpdate(AgentToolCallUpdate(
                     id: update.id,
                     title: bounded?.value,
                     kind: update.kind,
                     status: update.status,
-                    content: update.content)),
-                discardedBytes: bounded?.discardedBytes ?? 0,
-                discardedEntries: 0)
+                    content: normalizedContent.text)),
+                discardedBytes: saturatingAdd(
+                    bounded?.discardedBytes ?? 0,
+                    normalizedContent.discardedBytes),
+                discardedEntries: 0).entries
+            entries.append(contentsOf: normalizedContent.artifacts)
+            return AgentRunEventNormalization(entries: entries)
         case let .plan(plan):
             var discardedBytes = 0
             var discardedEntries = 0
@@ -124,6 +137,7 @@ enum AgentRunEventNormalizer {
             let boundedTitle = request.toolCall.title.map {
                 boundedPrefix($0, maximumBytes: maximumControlTextBytes)
             }
+            let normalizedContent = try normalize(toolContent: request.toolCall.content)
             let normalized = AgentPermissionRequest(
                 turnToken: request.turnToken,
                 requestID: request.requestID,
@@ -132,17 +146,21 @@ enum AgentRunEventNormalizer {
                     title: boundedTitle?.value,
                     kind: request.toolCall.kind,
                     status: request.toolCall.status,
-                    content: request.toolCall.content),
+                    content: normalizedContent.text),
                 options: request.options)
             guard AgentRunEventDeliveryEntry.controlByteCount(for: .permissionRequested(normalized))
                     <= AgentRunEventDelivery.maximumPendingControlBytes
             else {
                 throw AgentRunEventNormalizationError.oversizedPermission
             }
-            return controlEntries(
+            var entries = controlEntries(
                 event: .permissionRequested(normalized),
-                discardedBytes: boundedTitle?.discardedBytes ?? 0,
-                discardedEntries: 0)
+                discardedBytes: saturatingAdd(
+                    boundedTitle?.discardedBytes ?? 0,
+                    normalizedContent.discardedBytes),
+                discardedEntries: 0).entries
+            entries.append(contentsOf: normalizedContent.artifacts)
+            return AgentRunEventNormalization(entries: entries)
         case .deliveryNotice:
             return AgentRunEventNormalization(entries: [AgentRunEventDeliveryEntry(event: event)])
         }
@@ -184,6 +202,94 @@ enum AgentRunEventNormalizer {
         }
         entries.append(AgentRunEventDeliveryEntry(event: event))
         return AgentRunEventNormalization(entries: entries)
+    }
+
+    private static func normalize(
+        toolContent: [AgentToolCallContent]
+    ) throws -> (
+        text: [AgentToolCallContent],
+        artifacts: [AgentRunEventDeliveryEntry],
+        discardedBytes: Int)
+    {
+        var text: [AgentToolCallContent] = []
+        var artifacts: [AgentRunEventDeliveryEntry] = []
+        var discardedBytes = 0
+
+        for content in toolContent {
+            switch content {
+            case let .text(value):
+                let bounded = boundedPrefix(value, maximumBytes: maximumToolTextBytes)
+                text.append(.text(bounded.value))
+                discardedBytes = saturatingAdd(discardedBytes, bounded.discardedBytes)
+            case let .artifact(artifact):
+                try validate(artifact: artifact)
+                artifacts.append(artifactEntry(artifact))
+            }
+        }
+        return (text, artifacts, discardedBytes)
+    }
+
+    private static func artifactEntry(_ artifact: AgentArtifact) -> AgentRunEventDeliveryEntry {
+        AgentRunEventDeliveryEntry(event: .artifact(artifact))
+    }
+
+    private static func validate(artifact: AgentArtifact) throws {
+        try validate(
+            artifact.name,
+            maximumBytes: AgentArtifactLimits.maximumDisplayTextBytes,
+            allowsEmpty: false)
+        try validate(artifact.uri, maximumBytes: AgentArtifactLimits.maximumURIBytes)
+        try validate(artifact.title, maximumBytes: AgentArtifactLimits.maximumDisplayTextBytes)
+        try validate(
+            artifact.descriptiveText,
+            maximumBytes: AgentArtifactLimits.maximumDisplayTextBytes)
+        try validate(
+            artifact.mimeType,
+            maximumBytes: AgentArtifactLimits.maximumMIMETypeBytes)
+
+        switch artifact.payload {
+        case let .image(data, mimeType):
+            guard data.count <= AgentArtifactLimits.maximumEmbeddedPayloadBytes,
+                  artifact.mimeType == mimeType
+            else {
+                throw AgentRunEventNormalizationError.invalidArtifact
+            }
+            try validate(
+                mimeType,
+                maximumBytes: AgentArtifactLimits.maximumMIMETypeBytes,
+                allowsEmpty: false)
+        case let .embeddedText(text):
+            guard artifact.uri != nil,
+                  text.utf8.count <= AgentArtifactLimits.maximumEmbeddedPayloadBytes
+            else {
+                throw AgentRunEventNormalizationError.invalidArtifact
+            }
+        case let .embeddedBlob(data):
+            guard artifact.uri != nil,
+                  data.count <= AgentArtifactLimits.maximumEmbeddedPayloadBytes
+            else {
+                throw AgentRunEventNormalizationError.invalidArtifact
+            }
+        case .linked:
+            guard artifact.uri != nil else {
+                throw AgentRunEventNormalizationError.invalidArtifact
+            }
+        }
+    }
+
+    private static func validate(
+        _ value: String?,
+        maximumBytes: Int,
+        allowsEmpty: Bool = true) throws
+    {
+        guard let value else {
+            return
+        }
+        guard value.utf8.count <= maximumBytes,
+              allowsEmpty || !value.isEmpty
+        else {
+            throw AgentRunEventNormalizationError.invalidArtifact
+        }
     }
 
     private static func validate(request: AgentPermissionRequest) throws {
