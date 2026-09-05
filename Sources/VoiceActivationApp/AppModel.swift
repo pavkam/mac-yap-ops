@@ -30,10 +30,45 @@ final class AppModel {
     var readsAgentRepliesAloud: Bool
     /// Whether quiet activity audio should fill otherwise silent agent work.
     var playsAgentWorkingSound: Bool
-    /// The editable agent speech provider.
-    var agentSpeechProvider: AgentSpeechProvider
-    /// The editable ElevenLabs voice identifier.
-    var elevenLabsVoiceID: String
+    /// The editable app-wide speech selection inherited by profiles.
+    var defaultSpeechVoice: TextToSpeechVoiceSelection {
+        didSet {
+            if defaultSpeechVoice.backendID == .elevenLabs,
+                let voiceID = defaultSpeechVoice.voiceID
+            {
+                retainedElevenLabsVoiceID = voiceID
+            }
+        }
+    }
+    private var retainedElevenLabsVoiceID: String
+    /// Compatibility projection for the two originally shipped speech providers.
+    var agentSpeechProvider: AgentSpeechProvider {
+        get { defaultSpeechVoice.backendID == .elevenLabs ? .elevenLabs : .system }
+        set {
+            switch newValue {
+            case .system:
+                defaultSpeechVoice = TextToSpeechVoiceSelection(
+                    backendID: .system,
+                    voiceID: nil)
+            case .elevenLabs:
+                defaultSpeechVoice = TextToSpeechVoiceSelection(
+                    backendID: .elevenLabs,
+                    voiceID: retainedElevenLabsVoiceID)
+            }
+        }
+    }
+    /// The remembered ElevenLabs voice, including while another backend is selected.
+    var elevenLabsVoiceID: String {
+        get { retainedElevenLabsVoiceID }
+        set {
+            retainedElevenLabsVoiceID = newValue
+            if defaultSpeechVoice.backendID == .elevenLabs {
+                defaultSpeechVoice = TextToSpeechVoiceSelection(
+                    backendID: .elevenLabs,
+                    voiceID: newValue)
+            }
+        }
+    }
     /// The in-memory ElevenLabs credential draft; persistence is Keychain-only.
     var elevenLabsAPIKey: String
     /// The latest bounded ElevenLabs voice catalog returned for Settings.
@@ -42,6 +77,9 @@ final class AppModel {
     var isPreviewingElevenLabsVoice = false
     var elevenLabsVoiceStatus: String?
     var elevenLabsVoiceError: String?
+    var textToSpeechVoicesByBackend: [TextToSpeechBackendID: [TextToSpeechVoice]] = [:]
+    var loadingTextToSpeechBackendIDs: Set<TextToSpeechBackendID> = []
+    var textToSpeechVoiceErrors: [TextToSpeechBackendID: String] = [:]
     var settingsError: String?
     var isSavingSettings = false
     /// The latest immutable conversation snapshot shared by menu and panel presenters.
@@ -73,9 +111,12 @@ final class AppModel {
     @ObservationIgnored let agentSpeechCredentialStore: any AgentSpeechCredentialStoring
     @ObservationIgnored let elevenLabsVoiceCatalog: any ElevenLabsVoiceCatalogLoading
     @ObservationIgnored let elevenLabsVoicePreview: any ElevenLabsVoicePreviewing
+    @ObservationIgnored let textToSpeechBackendRegistry: TextToSpeechBackendRegistry
     @ObservationIgnored let agentSpeechSettingsState: AgentSpeechSettingsState
     @ObservationIgnored let diagnostics: any VoiceActivationDiagnosticRecording
     @ObservationIgnored var elevenLabsVoiceCatalogGeneration = 0
+    @ObservationIgnored var textToSpeechVoiceCatalogGenerations:
+        [TextToSpeechBackendID: UInt64] = [:]
     @ObservationIgnored var agentLifecycleSequence: UInt64 = 0
     @ObservationIgnored var started = false
     @ObservationIgnored var isShutdown = false
@@ -118,16 +159,20 @@ final class AppModel {
             ElevenLabsVoiceCatalogClient(),
         elevenLabsVoicePreview: any ElevenLabsVoicePreviewing =
             ElevenLabsVoicePreviewPlayer(),
+        textToSpeechBackendRegistry: TextToSpeechBackendRegistry? = nil,
         isExecutableFile: @escaping @MainActor (String) -> Bool = AppModel.executableFileExists,
         isDirectory: @escaping @MainActor (String) -> Bool = AppModel.directoryExists,
         startsAutomatically: Bool = true,
         diagnostics: any VoiceActivationDiagnosticRecording = VoiceActivationDiagnostics.shared
     ) {
         let storedElevenLabsAPIKey = ""
+        let defaultSpeechVoice = preferences.defaultSpeechVoice
+        let retainedElevenLabsVoiceID = defaultSpeechVoice.backendID == .elevenLabs
+            ? defaultSpeechVoice.voiceID ?? preferences.elevenLabsVoiceID
+            : preferences.elevenLabsVoiceID
         let agentSpeechSettingsState = AgentSpeechSettingsState(
-            provider: preferences.agentSpeechProvider,
-            elevenLabsAPIKey: storedElevenLabsAPIKey,
-            elevenLabsVoiceID: preferences.elevenLabsVoiceID)
+            defaultSelection: defaultSpeechVoice,
+            elevenLabsAPIKey: storedElevenLabsAPIKey)
         let resolvedAgentConversationAudioPlayer =
             agentConversationAudioPlayer
             ?? AgentConversationAudioOrchestrator(
@@ -148,6 +193,8 @@ final class AppModel {
         self.agentSpeechCredentialStore = agentSpeechCredentialStore
         self.elevenLabsVoiceCatalog = elevenLabsVoiceCatalog
         self.elevenLabsVoicePreview = elevenLabsVoicePreview
+        self.textToSpeechBackendRegistry = textToSpeechBackendRegistry ?? .live(
+            elevenLabsCatalog: elevenLabsVoiceCatalog)
         self.agentSpeechSettingsState = agentSpeechSettingsState
         self.diagnostics = diagnostics
         overlayPresenter = RecordingOverlayPresenter(display: recordingOverlay)
@@ -169,8 +216,8 @@ final class AppModel {
         localeID = preferences.localeID
         readsAgentRepliesAloud = preferences.readsAgentRepliesAloud
         playsAgentWorkingSound = preferences.playsAgentWorkingSound
-        agentSpeechProvider = preferences.agentSpeechProvider
-        elevenLabsVoiceID = preferences.elevenLabsVoiceID
+        self.defaultSpeechVoice = defaultSpeechVoice
+        self.retainedElevenLabsVoiceID = retainedElevenLabsVoiceID
         elevenLabsAPIKey = storedElevenLabsAPIKey
         diagnostics.record(
             category: .app,
@@ -179,7 +226,7 @@ final class AppModel {
                 "profile_count": String(activeWakeProfiles.count),
                 "enabled_profile_count": String(activeWakeProfiles.count(where: \.isEnabled)),
                 "passive_enabled": String(passiveEnabled),
-                "speech_provider": agentSpeechProvider.rawValue,
+                "speech_backend": defaultSpeechVoice.backendID.rawValue,
                 "cloud_api_configured": String(!storedElevenLabsAPIKey.isEmpty),
                 "starts_automatically": String(startsAutomatically),
             ])
@@ -342,6 +389,11 @@ final class AppModel {
 
     /// Synthesizes and plays a short sample for the currently selected cloud voice.
     func previewElevenLabsVoice() async {
+        await previewElevenLabsVoice(voiceID: elevenLabsVoiceID)
+    }
+
+    /// Synthesizes and plays a short sample for one profile or default cloud voice.
+    func previewElevenLabsVoice(voiceID requestedVoiceID: String) async {
         diagnostics.record(category: .ui, event: "app_model.voice_preview_requested")
         guard !isPreviewingElevenLabsVoice else {
             diagnostics.record(
@@ -351,7 +403,7 @@ final class AppModel {
             return
         }
         let apiKey = elevenLabsAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        let voiceID = elevenLabsVoiceID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let voiceID = requestedVoiceID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !apiKey.isEmpty else {
             elevenLabsVoiceError = "Enter an ElevenLabs API key to test a voice."
             diagnostics.record(
@@ -432,7 +484,7 @@ final class AppModel {
             event: "settings.save_started",
             fields: [
                 "profile_count": String(wakeProfiles.count),
-                "speech_provider": agentSpeechProvider.rawValue,
+                "speech_backend": defaultSpeechVoice.backendID.rawValue,
                 "reads_replies": String(readsAgentRepliesAloud),
                 "plays_working_sound": String(playsAgentWorkingSound),
             ])
@@ -442,7 +494,7 @@ final class AppModel {
             profiles = try wakeProfiles.map { try $0.validatedProfile() }
             try WakeProfileCollectionValidator.validate(profiles)
             try validateFileSystem(profiles)
-            try validateAgentSpeechSettings()
+            try validateAgentSpeechSettings(profiles: profiles)
         } catch {
             settingsError = error.localizedDescription
             diagnostics.record(
@@ -499,13 +551,13 @@ final class AppModel {
         preferences.playsAgentWorkingSound = playsAgentWorkingSound
         preferences.agentSpeechProvider = agentSpeechProvider
         preferences.elevenLabsVoiceID = elevenLabsVoiceID
+        preferences.defaultSpeechVoice = defaultSpeechVoice
         elevenLabsAPIKey = normalizedAPIKey
         elevenLabsVoiceID = preferences.elevenLabsVoiceID
         let previousSpeechConfiguration = agentSpeechSettingsState.configuration
         agentSpeechSettingsState.update(
-            provider: agentSpeechProvider,
-            elevenLabsAPIKey: normalizedAPIKey,
-            elevenLabsVoiceID: elevenLabsVoiceID)
+            defaultSelection: defaultSpeechVoice,
+            elevenLabsAPIKey: normalizedAPIKey)
         agentConversationAudioPresenter.refreshSettings()
         activeWakeProfiles = profiles
         wakeProfiles = activeWakeProfiles.map(WakeProfileDraft.init)

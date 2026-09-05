@@ -102,7 +102,7 @@ struct MenuContentView: View {
 
         return VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 8) {
-                Text("Wake profiles")
+                Text("Profiles")
                     .font(.system(size: 10, weight: .bold, design: .rounded))
                     .foregroundStyle(.secondary)
                     .textCase(.uppercase)
@@ -318,19 +318,19 @@ private struct MenuProfileRow: View {
                     Circle()
                         .fill(profile.accent.swiftUIColor.opacity(profile.isEnabled ? 0.18 : 0.07))
 
-                    Image(systemName: profile.isEnabled ? "waveform" : "waveform.slash")
-                        .font(.system(size: 13, weight: .semibold))
+                    profileIcon
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(
                             profile.isEnabled ? profile.accent.swiftUIColor : .secondary)
                 }
                 .frame(width: 34, height: 34)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("“\(profile.wakePhrase)”")
+                    Text(profile.name)
                         .font(.system(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(.primary)
 
-                    Text(profileDetail)
+                    Text("“\(profile.wakePhrase)” · \(profileDetail)")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
@@ -357,7 +357,7 @@ private struct MenuProfileRow: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
-        .accessibilityLabel("Listen for \(profile.wakePhrase)")
+        .accessibilityLabel("\(profile.name), trigger phrase \(profile.wakePhrase)")
         .accessibilityValue(profile.isEnabled ? "Enabled" : "Disabled")
     }
 
@@ -366,6 +366,20 @@ private struct MenuProfileRow: View {
             "\(hotKey.displayName)  ·  Hold to talk"
         } else {
             profile.isEnabled ? "Wake phrase active" : "Wake phrase paused"
+        }
+    }
+
+    @ViewBuilder
+    private var profileIcon: some View {
+        if profile.isEnabled {
+            switch profile.icon {
+            case .systemSymbol(let name):
+                Image(systemName: name)
+            case .emoji(let value):
+                Text(value)
+            }
+        } else {
+            Image(systemName: "slash.circle")
         }
     }
 }

@@ -187,9 +187,8 @@ extension AppModel {
                 if applied {
                     self.elevenLabsAPIKey = storedAPIKey
                     self.agentSpeechSettingsState.update(
-                        provider: self.agentSpeechProvider,
-                        elevenLabsAPIKey: storedAPIKey,
-                        elevenLabsVoiceID: self.elevenLabsVoiceID)
+                        defaultSelection: self.defaultSpeechVoice,
+                        elevenLabsAPIKey: storedAPIKey)
                 }
                 diagnostics.record(
                     category: .settings,
@@ -257,14 +256,29 @@ extension AppModel {
         }
     }
 
-    /// Ensures cloud speech has a credential and voice before Settings commits it.
-    func validateAgentSpeechSettings() throws {
-        guard agentSpeechProvider == .elevenLabs else { return }
-        guard !elevenLabsAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw SettingsValidationError.elevenLabsAPIKeyRequired
+    /// Ensures every inherited or profile-specific speech selection can run.
+    func validateAgentSpeechSettings(profiles: [WakeProfile]) throws {
+        var selections: [TextToSpeechVoiceSelection] = []
+        if readsAgentRepliesAloud {
+            selections.append(defaultSpeechVoice)
         }
-        guard !elevenLabsVoiceID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw SettingsValidationError.elevenLabsVoiceIDRequired
+        selections.append(contentsOf: profiles.compactMap { profile in
+            guard case .voice(let selection) = profile.speechPreference else { return nil }
+            return selection
+        })
+        let availableBackendIDs = Set(textToSpeechBackends.map(\.id))
+        for selection in selections {
+            guard availableBackendIDs.contains(selection.backendID) else {
+                throw SettingsValidationError.textToSpeechBackendUnavailable(
+                    selection.backendID.rawValue)
+            }
+            guard selection.backendID == .elevenLabs else { continue }
+            guard !elevenLabsAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw SettingsValidationError.elevenLabsAPIKeyRequired
+            }
+            guard selection.voiceID != nil else {
+                throw SettingsValidationError.elevenLabsVoiceIDRequired
+            }
         }
     }
 

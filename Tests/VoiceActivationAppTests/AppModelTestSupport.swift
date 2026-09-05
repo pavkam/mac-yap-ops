@@ -44,6 +44,7 @@ extension AppModelTests {
                 AppModelElevenLabsVoiceCatalogSpy(voices: []),
             elevenLabsVoicePreview: any ElevenLabsVoicePreviewing =
                 AppModelElevenLabsVoicePreviewSpy(),
+            textToSpeechBackendRegistry: TextToSpeechBackendRegistry? = nil,
             isExecutableFile: @escaping @MainActor (String) -> Bool = { path in
                 FileManager.default.isExecutableFile(atPath: path)
             },
@@ -74,6 +75,7 @@ extension AppModelTests {
                 agentSpeechCredentialStore: agentSpeechCredentialStore,
                 elevenLabsVoiceCatalog: elevenLabsVoiceCatalog,
                 elevenLabsVoicePreview: elevenLabsVoicePreview,
+                textToSpeechBackendRegistry: textToSpeechBackendRegistry,
                 isExecutableFile: isExecutableFile,
                 isDirectory: isDirectory,
                 startsAutomatically: false)

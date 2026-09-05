@@ -36,26 +36,10 @@ struct SettingsView: View {
         .onChange(of: model.localeID) { saved = false }
         .onChange(of: model.readsAgentRepliesAloud) { saved = false }
         .onChange(of: model.playsAgentWorkingSound) { saved = false }
-        .onChange(of: model.agentSpeechProvider) { saved = false }
-        .onChange(of: model.elevenLabsVoiceID) { saved = false }
+        .onChange(of: model.defaultSpeechVoice) { saved = false }
         .onChange(of: model.elevenLabsAPIKey) { saved = false }
         .task {
             await launchAtLogin.refresh()
-        }
-        .task(id: ElevenLabsVoiceCatalogQuery(
-            provider: model.agentSpeechProvider,
-            apiKey: model.elevenLabsAPIKey))
-        {
-            guard model.agentSpeechProvider == .elevenLabs else {
-                await model.loadElevenLabsVoices()
-                return
-            }
-            do {
-                try await Task.sleep(for: .milliseconds(450))
-            } catch {
-                return
-            }
-            await model.loadElevenLabsVoices()
         }
     }
 
@@ -127,162 +111,18 @@ struct SettingsView: View {
 
     private var conversationSection: some View {
         SettingsCard(
-            title: "Agent conversation",
-            subtitle: "Keep longer agent sessions audible without making them noisy.",
+            title: "Speech and activity",
+            subtitle: "Set the inherited voice and global backend credentials.",
             systemImage: SettingsSectionSymbol.agentConversation.rawValue)
         {
-            settingToggle(
-                title: "Read replies aloud",
-                detail: "Speaks complete thoughts as the agent generates them.",
-                isOn: $model.readsAgentRepliesAloud)
-
-            if model.readsAgentRepliesAloud {
-                Divider()
-
-                HStack(alignment: .center) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Voice provider")
-                            .fontWeight(.medium)
-                        Text(model.agentSpeechProvider.detail)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
-
-                    Picker("Voice provider", selection: $model.agentSpeechProvider) {
-                        ForEach(AgentSpeechProvider.allCases, id: \.self) { provider in
-                            AgentSpeechProviderOptionLabel(
-                                title: provider.displayName,
-                                systemImage: provider.systemImage)
-                                .tag(provider)
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(width: 180)
-                }
-
-                if model.agentSpeechProvider == .elevenLabs {
-                    secureSettingsField(
-                        "ElevenLabs API key",
-                        hint: "sk_…",
-                        text: $model.elevenLabsAPIKey)
-
-                    elevenLabsVoiceSelector
-
-                    Label(
-                        "The API key is stored in your macOS Keychain. Speech text is sent to ElevenLabs for synthesis.",
-                        systemImage: "key.fill")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Divider()
-
-            settingToggle(
-                title: "Agent activity sounds",
-                detail: "Plays distinct thinking, tool-start, completion, and failure cues.",
-                isOn: $model.playsAgentWorkingSound)
-        }
-    }
-
-    private var elevenLabsVoiceSelector: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Voice")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-
-                Spacer()
-
-                if model.isLoadingElevenLabsVoices {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("Loading voices…")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            HStack(spacing: 8) {
-                if model.elevenLabsVoices.isEmpty {
-                    TextField("Voice ID", text: $model.elevenLabsVoiceID)
-                        .font(.system(.body, design: .monospaced))
-                        .textFieldStyle(.roundedBorder)
-                } else {
-                    Picker("Voice", selection: $model.elevenLabsVoiceID) {
-                        if !model.elevenLabsVoiceID.isEmpty,
-                           !model.elevenLabsVoices.contains(where: {
-                               $0.id == model.elevenLabsVoiceID
-                           })
-                        {
-                            Text("Saved voice · \(model.elevenLabsVoiceID)")
-                                .tag(model.elevenLabsVoiceID)
-                        }
-                        ForEach(model.elevenLabsVoices) { voice in
-                            Text(voice.name).tag(voice.id)
-                        }
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
-                Button {
-                    Task { await model.loadElevenLabsVoices() }
-                } label: {
-                    Label("Refresh", systemImage: "arrow.clockwise")
-                }
-                .disabled(
-                    model.isLoadingElevenLabsVoices
-                        || model.elevenLabsAPIKey.trimmingCharacters(
-                            in: .whitespacesAndNewlines).isEmpty)
-
-                Button {
-                    Task { await model.previewElevenLabsVoice() }
-                } label: {
-                    Label(
-                        model.isPreviewingElevenLabsVoice ? "Playing…" : "Test voice",
-                        systemImage: model.isPreviewingElevenLabsVoice
-                            ? "waveform"
-                            : "play.fill")
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(
-                    model.isPreviewingElevenLabsVoice
-                        || model.elevenLabsAPIKey.trimmingCharacters(
-                            in: .whitespacesAndNewlines).isEmpty
-                        || model.elevenLabsVoiceID.trimmingCharacters(
-                            in: .whitespacesAndNewlines).isEmpty)
-            }
-
-            if let voice = model.elevenLabsVoices.first(where: {
-                $0.id == model.elevenLabsVoiceID
-            }) {
-                Text([voice.category?.capitalized, voice.description]
-                    .compactMap { $0 }
-                    .joined(separator: " · "))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            if let error = model.elevenLabsVoiceError {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            } else if let status = model.elevenLabsVoiceStatus {
-                Text(status)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            SpeechSettingsContent(model: model)
         }
     }
 
     private var voiceSection: some View {
         SettingsCard(
-            title: "Voice trigger",
-            subtitle: "Choose what starts listening and how speech is recognized.",
+            title: "Profiles",
+            subtitle: "Give each assistant its own identity, trigger, action, and voice.",
             systemImage: SettingsSectionSymbol.voiceTrigger.rawValue)
         {
             settingsField("Speech locale", hint: "en-US", text: $model.localeID)
@@ -292,7 +132,7 @@ struct SettingsView: View {
 
             VStack(spacing: 12) {
                 ForEach($model.wakeProfiles) { $profile in
-                    wakeProfileEditor(profile: $profile)
+                    ProfileSettingsEditor(model: model, profile: $profile)
                 }
 
                 Button {
@@ -301,7 +141,7 @@ struct SettingsView: View {
                         urlTemplate: "https://www.google.com/search?q={urlText}",
                         accent: nextAccent))
                 } label: {
-                    Label("Add wake profile", systemImage: "plus.circle.fill")
+                    Label("Add profile", systemImage: "plus.circle.fill")
                 }
                 .buttonStyle(.borderless)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -405,204 +245,9 @@ struct SettingsView: View {
         }
     }
 
-    private func secureSettingsField(
-        _ title: String,
-        hint: String,
-        text: Binding<String>) -> some View
-    {
-        VStack(alignment: .leading, spacing: 7) {
-            Text(title)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-            SecureField(hint, text: text)
-                .font(.system(.body, design: .monospaced))
-                .textFieldStyle(.roundedBorder)
-        }
-    }
-
-    private func settingToggle(
-        title: String,
-        detail: String,
-        isOn: Binding<Bool>) -> some View
-    {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .fontWeight(.medium)
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            Toggle("", isOn: isOn)
-                .labelsHidden()
-        }
-    }
-
-    private func templateToken(_ value: String) -> some View {
-        Text(value)
-            .font(.system(.caption, design: .monospaced).weight(.medium))
-            .padding(.horizontal, 5)
-            .padding(.vertical, 2)
-            .background(.quaternary, in: RoundedRectangle(cornerRadius: 4))
-    }
-
-    private func wakeProfileEditor(profile: Binding<WakeProfileDraft>) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                Circle()
-                    .fill(profile.wrappedValue.accent.swiftUIColor)
-                    .frame(width: 12, height: 12)
-                    .shadow(color: profile.wrappedValue.accent.swiftUIColor.opacity(0.5), radius: 4)
-
-                TextField("Wake phrase", text: profile.wakePhrase)
-                    .textFieldStyle(.roundedBorder)
-
-                Picker("Color", selection: profile.accent) {
-                    ForEach(WakeProfileAccent.allCases, id: \.self) { accent in
-                        Label {
-                            Text(accent.displayName)
-                        } icon: {
-                            Image(nsImage: WakeProfileAccentSwatch.image(for: accent))
-                                .renderingMode(.original)
-                        }
-                            .tag(accent)
-                    }
-                }
-                .labelsHidden()
-                .frame(width: 110)
-
-                Button(role: .destructive) {
-                    model.wakeProfiles.removeAll { $0.id == profile.wrappedValue.id }
-                } label: {
-                    Image(systemName: "trash")
-                }
-                .buttonStyle(.borderless)
-                .disabled(model.wakeProfiles.count == 1)
-                .help("Remove wake profile")
-            }
-
-            Picker(
-                "Target",
-                selection: Binding(
-                    get: { profile.wrappedValue.targetKind },
-                    set: { profile.wrappedValue.selectTarget($0) }))
-            {
-                Text("Command").tag(WakeProfileTargetKind.command)
-                Text("Agent").tag(WakeProfileTargetKind.agent)
-            }
-            .pickerStyle(.segmented)
-
-            switch profile.wrappedValue.targetKind {
-            case .command:
-                commandEditor(profile: profile)
-            case .agent:
-                AgentHarnessSettingsView(profile: profile)
-            }
-
-            Divider()
-
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Push to talk")
-                        .fontWeight(.medium)
-                    Text("Hold this shortcut to run this voice profile.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                HotKeyRecorderView(
-                    hotKey: profile.wrappedValue.pushToTalkHotKey,
-                    onChange: {
-                        model.setPushToTalkHotKey($0, for: profile.wrappedValue.id)
-                    },
-                    onClear: {
-                        model.setPushToTalkHotKey(nil, for: profile.wrappedValue.id)
-                    },
-                    onRecordingChange: model.setPushToTalkShortcutRecording)
-            }
-        }
-        .padding(13)
-        .background(.background.opacity(0.55), in: RoundedRectangle(cornerRadius: 10))
-    }
-
-    @ViewBuilder
-    private func commandEditor(profile: Binding<WakeProfileDraft>) -> some View {
-        settingsField(
-            "Executable",
-            hint: "/usr/bin/open",
-            text: profile.executablePath,
-            monospaced: true)
-
-        argumentEditor(
-            "Argument templates",
-            hint: "Argument containing {text} or {urlText}",
-            arguments: profile.commandArguments)
-
-        HStack(spacing: 6) {
-            templateToken("{urlText}")
-            Text("inserts URL-encoded speech")
-            Text("•")
-            templateToken("{text}")
-            Text("inserts literal speech")
-        }
-        .font(.caption)
-        .foregroundStyle(.secondary)
-    }
-
-    @ViewBuilder
-    private func argumentEditor(
-        _ title: String,
-        hint: String,
-        arguments: Binding<ArgumentDraftCollection>) -> some View
-    {
-        VStack(alignment: .leading, spacing: 7) {
-            Text(title)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-
-            ForEach(arguments.rows) { argument in
-                HStack(spacing: 6) {
-                    TextField(hint, text: argument.value)
-                        .font(.system(.body, design: .monospaced))
-                        .textFieldStyle(.roundedBorder)
-
-                    Button(role: .destructive) {
-                        arguments.wrappedValue.remove(id: argument.wrappedValue.id)
-                    } label: {
-                        Image(systemName: "minus.circle")
-                    }
-                    .buttonStyle(.borderless)
-                    .help("Remove argument")
-                }
-            }
-
-            Button {
-                arguments.wrappedValue.append()
-            } label: {
-                Label("Add argument", systemImage: "plus.circle")
-            }
-            .buttonStyle(.borderless)
-        }
-    }
-
     private var nextAccent: WakeProfileAccent {
         let accents = WakeProfileAccent.allCases
         return accents[model.wakeProfiles.count % accents.count]
-    }
-}
-
-private struct ElevenLabsVoiceCatalogQuery: Hashable {
-    let provider: String
-    let apiKey: String
-
-    init(provider: AgentSpeechProvider, apiKey: String) {
-        self.provider = provider.rawValue
-        self.apiKey = apiKey
     }
 }
 
@@ -617,29 +262,6 @@ extension WakeProfileAccent {
         case .pink: .pink
         case .orange: .orange
         case .green: .green
-        }
-    }
-}
-
-private extension AgentSpeechProvider {
-    var displayName: String {
-        switch self {
-        case .system: "macOS"
-        case .elevenLabs: "ElevenLabs"
-        }
-    }
-
-    var detail: String {
-        switch self {
-        case .system: "Uses the selected macOS system voice locally."
-        case .elevenLabs: "Uses a natural low-latency cloud voice."
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .system: "apple.logo"
-        case .elevenLabs: "waveform.badge.mic"
         }
     }
 }

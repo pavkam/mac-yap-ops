@@ -13,11 +13,25 @@ final class AgentSpeechSettingsState {
         elevenLabsAPIKey: String,
         elevenLabsVoiceID: String)
     {
+        let backendID: TextToSpeechBackendID = provider == .system ? .system : .elevenLabs
         self.elevenLabsAPIKey = elevenLabsAPIKey
         configuration = AgentSpeechConfiguration(
-            provider: provider,
-            elevenLabsAPIKey: elevenLabsAPIKey,
-            elevenLabsVoiceID: elevenLabsVoiceID)
+            selection: TextToSpeechVoiceSelection(
+                backendID: backendID,
+                voiceID: provider == .system ? nil : elevenLabsVoiceID),
+            credential: provider == .elevenLabs ? elevenLabsAPIKey : nil)
+    }
+
+    init(
+        defaultSelection: TextToSpeechVoiceSelection,
+        elevenLabsAPIKey: String
+    ) {
+        self.elevenLabsAPIKey = elevenLabsAPIKey
+        configuration = AgentSpeechConfiguration(
+            selection: defaultSelection,
+            credential: defaultSelection.backendID == .elevenLabs
+                ? elevenLabsAPIKey
+                : nil)
     }
 
     func update(
@@ -25,11 +39,22 @@ final class AgentSpeechSettingsState {
         elevenLabsAPIKey: String,
         elevenLabsVoiceID: String)
     {
+        let backendID: TextToSpeechBackendID = provider == .system ? .system : .elevenLabs
+        update(
+            defaultSelection: TextToSpeechVoiceSelection(
+                backendID: backendID,
+                voiceID: provider == .system ? nil : elevenLabsVoiceID),
+            elevenLabsAPIKey: elevenLabsAPIKey)
+    }
+
+    func update(
+        defaultSelection: TextToSpeechVoiceSelection,
+        elevenLabsAPIKey: String
+    ) {
         self.elevenLabsAPIKey = elevenLabsAPIKey
         configuration = AgentSpeechConfiguration(
-            provider: provider,
-            elevenLabsAPIKey: elevenLabsAPIKey,
-            elevenLabsVoiceID: elevenLabsVoiceID)
+            selection: defaultSelection,
+            credential: credential(for: defaultSelection.backendID))
     }
 
     func configuration(

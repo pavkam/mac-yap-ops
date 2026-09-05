@@ -155,6 +155,7 @@ extension AppModel {
         case workingDirectoryIsNotDirectory(String)
         case elevenLabsAPIKeyRequired
         case elevenLabsVoiceIDRequired
+        case textToSpeechBackendUnavailable(String)
 
         var errorDescription: String? {
             switch self {
@@ -168,6 +169,8 @@ extension AppModel {
                 "ElevenLabs requires an API key."
             case .elevenLabsVoiceIDRequired:
                 "ElevenLabs requires a voice ID."
+            case .textToSpeechBackendUnavailable(let id):
+                "The text-to-speech backend is unavailable: \(id)"
             }
         }
     }
