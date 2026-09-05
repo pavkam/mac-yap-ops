@@ -231,11 +231,12 @@ typed content that the provider emits through ACP.
 
 ## Protocol references
 
-- [ACP overview](https://agentclientprotocol.com/protocol/overview)
-- [ACP standard I/O transport](https://agentclientprotocol.com/protocol/transports)
-- [Prompt lifecycle](https://agentclientprotocol.com/protocol/prompt-turn)
+- [ACP overview](https://agentclientprotocol.com/protocol/v1/overview)
+- [ACP standard I/O transport](https://agentclientprotocol.com/protocol/v1/transports)
+- [Initialization](https://agentclientprotocol.com/protocol/v1/initialization)
+- [Prompt lifecycle](https://agentclientprotocol.com/protocol/v1/prompt-turn)
 - [Session setup](https://agentclientprotocol.com/protocol/v1/session-setup)
-- [Tool permissions](https://agentclientprotocol.com/protocol/tool-calls)
+- [Tool permissions](https://agentclientprotocol.com/protocol/v1/tool-calls)
 - [Cursor ACP server](https://prod.cursor.com/docs/cli/acp)
 - [Codex ACP adapter](https://github.com/agentclientprotocol/codex-acp)
 - [Claude ACP adapter](https://github.com/agentclientprotocol/claude-agent-acp)
