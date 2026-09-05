@@ -52,7 +52,7 @@ public enum MacContextPromptEncoder {
         var context = EncodedContext(snapshot: snapshot)
         while true {
             let encoder = JSONEncoder()
-            encoder.outputFormatting = [.sortedKeys]
+            encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
             let data = try encoder.encode(context)
             if data.count <= MacContextSnapshot.maximumEncodedBytes {
                 return (String(decoding: data, as: UTF8.self), context.resources)

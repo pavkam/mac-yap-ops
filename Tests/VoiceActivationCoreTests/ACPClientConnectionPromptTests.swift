@@ -179,9 +179,9 @@ extension ACPClientConnectionTests {
             $0.event == "acp_client.prompt_started"
         })
         #expect(entry.fields["request_byte_count"] == String(request.utf8.count))
-        #expect(Int(entry.fields["context_block_byte_count"] ?? "") ?? 0 > 0)
+        #expect(Int(entry.fields["mac_snapshot_block_byte_count"] ?? "") ?? 0 > 0)
         #expect(entry.fields["resource_link_count"] == "0")
-        #expect(entry.fields["content_block_count"] == "3")
+        #expect(entry.fields["block_count"] == "3")
         #expect(!entry.fields.values.contains { $0.contains(request) })
         #expect(!entry.fields.values.contains { $0.contains(selectedText) })
         await connection.close()

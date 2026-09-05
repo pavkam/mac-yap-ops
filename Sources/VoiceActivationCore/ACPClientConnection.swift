@@ -182,9 +182,9 @@ public actor ACPClientConnection {
             fields: [
                 "connection_id": connectionID.uuidString,
                 "request_byte_count": String(prompt.request.utf8.count),
-                "context_block_byte_count": String(contextBlockByteCount),
+                "mac_snapshot_block_byte_count": String(contextBlockByteCount),
                 "resource_link_count": String(resourceLinkCount),
-                "content_block_count": String(blocks.count),
+                "block_count": String(blocks.count),
                 "has_session": String(sessionID != nil),
             ])
         try ensureOpen()
