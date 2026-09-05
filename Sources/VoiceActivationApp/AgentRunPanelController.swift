@@ -13,7 +13,7 @@ final class AgentRunPanel: NSPanel {
 
 @MainActor
 final class AgentRunPanelController: AgentRunPanelDisplaying {
-    private let model = AgentRunPanelModel()
+    private let model: AgentRunPanelModel
     private let panel: AgentRunPanel
     private var currentRunID: UUID?
     private var placement = AgentRunPanelPlacement()
@@ -25,7 +25,10 @@ final class AgentRunPanelController: AgentRunPanelDisplaying {
 
     var panelForTesting: AgentRunPanel { panel }
 
-    init() {
+    init(previewLoader: any AgentArtifactPreviewLoading = SystemAgentArtifactPreviewLoader()) {
+        model = AgentRunPanelModel(
+            previewLoader: previewLoader,
+            previewScale: NSScreen.main?.backingScaleFactor ?? 2)
         panel = AgentRunPanel(
             contentRect: NSRect(origin: .zero, size: AgentRunPanelLayout.expandedSize),
             styleMask: [.borderless, .nonactivatingPanel],
