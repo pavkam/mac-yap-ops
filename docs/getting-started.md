@@ -5,6 +5,9 @@ SPDX-License-Identifier: MIT
 
 # Getting started
 
+Build Voice Activation, grant its macOS permissions, and run the default voice
+command. This is the shortest path from a clone to a working menu-bar app.
+
 ## Requirements
 
 - macOS 15 or later
@@ -27,115 +30,79 @@ make test
 make app
 ```
 
-The packaged application is written to:
-
-```text
-.build/VoiceActivation.app
-```
-
-Launch it with:
+The packaged application is written to `.build/VoiceActivation.app`. Launch it
+with:
 
 ```bash
 open .build/VoiceActivation.app
 ```
 
-Voice Activation is a menu-bar agent, so it does not appear in the Dock. Look
-for its status icon on the right side of the menu bar.
+Voice Activation has no Dock icon. Its status icon appears on the right side of
+the menu bar.
 
 ## Grant permissions
 
 The first voice action requests two macOS privacy permissions:
 
 1. Microphone access, to capture audio.
-2. Speech Recognition access, to transcribe that audio.
+2. Speech Recognition access, to transcribe audio.
 
-Both permissions are required. If either is denied, enable Voice Activation in
-the corresponding Privacy & Security section of System Settings, quit the app,
+Both are required. If either request is denied, enable Voice Activation in the
+corresponding **Privacy & Security** section of System Settings, quit the app,
 and launch it again.
 
 ## Run the first command
 
-The default configuration opens a Google search:
+The initial profile opens a Google search:
 
-1. Wait until the menu-bar status says **Ready**.
+1. Wait until the menu status says **Ready**.
 2. Say `computer`.
-3. When the recording overlay appears, say a search query. Partial command text
-   appears below its animated microphone.
-4. Stop speaking; the overlay closes and the command is submitted when
-   recognition finalizes or the transcript is unchanged for 1.5 seconds.
+3. When the recording overlay appears, speak a search query.
+4. Stop speaking and wait for the query to open in your browser.
 
-A short start sound confirms that capture began. A different end sound confirms
-that capture stopped, whether it submits, times out, or is cancelled.
+The overlay shows the newest recognized words without taking focus from the
+current app. A rising cue confirms that capture started; a descending cue marks
+the end of capture.
 
-Click the close button on the recording orb or choose **Cancel Recording** from
-the menu to discard the current capture without running its command.
-You can also say only `cancel`, `stop`, or `dismiss`. Repeat the same word twice
-to cancel immediately without waiting for speech recognition to finalize.
+To discard the current capture, select its close button, choose **Cancel
+Recording** from the menu, or say only `cancel`, `stop`, or `dismiss`.
 
-You can also hold a profile’s push-to-talk shortcut shown in the menu, speak
-without a wake phrase, and release the keys to submit through that profile. The
-first profile defaults to Control-Option-Space. Assign or remove a binding inside
-each profile card in Settings, then select **Save Settings**.
+## Try push-to-talk
 
-## Development signing
+The first profile starts with Control-Option-Space. Hold the shortcut, speak
+without the wake phrase, and release it to submit through that profile. Saved
+shortcuts appear next to their profiles in the menu.
 
-`make app` uses an ad-hoc signature by default. macOS may request privacy access
-again after the executable changes. To sign with an installed identity:
+See [Wake profiles](wake-profiles.md) to change wake phrases, shortcuts, and
+capture behavior.
+
+## Use a stable development build
+
+`make app` uses an ad-hoc signature by default. macOS may ask for privacy access
+again when that executable changes. For regular use, sign with an installed
+development identity and move the resulting app to `/Applications`:
 
 ```bash
 SIGN_IDENTITY="Apple Development: Your Name (TEAMID)" make app
 ```
 
-For regular use, move the completed app bundle to `/Applications` in Finder and
-launch that stable copy instead of rebuilding it in place. You can then enable
-**Launch at Login** in Settings without registering a disposable build path.
+See [Packaging](packaging.md) for bundle, signing, verification, installation,
+and Launch at Login details.
 
-## Run a local coding agent
+## Start a local coding agent
 
-Install and authenticate a supported ACP provider first. Then open
-**Settings…**, edit a wake profile, and:
+Install and authenticate a supported Agent Client Protocol (ACP) provider, then
+change a profile's **Target** to **Agent** in Settings. Choose the provider,
+confirm its executable and working folder, select a permission policy, and save.
 
-1. Change **Target** from **Command** to **Agent**.
-2. Choose Cursor, Codex, Claude, or Custom.
-3. Confirm the detected absolute executable path and choose an absolute working
-   folder.
-4. Choose the default permission level for this wake profile. **Ask every time**
-   keeps each decision interactive; scoped allow and deny defaults resolve the
-   corresponding ACP option automatically.
-5. Optionally add a system prompt that customizes the agent's response style and
-   priorities for this profile.
-6. Select **Save Settings**.
+The first agent request opens a non-activating conversation panel and keeps the
+microphone available for follow-ups. Continue with [Agent providers](agent-providers.md)
+for setup and [Agent conversations](agent-conversations.md) for the interaction
+model.
 
-Trigger that phrase and speak the task. The recording overlay morphs into a
-non-activating agent panel that streams an ordered Markdown response while your
-current app keeps keyboard focus. Running tools use animated compact rows;
-finished tools and answered permission prompts collapse out of the way, with
-tool details still expandable. Completed output remains available to select or
-copy. Drag the panel by its provider header to move it, or use the minus button
-to animate it into a movable always-on-top status pill at the top-right below
-the menu bar; the arrow button restores the full conversation to its saved
-pre-minimize location. The microphone remains active after each response and during spoken
-narration. Speaking interrupts narration and becomes the next request after the
-normal final-result or inactivity boundary. Say
-`stop`, `cancel`, or `dismiss` to end the whole conversation, including active
-work. The panel and menu also provide separate **Stop turn** and **End
-conversation** controls. When a tool requests permission, say `allow`, `allow
-all`, `deny`, or `deny all` to answer it by voice; the request collapses after
-the decision is sent.
+## Related guides
 
-Agent conversation settings can read replies aloud while they stream through a
-macOS or ElevenLabs voice and play a quiet, narration-aware pulse immediately
-when work begins and during longer thinking or tool pauses. ElevenLabs voices
-load from the API and can be previewed
-with **Test voice**; the optional key is stored in macOS Keychain.
-
-Each turn shows one expandable **Thinking** card. It appears during provider
-startup, collects reasoning and tool calls, and collapses when the next answer
-arrives. The built-in prompt asks agents to keep progress updates brief; the
-full technical stream remains available inside that card.
-
-Provider credentials remain in the provider's own CLI configuration; Voice
-Activation does not ask for or persist them. Continue with the
-[ACP agent harness guide](agent-harness.md).
-
-Next: [configure wake profiles and capture behavior](configuration.md).
+- [Configuration reference](configuration.md)
+- [Wake profiles](wake-profiles.md)
+- [Command targets](command-targets.md)
+- [Troubleshooting](troubleshooting.md)

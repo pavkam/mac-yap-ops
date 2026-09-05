@@ -3,191 +3,108 @@ SPDX-FileCopyrightText: 2026 Alexandru Ciobanu (alex+git@ciobanu.org)
 SPDX-License-Identifier: MIT
 -->
 
-# Configuration
+# Configuration reference
 
-Open the menu-bar item and choose **Settings…**. Wake-profile, locale, and
-push-to-talk changes take effect after you select **Save Settings**. Changes to
-**Launch at Login** apply immediately. A successful save closes the Settings
-window; validation errors keep it open so the invalid field can be corrected.
+Use this reference to check saved defaults, field meanings, and validation.
+Open **Settings…** from the menu-bar panel to edit the configuration.
 
-## Voice settings
+## When changes take effect
 
-- **Wake profiles:** each profile has a wake phrase, run target, and presentation
-  color. Add or remove profiles as needed. Phrases must be unique after the same
-  case, width, accent, punctuation, and symbol normalization used by matching,
-  contain at least one spoken letter or number, and occur at the beginning of
-  the recognized utterance. Runs of whitespace are normalized to one space and
-  invisible control or format marks are removed when saved. If phrases overlap,
-  the longest match wins. The menu-bar menu has a separate persistent toggle for
-  every saved phrase. Disabled phrases are excluded from recognition
-  without affecting the other profiles. Use **Pause all** in the same menu to
-  stop passive recognition without changing those per-profile choices; use
-  **Resume all** to restore listening for the previously enabled phrases.
-- **Speech locale:** defaults to the current macOS locale and accepts an Apple
-  locale identifier such as `en-US` or `pt-PT`.
-- **Always listen:** enabled by default and keeps an on-device recognition
-  session active for every enabled wake phrase.
-- **Push to talk:** each wake profile may have its own shortcut. Holding a
-  profile’s binding captures speech without requiring its wake phrase, then runs
-  that profile’s target and uses its presentation color. Click **Set shortcut**,
-  then press a combination containing Control, Option, Shift, or Command plus
-  another key.
-  Press Escape to cancel recording, or select **Save Settings** to apply every
-  recorded binding. Assigned bindings must be unique. If another application owns
-  a combination, Voice Activation restores the previous saved bindings and reports
-  the conflict. Press and release events retain the profile identity, including
-  while macOS permission prompts are pending, so one profile cannot release or
-  start another profile's capture.
+Profile, locale, shortcut, and conversation-audio edits take effect only after
+**Save Settings** succeeds. A successful save closes Settings and restarts the
+affected runtime boundaries. A validation error keeps the window open and shows
+the field that needs attention.
 
-A wake phrase must be enabled and end at a word boundary. `computer, open calendar`
-matches; `supercomputer open calendar` does not. A profile’s push-to-talk binding
-remains available when that profile’s passive wake phrase or all passive listening
-is disabled. Punctuation-only and symbol-only phrases are rejected because Apple
-Speech cannot produce a triggerable spoken match for them.
+**Launch at Login** is different: macOS owns that registration and changes it
+immediately, without waiting for **Save Settings**.
 
-Passive recognition fails closed when the selected locale does not support
-on-device recognition. Command capture and push-to-talk may use Apple's speech
-service when on-device recognition is unavailable.
+## Voice and application settings
 
-## Agent conversation audio
+| Setting | Initial value | Behavior |
+| --- | --- | --- |
+| Always listen | On | Runs passive wake recognition when at least one profile is enabled. |
+| Speech locale | Current macOS locale | Selects the Apple Speech recognizer and matching system voice. |
+| Read replies aloud | On | Queues user-facing agent output for speech. |
+| Voice provider | macOS | Uses the matching system voice unless ElevenLabs is selected. |
+| Agent activity sounds | On | Plays bounded thinking and tool-transition cues. |
+| Launch at Login | Off in a fresh macOS registration | Registers the current bundle through Service Management. |
 
-- **Read replies aloud:** enabled by default. Voice Activation removes Markdown
-  formatting and queues complete sentences while the agent is still generating
-  them. Incomplete text is queued no later than 350 milliseconds after its first
-  buffered fragment, even while output continues, and any remainder is queued
-  when the turn ends. Code blocks are not read character by character.
-- **Voice provider:** choose the local macOS system voice or ElevenLabs. The
-  ElevenLabs option loads available voices from the account after an API key is
-  entered. Select a named voice and use **Test voice** to generate a short
-  preview before saving. If the catalog cannot be loaded, enter a Voice ID
-  manually. The API key stays in macOS Keychain, never `UserDefaults` or project
-  files. Synthesized response text is sent to ElevenLabs; a failed request falls
-  back to the configured macOS voice so the reply does not disappear silently.
-- **Agent activity sounds:** enabled by default. A thinking cue begins after a
-  short silent delay and repeats while the agent remains busy. Distinct
-  one-shots announce tool start, completion, and failure without replaying
-  duplicate provider updates. The thinking cue stops when permission input is
-  needed, speech is playing, or the turn ends. Choosing a permission option
-  starts its delay again while the agent resumes.
+ElevenLabs configuration includes an account API key and voice selection. The
+key is stored in macOS Keychain. The selected provider and Voice ID are saved in
+preferences. See [Agent conversations](agent-conversations.md) for playback and
+fallback behavior.
 
-These are saved settings: editing a toggle, provider, Voice ID, or API key does
-not affect an active conversation until **Save Settings** succeeds.
-
-## Application settings
-
-Enable **Launch at Login** to register the current app bundle as a macOS login
-item. The change applies immediately and does not depend on **Save Settings**.
-
-macOS remains the source of truth for this option. You can also inspect or
-change it under **System Settings › General › Login Items**. Install a stable,
-signed copy of Voice Activation in `/Applications` before enabling it; a login
-item that points into `.build` will stop working when that bundle is replaced
-or removed.
-
-## Run targets
-
-Each profile independently selects one target:
-
-- **Command** launches an absolute executable with explicit argument templates.
-- **Agent** starts an ACP v1 provider process, sends the transcript as a prompt,
-  and streams its observable output into the floating agent panel.
-
-### Command targets
-
-Every command target must contain a transcript placeholder in at least one
-argument. The default target opens the resulting URL with `/usr/bin/open`.
-
-| Placeholder | Expansion |
-| --- | --- |
-| `{text}` | Inserts the transcript literally into the argument. |
-| `{urlText}` | Inserts an RFC 3986 percent-encoded query value. |
-
-Voice Activation starts `/usr/bin/open` directly with `Process`. It never sends
-the command through a shell.
-
-### Open a search URL
-
-```text
-Wake phrase: search
-URL:
-https://www.google.com/search?q={urlText}
-```
-
-### Open a custom URL scheme
-
-```text
-Wake phrase: ask assistant
-URL:
-my-app://command?prompt={urlText}
-```
-
-### Agent targets
-
-Choose one of the provider presets or **Custom**. A preset fills editable
-defaults; a fresh Agent target selects the first available preset automatically.
-Use **Detect** to resolve a command name from the app's inherited `PATH` and
-known install locations, or use the file button to choose it directly. The saved
-absolute executable and argument list remain authoritative. Finder-launched apps
-do not inherit an interactive shell's complete `PATH`, so the detector also
-checks common Homebrew, local, ChatGPT, and NVM locations.
+## Wake-profile fields
 
 | Field | Meaning |
 | --- | --- |
-| Provider | Cursor, Codex, Claude, or Custom ACP v1 process. |
-| Display name | Label shown in the menu and floating run panel. |
-| Executable | Detected command or absolute ACP process path. |
-| Working folder | Absolute project directory supplied to `session/new`. |
-| Permission policy | Default ACP response: ask, scoped allow, or scoped deny. |
-| System prompt | Optional profile instructions; Codex receives them as developer instructions, while ACP providers without a system-role extension receive them before each request. The app also supplies its concise Markdown progress contract. |
-| Adapter arguments | Direct process arguments; no shell parsing occurs. |
+| Enabled | Includes the phrase in passive wake recognition. |
+| Wake phrase | Phrase that must begin a recognized utterance. |
+| Target | Direct command or ACP agent. |
+| Accent | Color used in menu, capture, and conversation presentation. |
+| Push-to-talk | Optional profile-specific global shortcut. |
 
-The Cursor preset uses `cursor-agent acp`. Codex and Claude use pinned ACP
-adapter package versions through `npx`. Authenticate with the corresponding
-provider CLI before triggering the profile. Voice Activation inherits the
-launch environment and never persists agent API keys. The independent optional
-ElevenLabs speech key is stored only in macOS Keychain.
+The initial profile is enabled, blue, and named `computer`. It opens a Google
+search and receives Control-Option-Space during first-run preference migration.
+See [Wake profiles](wake-profiles.md) for matching, enablement, shortcuts, and
+capture timing.
 
-See [ACP agent harness](agent-harness.md) for streaming, cancellation,
-permissions, safety bounds, and provider lifecycle behavior.
+## Command-target fields
 
-An agent target stays in conversation mode after its first response. Speak a
-follow-up normally or use that profile's push-to-talk binding; every turn uses
-the same ACP session. A follow-up spoken while the agent is still working
-cancels the current turn before it starts. Say only `cancel`, `stop`, or
-`dismiss` to end the whole conversation immediately, or choose **End
-conversation** in the panel or menu. **Stop turn** remains available when only
-the current agent turn should be cancelled. When a permission request is
-visible, say only `allow`, `allow all`, `deny`, or `deny all` to resolve the
-oldest request. Longer phrases remain normal follow-ups.
+| Field | Meaning |
+| --- | --- |
+| Executable | Absolute path launched directly with `Foundation.Process`. |
+| Argument templates | Ordered arguments; at least one must contain `{text}` or `{urlText}`. |
 
-## Capture timing
+The initial executable is `/usr/bin/open` and its argument is
+`https://www.google.com/search?q={urlText}`. See
+[Command targets](command-targets.md) for expansion and examples.
 
-- A compact recording orb appears near the bottom center of the active screen
-  while command capture or push-to-talk is active. It expands into a
-  translucent live-transcript capsule with a continuous morph after words
-  arrive. Long transcripts rotate out their oldest words so the newest speech
-  remains visible. The overlay never takes keyboard focus from the current app.
-  The capsule is clipped to its visible border without an outer shadow gutter.
-  Click its close button to discard the current capture.
-- The orb and capsule use the matched profile's accent color. Distinct sounds
-  play once when capture starts and once when it leaves capture for any reason.
-- A wake phrase recognized by itself starts a fresh command-capture session,
-  allowing a natural pause before the command. A brief grace period preserves
-  command words spoken in the same utterance; otherwise the dedicated listener
-  starts well before Apple's wake utterance would time out and remains available
-  throughout the five-second initial-silence window.
-- A completed command consisting only of `cancel`, `stop`, or `dismiss`
-  discards the capture. Repeating the same cancellation word twice in a row
-  discards it immediately, including while recognition is still partial. A
-  longer command such as `stop the music` runs normally.
-- After command text arrives, 1.5 seconds without a transcript change submits
-  the best transcription.
-- Capture without any command text returns to passive listening after 5
-  seconds. Active dictation has a 30-second absolute maximum.
-- Successful commands return to passive listening after a 250-millisecond
-  cooldown.
-- Disabling every wake profile stops passive microphone capture even when the
-  global **Always listen** preference remains enabled. Enabling any profile
-  starts passive capture again. Profile push-to-talk shortcuts remain available.
+## Agent-target fields
 
-Next: [understand the runtime architecture](architecture.md).
+| Field | Meaning |
+| --- | --- |
+| Provider | Cursor, Codex, Claude, or a custom ACP v1 process. |
+| Display name | Label shown in the menu and conversation panel. |
+| Executable | Detected command or absolute provider-process path. |
+| Working folder | Absolute project directory sent during ACP session creation. |
+| Permission policy | Ask, scoped allow, or scoped deny behavior. |
+| System prompt | Optional profile instructions, limited to 8 KiB of UTF-8. |
+| Adapter arguments | Explicit provider-process arguments with no shell parsing. |
+
+See [Agent providers](agent-providers.md) for setup and authentication. See
+[ACP agent harness](agent-harness.md) for the wire and lifecycle contract.
+
+## Validation summary
+
+A valid saved configuration has:
+
+- at least one profile;
+- a phrase containing a spoken letter or number for every profile;
+- wake phrases that remain unique after canonical normalization;
+- unique physical push-to-talk bindings;
+- a command executable with an absolute path and a transcript placeholder; and
+- an agent display name, absolute executable, absolute working folder, and
+  bounded system prompt.
+
+If shortcut registration fails because another application owns a combination,
+Voice Activation restores the previously saved binding set.
+
+## Persistence and credentials
+
+Profiles, locale, audio choices, provider selection, Voice ID, and agent system
+prompts are stored in the app's `UserDefaults` domain. Provider authentication
+stays in each provider CLI. The optional ElevenLabs API key is stored only as a
+generic password in macOS Keychain.
+
+Voice Activation does not persist conversation prompts, agent output, raw tool
+payloads, or audio. See [Privacy and security](privacy-and-security.md) for the
+complete data and retention boundary.
+
+## Related guides
+
+- [Getting started](getting-started.md)
+- [Wake profiles](wake-profiles.md)
+- [Command targets](command-targets.md)
+- [Agent providers](agent-providers.md)
+- [Privacy and security](privacy-and-security.md)
