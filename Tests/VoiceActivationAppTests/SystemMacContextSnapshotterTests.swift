@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Alexandru Ciobanu (alex+git@ciobanu.org)
 // SPDX-License-Identifier: MIT
 
+import ApplicationServices
 import Foundation
 import Testing
 import VoiceActivationCore
@@ -94,6 +95,46 @@ struct SystemMacContextSnapshotterTests {
         #expect(snapshot.selectedText == nil)
     }
 
+    @MainActor @Test func capture_WhenAXFailureContainsOnlyUnsafeURLs_RemainsFailed()
+        async
+    {
+        let target = MacContextTarget.editor
+        let subject = SystemMacContextSnapshotter(
+            workspace: WorkspaceReaderStub(target: target),
+            accessibility: AccessibilityReaderStub(result: .init(
+                status: .failed,
+                documentURL: "javascript:private()",
+                resources: [
+                    .init(uri: "relative/private.txt", name: "private.txt"),
+                ])))
+
+        let snapshot = await subject.capture(target)
+
+        #expect(snapshot.captureState == .accessibilityFailed)
+        #expect(snapshot.documentURL == nil)
+        #expect(snapshot.resources.isEmpty)
+    }
+
+    @MainActor @Test func capture_WhenAXFailureContainsOneValidField_PreservesNormalizedPartial()
+        async
+    {
+        let target = MacContextTarget.editor
+        let subject = SystemMacContextSnapshotter(
+            workspace: WorkspaceReaderStub(target: target),
+            accessibility: AccessibilityReaderStub(result: .init(
+                status: .failed,
+                documentURL: "javascript:private()",
+                resources: [
+                    .init(uri: "file:///tmp/useful.txt", name: "useful.txt"),
+                ])))
+
+        let snapshot = await subject.capture(target)
+
+        #expect(snapshot.captureState == .complete)
+        #expect(snapshot.documentURL == nil)
+        #expect(snapshot.resources.map(\.uri) == ["file:///tmp/useful.txt"])
+    }
+
     @MainActor @Test func capture_WhenResourceURLsRepeat_KeepsFirstNormalizedOccurrence()
         async
     {
@@ -136,21 +177,22 @@ struct SystemMacContextSnapshotterTests {
         async
     {
         let target = MacContextTarget.editor
-        let accessibility = ControlledAccessibilityReader(
-            result: .init(status: .complete, selectedText: "too late"))
+        let accessibility = CountingAccessibilityReader()
+        let executor = ControlledMacContextExecutor()
         let subject = SystemMacContextSnapshotter(
             workspace: WorkspaceReaderStub(target: target),
             accessibility: accessibility,
+            executor: executor,
             clock: ImmediateMacContextClock())
 
         let snapshot = await subject.capture(target)
+        executor.runNext()
 
         #expect(snapshot.captureState == .timedOut)
         #expect(snapshot.applicationName == "Editor")
         #expect(snapshot.bundleIdentifier == "com.example.Editor")
         #expect(snapshot.selectedText == nil)
-        await accessibility.waitUntilStarted()
-        accessibility.release()
+        #expect(accessibility.readCount == 0)
     }
 
     @MainActor @Test func capture_WhenTimedOutWorkerFinishesLate_DoesNotCrossApplyResult()
@@ -188,6 +230,26 @@ struct SystemMacContextSnapshotterTests {
         #expect(current.selectedText == "current browser selection")
     }
 
+    @MainActor @Test func capture_WhenCancelledBeforeWorkerStarts_NeverReadsAccessibility()
+        async
+    {
+        let accessibility = CountingAccessibilityReader()
+        let executor = ControlledMacContextExecutor()
+        let subject = SystemMacContextSnapshotter(
+            workspace: WorkspaceReaderStub(target: .editor),
+            accessibility: accessibility,
+            executor: executor)
+
+        let capture = Task { await subject.capture(.editor) }
+        await executor.waitForOperationCount(1)
+        capture.cancel()
+        let snapshot = await capture.value
+        executor.runNext()
+
+        #expect(snapshot.captureState == .timedOut)
+        #expect(accessibility.readCount == 0)
+    }
+
     @Test func executor_WhenOperationsRun_UsesOneDedicatedSerialQueue() async {
         let executor = SerialMacContextExecutor(
             label: "dev.alex.voice-activation.tests.mac-context")
@@ -204,6 +266,57 @@ struct SystemMacContextSnapshotterTests {
         }
 
         #expect(observations.values == [true, true])
+    }
+
+    @Test func accessibilityReader_WhenMessagingTimeoutFails_AbortsBeforeAttributeIPC() {
+        let native = NativeAccessibilityFake(
+            processExists: [true, true],
+            timeoutError: .cannotComplete)
+        let subject = SystemAccessibilityContextReader(native: native)
+
+        let result = subject.readContext(processIdentifier: 42)
+
+        #expect(result.status == .failed)
+        #expect(native.attributeReadCount == 0)
+    }
+
+    @Test func accessibilityReader_WhenTimeoutFailsAfterTargetExits_ReturnsUnavailable() {
+        let native = NativeAccessibilityFake(
+            processExists: [true, false],
+            timeoutError: .invalidUIElement)
+        let subject = SystemAccessibilityContextReader(native: native)
+
+        let result = subject.readContext(processIdentifier: 42)
+
+        #expect(result.status == .targetUnavailable)
+        #expect(native.attributeReadCount == 0)
+    }
+
+    @Test func accessibilityReader_WhenTimeoutReportsAPIDisabled_ReturnsNotAuthorized() {
+        let native = NativeAccessibilityFake(
+            processExists: [true],
+            timeoutError: .apiDisabled)
+        let subject = SystemAccessibilityContextReader(native: native)
+
+        let result = subject.readContext(processIdentifier: 42)
+
+        #expect(result.status == .notAuthorized)
+        #expect(native.attributeReadCount == 0)
+    }
+
+    @Test func accessibilityReader_WhenSelectionIsLarge_ReadsChildrenThenOnlyEnoughRows() {
+        let native = NativeAccessibilityFake(
+            processExists: [true],
+            selectedChildCount: 3,
+            selectedRowCount: 64)
+        let subject = SystemAccessibilityContextReader(native: native)
+
+        let result = subject.readContext(processIdentifier: 42)
+
+        let expected = (0..<3).map { "child-\($0)" } + (0..<5).map { "row-\($0)" }
+        #expect(result.resources.map(\.name) == expected)
+        #expect(native.resourceReadOrder == expected)
+        #expect(native.resourceReadCount == 8)
     }
 }
 
@@ -228,6 +341,58 @@ private struct AccessibilityReaderStub: AccessibilityContextReading {
 
     func readContext(processIdentifier: Int32) -> AccessibilityContextReadResult {
         result
+    }
+}
+
+private final class CountingAccessibilityReader: AccessibilityContextReading, @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    var readCount: Int {
+        lock.withLock { count }
+    }
+
+    func readContext(processIdentifier: Int32) -> AccessibilityContextReadResult {
+        lock.withLock { count += 1 }
+        return .init(status: .complete)
+    }
+}
+
+private final class ControlledMacContextExecutor: MacContextExecuting, @unchecked Sendable {
+    private let lock = NSLock()
+    private var operations: [@Sendable () -> Void] = []
+    private var countWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func execute(_ operation: @escaping @Sendable () -> Void) {
+        let waiters = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+            operations.append(operation)
+            let waiters = countWaiters
+            countWaiters.removeAll()
+            return waiters
+        }
+        for waiter in waiters {
+            waiter.resume()
+        }
+    }
+
+    func waitForOperationCount(_ count: Int) async {
+        await withCheckedContinuation { continuation in
+            let shouldResume = lock.withLock { () -> Bool in
+                guard operations.count < count else {
+                    return true
+                }
+                countWaiters.append(continuation)
+                return false
+            }
+            if shouldResume {
+                continuation.resume()
+            }
+        }
+    }
+
+    func runNext() {
+        let operation = lock.withLock { operations.isEmpty ? nil : operations.removeFirst() }
+        operation?()
     }
 }
 
@@ -328,5 +493,123 @@ private final class SerialExecutionObservations: @unchecked Sendable {
 
     func record(_ value: Bool) {
         lock.withLock { storage.append(value) }
+    }
+}
+
+private final class NativeAccessibilityFake: AccessibilityNativeReading, @unchecked Sendable {
+    private let lock = NSLock()
+    private let application = AXUIElementCreateApplication(9_001)
+    private let window = AXUIElementCreateApplication(9_002)
+    private let focusedElement = AXUIElementCreateApplication(9_003)
+    private let timeoutError: AXError
+    private var processExistence: [Bool]
+    private var resourceNamesByElement: [ObjectIdentifier: String] = [:]
+    private var selectedChildren: [AXUIElement] = []
+    private var selectedRows: [AXUIElement] = []
+    private var attributeReads = 0
+    private var recordedResourceReadOrder: [String] = []
+
+    init(
+        processExists: [Bool],
+        timeoutError: AXError = .success,
+        selectedChildCount: Int = 0,
+        selectedRowCount: Int = 0
+    ) {
+        processExistence = processExists
+        self.timeoutError = timeoutError
+        for index in 0..<selectedChildCount {
+            let element = AXUIElementCreateApplication(Int32(10_000 + index))
+            selectedChildren.append(element)
+            resourceNamesByElement[ObjectIdentifier(element)] = "child-\(index)"
+        }
+        for index in 0..<selectedRowCount {
+            let element = AXUIElementCreateApplication(Int32(20_000 + index))
+            selectedRows.append(element)
+            resourceNamesByElement[ObjectIdentifier(element)] = "row-\(index)"
+        }
+    }
+
+    var attributeReadCount: Int {
+        lock.withLock { attributeReads }
+    }
+
+    var resourceReadOrder: [String] {
+        lock.withLock { recordedResourceReadOrder }
+    }
+
+    var resourceReadCount: Int {
+        resourceReadOrder.count
+    }
+
+    func isProcessTrusted() -> Bool {
+        true
+    }
+
+    func processExists(_ processIdentifier: Int32) -> Bool {
+        lock.withLock {
+            guard !processExistence.isEmpty else {
+                return true
+            }
+            return processExistence.removeFirst()
+        }
+    }
+
+    func applicationElement(processIdentifier: Int32) -> AXUIElement {
+        application
+    }
+
+    func setMessagingTimeout(_ timeout: Float, for element: AXUIElement) -> AXError {
+        timeoutError
+    }
+
+    func copyElementAttribute(
+        _ attribute: CFString,
+        from element: AXUIElement
+    ) -> ElementRead {
+        lock.withLock { attributeReads += 1 }
+        if attribute as String == kAXFocusedWindowAttribute {
+            return ElementRead(element: window, error: .success)
+        }
+        if attribute as String == kAXFocusedUIElementAttribute {
+            return ElementRead(element: focusedElement, error: .success)
+        }
+        return ElementRead(element: nil, error: .attributeUnsupported)
+    }
+
+    func copyMultiple(
+        _ attributes: [CFString],
+        from element: AXUIElement
+    ) -> MultipleRead {
+        lock.withLock { attributeReads += 1 }
+        if element === window {
+            return MultipleRead(
+                values: [NSNull(), NSNull()],
+                error: .success,
+                containsValueFailure: false)
+        }
+        if element === focusedElement {
+            return MultipleRead(
+                values: [
+                    NSNull(),
+                    NSNull(),
+                    NSNull(),
+                    selectedChildren as NSArray,
+                    selectedRows as NSArray,
+                ],
+                error: .success,
+                containsValueFailure: false)
+        }
+        guard let name = resourceNamesByElement[ObjectIdentifier(element)] else {
+            return MultipleRead(values: [], error: .invalidUIElement, containsValueFailure: false)
+        }
+        lock.withLock { recordedResourceReadOrder.append(name) }
+        return MultipleRead(
+            values: [
+                "file:///tmp/\(name).txt" as NSString,
+                name as NSString,
+                NSNull(),
+            ],
+            error: .success,
+            containsValueFailure: false)
     }
 }

@@ -52,10 +52,6 @@ struct AccessibilityContextReadResult: Sendable {
         self.selectedText = selectedText
         self.resources = resources
     }
-
-    var hasUsefulContext: Bool {
-        windowTitle != nil || documentURL != nil || selectedText != nil || !resources.isEmpty
-    }
 }
 
 protocol AccessibilityContextReading: Sendable {
@@ -76,6 +72,8 @@ protocol MacContextExecuting: Sendable {
     func execute(_ operation: @escaping @Sendable () -> Void)
 }
 
+// Safety: the queue and its specific key are immutable after initialization, and the serial
+// DispatchQueue owns all submitted operation ordering.
 final class SerialMacContextExecutor: MacContextExecuting, @unchecked Sendable {
     private let queueKey = DispatchSpecificKey<UInt8>()
     private let queue: DispatchQueue
@@ -146,6 +144,9 @@ final class SystemMacContextSnapshotter: MacContextCapturing {
                 settlement.attachDeadlineTask(deadlineTask)
 
                 executor.execute {
+                    guard settlement.isActive(captureID: captureID) else {
+                        return
+                    }
                     let result = accessibility.readContext(
                         processIdentifier: target.processIdentifier)
                     let snapshot = Self.snapshot(target: target, result: result)
@@ -162,36 +163,65 @@ final class SystemMacContextSnapshotter: MacContextCapturing {
         result: AccessibilityContextReadResult,
         overridingState: MacContextCaptureState? = nil
     ) -> MacContextSnapshot {
-        let state: MacContextCaptureState
         if let overridingState {
-            state = overridingState
-        } else {
-            state = switch result.status {
-            case .complete:
-                .complete
-            case .notAuthorized:
-                .accessibilityNotAuthorized
-            case .targetUnavailable:
-                .targetUnavailable
-            case .failed where result.hasUsefulContext:
-                .complete
-            case .failed:
-                .accessibilityFailed
-            }
+            return Self.appOnlySnapshot(state: overridingState, target: target)
         }
-        let includesNativeContext = overridingState == nil
-            && (result.status == .complete
-                || (result.status == .failed && result.hasUsefulContext))
-        return MacContextSnapshot.normalized(
+        switch result.status {
+        case .notAuthorized:
+            return Self.appOnlySnapshot(state: .accessibilityNotAuthorized, target: target)
+        case .targetUnavailable:
+            return Self.appOnlySnapshot(state: .targetUnavailable, target: target)
+        case .complete:
+            return Self.normalizedSnapshot(state: .complete, target: target, result: result)
+        case .failed:
+            let candidate = Self.normalizedSnapshot(
+                state: .accessibilityFailed,
+                target: target,
+                result: result)
+            guard Self.hasUsefulContext(candidate) else {
+                return Self.appOnlySnapshot(state: .accessibilityFailed, target: target)
+            }
+            return Self.normalizedSnapshot(state: .complete, target: target, result: result)
+        }
+    }
+
+    nonisolated private static func normalizedSnapshot(
+        state: MacContextCaptureState,
+        target: MacContextTarget,
+        result: AccessibilityContextReadResult
+    ) -> MacContextSnapshot {
+        MacContextSnapshot.normalized(
             state: state,
             target: target,
-            windowTitle: includesNativeContext ? result.windowTitle : nil,
-            documentURL: includesNativeContext ? result.documentURL : nil,
-            selectedText: includesNativeContext ? result.selectedText : nil,
-            resources: includesNativeContext ? result.resources : [])
+            windowTitle: result.windowTitle,
+            documentURL: result.documentURL,
+            selectedText: result.selectedText,
+            resources: result.resources)
+    }
+
+    nonisolated private static func appOnlySnapshot(
+        state: MacContextCaptureState,
+        target: MacContextTarget
+    ) -> MacContextSnapshot {
+        MacContextSnapshot.normalized(
+            state: state,
+            target: target,
+            windowTitle: nil,
+            documentURL: nil,
+            selectedText: nil,
+            resources: [])
+    }
+
+    nonisolated private static func hasUsefulContext(_ snapshot: MacContextSnapshot) -> Bool {
+        snapshot.windowTitle?.isEmpty == false
+            || snapshot.documentURL != nil
+            || snapshot.selectedText?.isEmpty == false
+            || !snapshot.resources.isEmpty
     }
 }
 
+// Safety: every mutable field is protected by `lock`; continuations and task cancellation are
+// invoked only after releasing it, and the UUID rejects every callback after first settlement.
 private final class MacContextCaptureSettlement: @unchecked Sendable {
     private let lock = NSLock()
     private let cancellationSnapshot: MacContextSnapshot
@@ -232,6 +262,10 @@ private final class MacContextCaptureSettlement: @unchecked Sendable {
         }
     }
 
+    func isActive(captureID: UUID) -> Bool {
+        lock.withLock { activeCaptureID == captureID }
+    }
+
     func settle(captureID: UUID, snapshot: MacContextSnapshot) {
         let settled = lock.withLock {
             settlement(captureID: captureID, snapshot: snapshot)
@@ -266,31 +300,48 @@ private final class MacContextCaptureSettlement: @unchecked Sendable {
     }
 }
 
+protocol AccessibilityNativeReading: Sendable {
+    func isProcessTrusted() -> Bool
+    func processExists(_ processIdentifier: Int32) -> Bool
+    func applicationElement(processIdentifier: Int32) -> AXUIElement
+    func setMessagingTimeout(_ timeout: Float, for element: AXUIElement) -> AXError
+    func copyElementAttribute(_ attribute: CFString, from element: AXUIElement) -> ElementRead
+    func copyMultiple(_ attributes: [CFString], from element: AXUIElement) -> MultipleRead
+}
+
 struct SystemAccessibilityContextReader: AccessibilityContextReading {
     private static let messagingTimeout: Float = 0.1
     private static let maximumSelectedElements = MacContextSnapshot.maximumResources
+    private let native: any AccessibilityNativeReading
+
+    init(native: any AccessibilityNativeReading = SystemAccessibilityNativeReader()) {
+        self.native = native
+    }
 
     func readContext(processIdentifier: Int32) -> AccessibilityContextReadResult {
-        guard AXIsProcessTrusted() else {
+        guard native.isProcessTrusted() else {
             return .init(status: .notAuthorized)
         }
-        guard Self.processExists(processIdentifier) else {
+        guard native.processExists(processIdentifier) else {
             return .init(status: .targetUnavailable)
         }
 
-        let application = AXUIElementCreateApplication(processIdentifier)
-        let timeoutError = AXUIElementSetMessagingTimeout(
-            application,
-            Self.messagingTimeout)
+        let application = native.applicationElement(processIdentifier: processIdentifier)
+        let timeoutError = native.setMessagingTimeout(Self.messagingTimeout, for: application)
         if timeoutError == .apiDisabled {
             return .init(status: .notAuthorized)
         }
+        guard timeoutError == .success else {
+            return .init(status: native.processExists(processIdentifier)
+                ? .failed
+                : .targetUnavailable)
+        }
 
-        var hadFailure = timeoutError != .success
-        let windowRead = Self.copyElementAttribute(
+        var hadFailure = false
+        let windowRead = native.copyElementAttribute(
             kAXFocusedWindowAttribute as CFString,
             from: application)
-        let focusedRead = Self.copyElementAttribute(
+        let focusedRead = native.copyElementAttribute(
             kAXFocusedUIElementAttribute as CFString,
             from: application)
         if windowRead.error == .apiDisabled || focusedRead.error == .apiDisabled {
@@ -301,7 +352,7 @@ struct SystemAccessibilityContextReader: AccessibilityContextReading {
         var windowTitle: String?
         var windowDocumentURL: String?
         if let window = windowRead.element {
-            let read = Self.copyMultiple(
+            let read = native.copyMultiple(
                 [kAXTitleAttribute as CFString, kAXDocumentAttribute as CFString],
                 from: window)
             if read.error == .apiDisabled {
@@ -317,7 +368,7 @@ struct SystemAccessibilityContextReader: AccessibilityContextReading {
         var selectedText: String?
         var selectedElements: [AXUIElement] = []
         if let focusedElement = focusedRead.element {
-            let read = Self.copyMultiple(
+            let read = native.copyMultiple(
                 [
                     kAXSelectedTextAttribute as CFString,
                     kAXDocumentAttribute as CFString,
@@ -333,14 +384,19 @@ struct SystemAccessibilityContextReader: AccessibilityContextReading {
             selectedText = Self.string(from: read.values[safe: 0])
             focusedDocumentURL = Self.urlString(from: read.values[safe: 1])
             focusedURL = Self.urlString(from: read.values[safe: 2])
-            let children = Self.elements(from: read.values[safe: 3])
-            let rows = Self.elements(from: read.values[safe: 4])
-            selectedElements = Array((children + rows).prefix(Self.maximumSelectedElements))
+            Self.appendElements(
+                from: read.values[safe: 3],
+                maximumCount: Self.maximumSelectedElements,
+                to: &selectedElements)
+            Self.appendElements(
+                from: read.values[safe: 4],
+                maximumCount: Self.maximumSelectedElements - selectedElements.count,
+                to: &selectedElements)
         }
 
         var resources: [MacContextResource] = []
         for element in selectedElements {
-            let read = Self.copyMultiple(
+            let read = native.copyMultiple(
                 [
                     kAXURLAttribute as CFString,
                     kAXTitleAttribute as CFString,
@@ -367,74 +423,10 @@ struct SystemAccessibilityContextReader: AccessibilityContextReading {
             documentURL: focusedDocumentURL ?? focusedURL ?? windowDocumentURL,
             selectedText: selectedText,
             resources: resources)
-        if hadFailure, !result.hasUsefulContext, !Self.processExists(processIdentifier) {
+        if hadFailure, !native.processExists(processIdentifier) {
             return .init(status: .targetUnavailable)
         }
         return result
-    }
-
-    private static func processExists(_ processIdentifier: Int32) -> Bool {
-        guard processIdentifier > 0 else {
-            return false
-        }
-        if Darwin.kill(processIdentifier, 0) == 0 {
-            return true
-        }
-        return errno == EPERM
-    }
-
-    private static func copyElementAttribute(
-        _ attribute: CFString,
-        from element: AXUIElement
-    ) -> ElementRead {
-        var value: CFTypeRef?
-        let error = AXUIElementCopyAttributeValue(element, attribute, &value)
-        if error == .success,
-           let value,
-           CFGetTypeID(value) == AXUIElementGetTypeID()
-        {
-            return ElementRead(
-                element: unsafeDowncast(value as AnyObject, to: AXUIElement.self),
-                error: .success)
-        }
-        if error == .attributeUnsupported || error == .noValue {
-            return ElementRead(element: nil, error: error)
-        }
-        return ElementRead(element: nil, error: error)
-    }
-
-    private static func copyMultiple(
-        _ attributes: [CFString],
-        from element: AXUIElement
-    ) -> MultipleRead {
-        var copiedValues: CFArray?
-        let error = AXUIElementCopyMultipleAttributeValues(
-            element,
-            attributes as CFArray,
-            AXCopyMultipleAttributeOptions(rawValue: 0),
-            &copiedValues)
-        guard error == .success, let values = copiedValues as? [Any] else {
-            return MultipleRead(values: [], error: error, containsValueFailure: false)
-        }
-        return MultipleRead(
-            values: values.map { $0 as AnyObject },
-            error: error,
-            containsValueFailure: values.contains(where: isFailureValue))
-    }
-
-    private static func isFailureValue(_ value: Any) -> Bool {
-        guard CFGetTypeID(value as CFTypeRef) == AXValueGetTypeID() else {
-            return false
-        }
-        let axValue = value as! AXValue
-        guard AXValueGetType(axValue) == .axError else {
-            return false
-        }
-        var error = AXError.success
-        guard AXValueGetValue(axValue, .axError, &error) else {
-            return true
-        }
-        return error != .attributeUnsupported && error != .noValue
     }
 
     private static func string(from value: AnyObject?) -> String? {
@@ -454,20 +446,100 @@ struct SystemAccessibilityContextReader: AccessibilityContextReading {
         return value as? String
     }
 
-    private static func elements(from value: AnyObject?) -> [AXUIElement] {
-        guard let values = value as? [Any] else {
-            return []
+    private static func appendElements(
+        from value: AnyObject?,
+        maximumCount: Int,
+        to elements: inout [AXUIElement]
+    ) {
+        guard maximumCount > 0, let values = value as? NSArray else {
+            return
         }
-        return values.compactMap { value in
+        for index in 0..<min(maximumCount, values.count) {
+            let value = values[index]
             guard CFGetTypeID(value as CFTypeRef) == AXUIElementGetTypeID() else {
-                return nil
+                continue
             }
-            return unsafeDowncast(value as AnyObject, to: AXUIElement.self)
+            elements.append(unsafeDowncast(value as AnyObject, to: AXUIElement.self))
         }
     }
 }
 
-private struct ElementRead {
+struct SystemAccessibilityNativeReader: AccessibilityNativeReading {
+    func isProcessTrusted() -> Bool {
+        AXIsProcessTrusted()
+    }
+
+    func processExists(_ processIdentifier: Int32) -> Bool {
+        guard processIdentifier > 0 else {
+            return false
+        }
+        if Darwin.kill(processIdentifier, 0) == 0 {
+            return true
+        }
+        return errno == EPERM
+    }
+
+    func applicationElement(processIdentifier: Int32) -> AXUIElement {
+        AXUIElementCreateApplication(processIdentifier)
+    }
+
+    func setMessagingTimeout(_ timeout: Float, for element: AXUIElement) -> AXError {
+        AXUIElementSetMessagingTimeout(element, timeout)
+    }
+
+    func copyElementAttribute(
+        _ attribute: CFString,
+        from element: AXUIElement
+    ) -> ElementRead {
+        var value: CFTypeRef?
+        let error = AXUIElementCopyAttributeValue(element, attribute, &value)
+        if error == .success,
+           let value,
+           CFGetTypeID(value) == AXUIElementGetTypeID()
+        {
+            return ElementRead(
+                element: unsafeDowncast(value as AnyObject, to: AXUIElement.self),
+                error: .success)
+        }
+        return ElementRead(element: nil, error: error)
+    }
+
+    func copyMultiple(
+        _ attributes: [CFString],
+        from element: AXUIElement
+    ) -> MultipleRead {
+        var copiedValues: CFArray?
+        let error = AXUIElementCopyMultipleAttributeValues(
+            element,
+            attributes as CFArray,
+            AXCopyMultipleAttributeOptions(rawValue: 0),
+            &copiedValues)
+        guard error == .success, let values = copiedValues as? [Any] else {
+            return MultipleRead(values: [], error: error, containsValueFailure: false)
+        }
+        return MultipleRead(
+            values: values.map { $0 as AnyObject },
+            error: error,
+            containsValueFailure: values.contains(where: Self.isFailureValue))
+    }
+
+    private static func isFailureValue(_ value: Any) -> Bool {
+        guard CFGetTypeID(value as CFTypeRef) == AXValueGetTypeID() else {
+            return false
+        }
+        let axValue = value as! AXValue
+        guard AXValueGetType(axValue) == .axError else {
+            return false
+        }
+        var error = AXError.success
+        guard AXValueGetValue(axValue, .axError, &error) else {
+            return true
+        }
+        return error != .attributeUnsupported && error != .noValue
+    }
+}
+
+struct ElementRead {
     let element: AXUIElement?
     let error: AXError
 
@@ -476,7 +548,7 @@ private struct ElementRead {
     }
 }
 
-private struct MultipleRead {
+struct MultipleRead {
     let values: [AnyObject]
     let error: AXError
     let containsValueFailure: Bool
