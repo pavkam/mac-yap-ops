@@ -2,11 +2,24 @@
 // SPDX-License-Identifier: MIT
 
 @testable import VoiceActivationApp
+@testable import VoiceActivationCore
 
 @MainActor
 final class SilentAgentConversationAudioPlayer: AgentConversationAudioPlaying {
     var onSpeakingChange: ((Bool) -> Void)?
 
+    func beginConversation(
+        profile: WakeProfile,
+        readsInheritedReplies: Bool
+    ) -> Bool {
+        switch profile.speechPreference {
+        case .inherit: readsInheritedReplies
+        case .disabled: false
+        case .voice: true
+        }
+    }
+
+    func endConversation() {}
     func setWorking(_ working: Bool) {}
     func playActivitySound(_ sound: AgentActivitySound) {}
     func speak(_ text: String, localeID: String) {}

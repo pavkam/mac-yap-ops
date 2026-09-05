@@ -15,12 +15,32 @@ final class AgentConversationAudioSpy: AgentConversationAudioPlaying {
 
     var onSpeakingChange: ((Bool) -> Void)?
     var onSpeak: (() -> Void)?
+    var beginsWithSpeechEnabled: Bool?
+    private(set) var begunProfiles: [WakeProfile] = []
+    private(set) var endConversationCount = 0
     private(set) var workingStates: [Bool] = []
     private(set) var activitySounds: [AgentActivitySound] = []
     private(set) var spoken: [(text: String, localeID: String)] = []
     private(set) var events: [Event] = []
     private(set) var stopSpeakingCount = 0
     private(set) var stopAllCount = 0
+
+    func beginConversation(
+        profile: WakeProfile,
+        readsInheritedReplies: Bool
+    ) -> Bool {
+        begunProfiles.append(profile)
+        if let beginsWithSpeechEnabled { return beginsWithSpeechEnabled }
+        return switch profile.speechPreference {
+        case .inherit: readsInheritedReplies
+        case .disabled: false
+        case .voice: true
+        }
+    }
+
+    func endConversation() {
+        endConversationCount += 1
+    }
 
     func setWorking(_ working: Bool) {
         workingStates.append(working)

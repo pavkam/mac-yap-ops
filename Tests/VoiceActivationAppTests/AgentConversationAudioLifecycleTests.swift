@@ -13,7 +13,7 @@ extension AgentConversationAudioPresenterTests {
         let speechQueue = AgentSpeechQueueSpy()
         let activityLoop = AgentActivitySoundLoopSpy()
         let player = AgentConversationAudioOrchestrator(
-            speechConfiguration: { .systemDefault },
+            speechConfiguration: { _, _ in .systemDefault },
             speechQueue: speechQueue,
             activityLoop: activityLoop)
 
@@ -25,7 +25,7 @@ extension AgentConversationAudioPresenterTests {
     }
 
     @MainActor @Test
-    func orchestrator_WhenSpeechIsSubmitted_QueuesConfigurationSnapshot() {
+    func orchestrator_WhenSpeechIsSubmitted_QueuesConfigurationSnapshot() throws {
         let speechQueue = AgentSpeechQueueSpy()
         let activityLoop = AgentActivitySoundLoopSpy()
         let configuration = AgentSpeechConfiguration(
@@ -33,10 +33,13 @@ extension AgentConversationAudioPresenterTests {
             elevenLabsAPIKey: "secret",
             elevenLabsVoiceID: "voice-1")
         let player = AgentConversationAudioOrchestrator(
-            speechConfiguration: { configuration },
+            speechConfiguration: { _, _ in configuration },
             speechQueue: speechQueue,
             activityLoop: activityLoop)
 
+        #expect(player.beginConversation(
+            profile: try agentProfile(),
+            readsInheritedReplies: true))
         player.speak("  A much better voice.  ", localeID: "en-GB")
 
         #expect(speechQueue.requests == [AgentSpeechRequest(
@@ -50,7 +53,7 @@ extension AgentConversationAudioPresenterTests {
         let speechQueue = AgentSpeechQueueSpy()
         let activityLoop = AgentActivitySoundLoopSpy()
         let player = AgentConversationAudioOrchestrator(
-            speechConfiguration: { .systemDefault },
+            speechConfiguration: { _, _ in .systemDefault },
             speechQueue: speechQueue,
             activityLoop: activityLoop)
 
@@ -66,7 +69,7 @@ extension AgentConversationAudioPresenterTests {
         let speechQueue = AgentSpeechQueueSpy()
         let activityLoop = AgentActivitySoundLoopSpy()
         let player = AgentConversationAudioOrchestrator(
-            speechConfiguration: { .systemDefault },
+            speechConfiguration: { _, _ in .systemDefault },
             speechQueue: speechQueue,
             activityLoop: activityLoop)
         var events: [String] = []
@@ -86,7 +89,7 @@ extension AgentConversationAudioPresenterTests {
         let speechQueue = AgentSpeechQueueSpy()
         let activityLoop = AgentActivitySoundLoopSpy()
         let player = AgentConversationAudioOrchestrator(
-            speechConfiguration: { .systemDefault },
+            speechConfiguration: { _, _ in .systemDefault },
             speechQueue: speechQueue,
             activityLoop: activityLoop)
         var speechStates: [Bool] = []
@@ -104,7 +107,7 @@ extension AgentConversationAudioPresenterTests {
         let speechQueue = AgentSpeechQueueSpy()
         let activityLoop = AgentActivitySoundLoopSpy()
         let player = AgentConversationAudioOrchestrator(
-            speechConfiguration: { .systemDefault },
+            speechConfiguration: { _, _ in .systemDefault },
             speechQueue: speechQueue,
             activityLoop: activityLoop)
 

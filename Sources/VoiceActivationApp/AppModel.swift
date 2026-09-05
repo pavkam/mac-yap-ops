@@ -131,8 +131,10 @@ final class AppModel {
         let resolvedAgentConversationAudioPlayer =
             agentConversationAudioPlayer
             ?? AgentConversationAudioOrchestrator(
-                speechConfiguration: {
-                    agentSpeechSettingsState.configuration
+                speechConfiguration: { profile, readsInheritedReplies in
+                    agentSpeechSettingsState.configuration(
+                        for: profile.speechPreference,
+                        readsInheritedReplies: readsInheritedReplies)
                 }, diagnostics: diagnostics)
 
         self.preferences = preferences
@@ -504,9 +506,6 @@ final class AppModel {
             provider: agentSpeechProvider,
             elevenLabsAPIKey: normalizedAPIKey,
             elevenLabsVoiceID: elevenLabsVoiceID)
-        if previousSpeechConfiguration != agentSpeechSettingsState.configuration {
-            agentConversationAudioPlayer.stopSpeaking()
-        }
         agentConversationAudioPresenter.refreshSettings()
         activeWakeProfiles = profiles
         wakeProfiles = activeWakeProfiles.map(WakeProfileDraft.init)

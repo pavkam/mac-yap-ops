@@ -8,6 +8,12 @@ import VoiceActivationCore
 protocol AgentConversationAudioPlaying: AnyObject {
     var onSpeakingChange: ((Bool) -> Void)? { get set }
 
+    @discardableResult
+    func beginConversation(
+        profile: WakeProfile,
+        readsInheritedReplies: Bool
+    ) -> Bool
+    func endConversation()
     func setWorking(_ working: Bool)
     func playActivitySound(_ sound: AgentActivitySound)
     func speak(_ text: String, localeID: String)
@@ -19,15 +25,25 @@ protocol AgentConversationAudioPlaying: AnyObject {
 final class AgentConversationAudioOrchestrator: AgentConversationAudioPlaying {
     var onSpeakingChange: ((Bool) -> Void)?
 
-    private let speechConfiguration: @MainActor () -> AgentSpeechConfiguration
+    private let speechConfiguration:
+        @MainActor (WakeProfile, Bool) -> AgentSpeechConfiguration?
     private let speechQueue: any AgentSpeechQueueing
     private let activityLoop: any AgentActivitySoundLooping
     private let diagnostics: any VoiceActivationDiagnosticRecording
     private var isReportingSpeech = false
+    private var activeSpeechConfiguration: AgentSpeechConfiguration?
 
     init(
-        speechConfiguration: @escaping @MainActor () -> AgentSpeechConfiguration = {
-            .systemDefault
+        speechConfiguration: @escaping @MainActor (WakeProfile, Bool) -> AgentSpeechConfiguration? = {
+            profile, readsInheritedReplies in
+            switch profile.speechPreference {
+            case .inherit:
+                readsInheritedReplies ? .systemDefault : nil
+            case .disabled:
+                nil
+            case .voice(let selection):
+                AgentSpeechConfiguration(selection: selection, credential: nil)
+            }
         },
         elevenLabsSynthesizer: any ElevenLabsSpeechSynthesizing = ElevenLabsSpeechClient(),
         elevenLabsAudioPlayer: any AgentAudioDataPlaying = SystemAgentAudioDataPlayer(),
@@ -53,7 +69,7 @@ final class AgentConversationAudioOrchestrator: AgentConversationAudioPlaying {
     }
 
     init(
-        speechConfiguration: @escaping @MainActor () -> AgentSpeechConfiguration,
+        speechConfiguration: @escaping @MainActor (WakeProfile, Bool) -> AgentSpeechConfiguration?,
         speechQueue: any AgentSpeechQueueing,
         activityLoop: any AgentActivitySoundLooping,
         diagnostics: any VoiceActivationDiagnosticRecording = VoiceActivationDiagnostics.shared
@@ -63,6 +79,29 @@ final class AgentConversationAudioOrchestrator: AgentConversationAudioPlaying {
         self.activityLoop = activityLoop
         self.diagnostics = diagnostics
         observeSpeechQueue()
+    }
+
+    @discardableResult
+    func beginConversation(
+        profile: WakeProfile,
+        readsInheritedReplies: Bool
+    ) -> Bool {
+        let configuration = speechConfiguration(profile, readsInheritedReplies)
+        activeSpeechConfiguration = configuration
+        diagnostics.record(
+            category: .audio,
+            event: "conversation_audio.profile_selected",
+            fields: [
+                "profile_id": profile.id.uuidString,
+                "speech_enabled": String(configuration != nil),
+                "backend": configuration?.selection.backendID.rawValue ?? "none",
+            ])
+        return configuration != nil
+    }
+
+    func endConversation() {
+        activeSpeechConfiguration = nil
+        diagnostics.record(category: .audio, event: "conversation_audio.profile_cleared")
     }
 
     func setWorking(_ working: Bool) {
@@ -91,7 +130,13 @@ final class AgentConversationAudioOrchestrator: AgentConversationAudioPlaying {
                 fields: ["reason": "empty"])
             return
         }
-        let configuration = speechConfiguration()
+        guard let configuration = activeSpeechConfiguration else {
+            diagnostics.record(
+                category: .audio,
+                event: "conversation_audio.speech_ignored",
+                fields: ["reason": "speech_disabled"])
+            return
+        }
         diagnostics.record(
             category: .audio,
             event: "conversation_audio.speech_enqueued",
@@ -149,6 +194,7 @@ final class AgentConversationAudioPresenter {
     private let narration: AgentNarrationSegmenter
     private let diagnostics: any VoiceActivationDiagnosticRecording
     private var runID: UUID?
+    private var readsActiveReplies = false
     private var activityIsWorking = false
     private var toolSoundPhases: [String: ToolSoundPhase] = [:]
 
@@ -165,9 +211,9 @@ final class AgentConversationAudioPresenter {
         self.localeID = localeID
         self.diagnostics = diagnostics
         narration = AgentNarrationSegmenter(diagnostics: diagnostics)
-        narration.onSegment = { [player] text in
-            guard readsReplies() else {
-                diagnostics.record(
+        narration.onSegment = { [weak self] text in
+            guard let self, readsActiveReplies else {
+                self?.diagnostics.record(
                     category: .audio,
                     event: "conversation_audio.segment_suppressed",
                     fields: ["reason": "read_replies_disabled"])
@@ -183,9 +229,12 @@ final class AgentConversationAudioPresenter {
             event: "conversation_audio.lifecycle_received",
             fields: lifecycleEvent.audioDiagnosticFields)
         switch lifecycleEvent {
-        case .started(let runID, _, _):
+        case .started(let runID, let profile, _):
             narration.reset()
             self.runID = runID
+            readsActiveReplies = player.beginConversation(
+                profile: profile,
+                readsInheritedReplies: readsReplies())
             toolSoundPhases.removeAll(keepingCapacity: true)
             player.stopSpeaking()
             updateWorking(true)
@@ -215,7 +264,7 @@ final class AgentConversationAudioPresenter {
             if result.stopReason == .cancelled {
                 narration.reset()
                 player.stopSpeaking()
-            } else if readsReplies() {
+            } else if readsActiveReplies {
                 narration.finish()
             } else {
                 narration.reset()
@@ -223,7 +272,7 @@ final class AgentConversationAudioPresenter {
             updateWorking(false)
         case .turnFailed(let runID, _):
             guard self.runID == runID else { return }
-            if readsReplies() {
+            if readsActiveReplies {
                 narration.finish()
             } else {
                 narration.reset()
@@ -236,14 +285,18 @@ final class AgentConversationAudioPresenter {
             player.stopAll()
             self.runID = nil
             toolSoundPhases.removeAll(keepingCapacity: true)
-            if result.stopReason == .cancelled, readsReplies() {
+            if result.stopReason == .cancelled, readsActiveReplies {
                 player.speak("Stopped.", localeID: localeID())
             }
+            readsActiveReplies = false
+            player.endConversation()
         case .failed(let runID, _):
             guard self.runID == runID else { return }
             narration.reset()
             activityIsWorking = false
             player.stopAll()
+            readsActiveReplies = false
+            player.endConversation()
             self.runID = nil
             toolSoundPhases.removeAll(keepingCapacity: true)
         }
@@ -254,6 +307,8 @@ final class AgentConversationAudioPresenter {
         narration.reset()
         activityIsWorking = false
         player.stopAll()
+        readsActiveReplies = false
+        player.endConversation()
         runID = nil
         toolSoundPhases.removeAll(keepingCapacity: true)
     }
@@ -267,10 +322,6 @@ final class AgentConversationAudioPresenter {
                 "plays_working_sound": String(playsWorkingSound()),
             ])
         player.setWorking(activityIsWorking && playsWorkingSound())
-        if !readsReplies() {
-            narration.reset()
-            player.stopSpeaking()
-        }
     }
 
     func resumeAfterPermission(runID: UUID) {
@@ -295,7 +346,7 @@ final class AgentConversationAudioPresenter {
             fields: ["event_kind": event.audioDiagnosticName])
         switch event {
         case .agentMessageDelta(let messageID, let text):
-            if readsReplies() {
+            if readsActiveReplies {
                 narration.append(messageID: messageID, text: text)
             }
             updateWorking(true)

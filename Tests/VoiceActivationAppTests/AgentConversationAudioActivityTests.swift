@@ -197,7 +197,7 @@ extension AgentConversationAudioPresenterTests {
         #expect(player.workingStates.last == false)
     }
 
-    @MainActor @Test func refreshSettings_WhenRepliesAreDisabled_CancelsPendingSpeechFlush()
+    @MainActor @Test func refreshSettings_DuringConversation_KeepsPinnedSpeechBehavior()
         async throws
     {
         let player = AgentConversationAudioSpy()
@@ -220,7 +220,7 @@ extension AgentConversationAudioPresenterTests {
         presenter.refreshSettings()
         try await Task.sleep(for: .milliseconds(450))
 
-        #expect(player.spoken.isEmpty)
+        #expect(player.spoken.map(\.text) == ["Not yet complete"])
     }
 
 }
