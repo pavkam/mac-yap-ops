@@ -5,263 +5,177 @@ SPDX-License-Identifier: MIT
 
 # Troubleshooting
 
-## Inspect the diagnostic log
+Start with the visible symptom, then use the structured trace when the suggested
+check does not identify the boundary.
 
-Voice Activation writes a structured runtime trace to:
+## Collect the relevant diagnostics
 
-```text
-~/Library/Logs/VoiceActivation/voice-activation.jsonl
-```
-
-The trace covers app and settings lifecycle, menu and conversation-panel
-actions, hotkeys, speech recognition, commands, ACP processes and messages,
-agent state, audio scheduling and playback, and ElevenLabs requests. Entries
-carry a session ID, sequence number, monotonic timing, process ID, category,
-event name, severity, and bounded fields. Prompts, transcripts, API keys,
-authorization values, raw ACP content, and audio are never written. Sensitive
-field names are redacted again at the file boundary.
-
-Follow the current run:
+Follow the active trace while reproducing the issue once:
 
 ```bash
-tail -f ~/Library/Logs/VoiceActivation/voice-activation.jsonl | jq .
+voice_log_path="$HOME/Library/Logs/VoiceActivation/voice-activation.jsonl"
+tail -f "$voice_log_path" | jq .
 ```
 
-Show errors and warnings:
-
-```bash
-jq 'select(.level == "error" or .level == "warning")' \
-  ~/Library/Logs/VoiceActivation/voice-activation.jsonl
-```
-
-Trace one agent run after copying its `run_id` from any matching entry:
-
-```bash
-jq 'select(.fields.run_id == "RUN-ID")' \
-  ~/Library/Logs/VoiceActivation/voice-activation.jsonl
-```
-
-The active file rotates at 5 MiB. The previous three files remain beside it as
-`voice-activation.jsonl.1` through `.3`, so a noisy recognition session cannot
-grow without bound.
-
-For latency investigations, compare the `queue_delay_ms`, `duration_ms`,
-`main_delivery_ms`, `run_loop_mode`, and `task_priority` fields across
-`credential_store`, `permissions`, `acp_runner`, `agent_presentation`,
-`narration`, and `speech` events. `duration_ms` measures the provider or local
-operation; `main_delivery_ms` isolates the callback handoff into UI and audio
-state. Main delivery is explicitly supported in AppKit's modal and
-event-tracking loops, so a sustained value above a few hundred milliseconds is
-actionable rather than expected panel behavior. A started event without its
-matching finished event identifies the blocking subsystem; Keychain work is
-isolated from Swift's cooperative executor so it cannot hold up unrelated agent
-or audio tasks.
+Do not share the raw file without reviewing it. See [Diagnostics](diagnostics.md)
+for correlation, timing fields, rotation, and safe extraction.
 
 ## The menu-bar icon is missing
 
-- Voice Activation has no Dock icon; inspect the right side of the menu bar.
-- Confirm the process is running:
+Voice Activation has no Dock icon. Check the right side of the menu bar, then
+confirm and relaunch the built application:
 
-  ```bash
-  pgrep -fl VoiceActivation
-  ```
-
-- Relaunch the built bundle:
-
-  ```bash
-  open .build/VoiceActivation.app
-  ```
+```bash
+pgrep -fl VoiceActivation
+open .build/VoiceActivation.app
+```
 
 ## The status remains Starting
 
-**Starting** means listening is enabled but the speech session has not become
-ready yet. On first use, complete both the Microphone and Speech Recognition
-privacy prompts. If they were previously denied, enable them in System Settings,
-then quit and relaunch the app. An explicit **Paused** status now appears only
-after **Pause all** is selected.
+**Starting** means listening is enabled but speech recognition is not ready.
+Complete both the Microphone and Speech Recognition prompts. If access was
+denied, enable it in **System Settings > Privacy & Security**, quit Voice
+Activation, and launch it again.
 
 ## Passive listening reports an on-device error
 
-The selected locale does not provide on-device speech recognition on this Mac.
-Choose another Apple locale identifier in Settings. This restriction applies to
-passive wake detection by design; the app will not silently send always-on audio
-to a service.
+The selected locale has no on-device speech recognizer on this Mac. Choose
+another Apple locale identifier in Settings. Passive wake listening is
+deliberately unavailable without on-device recognition.
 
 ## Capture ends without running a command
 
-- Begin with one of the saved wake phrases; text before it does not match.
-- Speak after the status changes to **Capturing**. You may pause after the wake
-  phrase; the dedicated command listener remains active for five seconds before
-  timing out.
-- Capture without any command text returns to passive listening after 5
-  seconds. Repeated empty recognition results cannot extend this deadline.
-- A completed command containing only `cancel`, `stop`, or `dismiss` is
-  intentionally discarded. The same happens immediately if one of those words
-  is repeated twice in a row.
-- Check the menu's error text after capture. Recognition failures automatically
-  restart passive listening after a short delay.
+- Begin with a saved wake phrase; text before the phrase does not match.
+- Wait for **Capturing**, then speak within the initial five-second window.
+- A capture containing only `cancel`, `stop`, or `dismiss` is discarded.
+- Check the menu error after capture and correlate the recognition generation in
+  the trace.
+
+Capture timing and cancellation rules are in
+[Wake profiles](wake-profiles.md).
 
 ## A custom wake phrase does not trigger
 
-- Open the menu and confirm that the toggle for that specific phrase is enabled.
-- Ensure the phrase contains a letter or number. Punctuation-only and symbol-only
-  phrases are rejected because they cannot become spoken recognition matches.
-- Confirm **Save Settings** completed; saved phrases are supplied to Apple
-  Speech as contextual vocabulary when passive listening restarts.
-- Speak the phrase at the beginning of the utterance and pause briefly while
-  testing it.
-- Custom spellings are supported through contextual vocabulary, but acoustically
-  ambiguous phrases may still benefit from a longer, more distinctive phrase.
+- Confirm that exact profile is enabled in the menu.
+- Use at least one letter or number; punctuation-only phrases are rejected.
+- Save Settings so the new phrase reaches contextual recognition vocabulary.
+- Test with the phrase at the beginning of the utterance. Longer, distinctive
+  phrases usually beat acoustically ambiguous ones.
 
 ## The recording overlay is missing
 
-- The overlay appears only after the wake phrase matches or while the
-  push-to-talk shortcut is held; passive wake listening does not display it.
-- Confirm the menu status changes to **Capturing**.
-- On multiple displays, the overlay uses the screen containing the pointer when
-  capture begins and remains there until that capture ends.
-- The overlay never activates Voice Activation, so keyboard input remains with
-  the current app. Its close button remains clickable and discards the current
-  transcript without running a command.
+The overlay appears only during matched wake capture or while push-to-talk is
+held, not during passive listening. Confirm the menu reaches **Capturing**. On
+multiple displays it appears on the pointer's screen when capture begins.
 
-## The direct command does not run
+The overlay is intentionally non-activating, so keyboard focus remains with the
+foreground application. Its close button discards the capture.
 
-Check Settings for these validation requirements:
+## A direct command does not run
 
-- At least one wake profile exists.
-- Every wake phrase is non-empty and unique.
-- Every profile URL contains `{text}` or `{urlText}`.
+Confirm the executable path is absolute and runnable and that at least one
+argument contains `{text}` or `{urlText}`. A non-zero exit status becomes a
+visible error. Standard input, output, and error are discarded, so reproduce a
+new command and its arguments directly in Terminal.
 
-A non-zero process exit becomes a visible error. Standard output and standard
-error are intentionally discarded, so test a new URL with `open` in Terminal
-before putting it into Settings.
+See [Command targets](command-targets.md) for expansion and shell-safety rules.
 
 ## An agent profile does not start
 
-- Confirm the provider executable and working folder are absolute paths and
-  still exist. Use **Detect** to search the app's inherited `PATH` and common
-  macOS install locations, or select the executable directly. Finder-launched
-  applications cannot rely on your interactive shell's complete `PATH`.
-- Run the provider's normal login command in Terminal first. An ACP
-  `auth_required` response is shown in the panel with the provider-advertised
-  authentication methods; Voice Activation does not collect credentials.
-- Confirm the provider supports stable ACP version 1. Incompatible protocol
-  versions and malformed or oversized messages fail the run visibly.
-- Cursor's native server is normally launched as `cursor-agent acp`. The Codex
-  and Claude presets use their pinned `npx` adapter arguments.
+- Confirm the executable and working folder are absolute and still exist. Use
+  **Detect** or select the executable when a Finder-launched app cannot see the
+  shell's full `PATH`.
+- Complete the provider CLI's normal login in Terminal. Voice Activation does
+  not collect provider credentials.
+- Confirm the process supports stable ACP v1. Protocol mismatch, malformed
+  frames, and oversized data fail visibly.
+- If **Starting the agent** persists, wait for the startup deadline and one
+  automatic fresh-process retry; the second stall becomes an error.
+
+Provider preset and authentication details are in
+[Agent providers](agent-providers.md).
 
 ## Agent output stops or the panel remains open
 
-Turn completion intentionally keeps both the panel and conversation microphone
-open for follow-ups. Speak another request to continue in the same ACP session.
-Use **Stop turn** to cancel only active work, or **End conversation** to return
-to passive wake listening. After the conversation ends, choose **Close** to hide
-the retained output or **Delete** to hide and discard it. The menu-bar card can
-**Open** or **Delete** that retained conversation directly. Saying only `stop`,
-`cancel`, or `dismiss` always ends the whole conversation; when reply speech is
-enabled, the app acknowledges this with “Stopped.”
+A completed turn keeps the conversation and microphone available for a
+follow-up. Use **Stop turn** to cancel only current provider work or **End
+conversation** to return to passive listening. After the conversation ends,
+**Close** hides retained output and **Delete** releases it.
 
-If the floating panel covers another app, drag its provider header. Use the
-minus button to animate it into a small movable status pill at the top-right
-below the menu bar, then use the arrow on that pill—or **Open** from the
-menu—to restore the conversation.
+If output does not follow the bottom, scroll there once; manual upward scrolling
+intentionally owns the viewport. If the follow-up queue is full, let current
+work and cancellation settle before speaking again.
 
-If new output does not follow the bottom, scroll to the bottom once. A deliberate
-scroll upward pauses automatic following so earlier output remains readable.
+A provider failure preserves useful output. The next follow-up starts a fresh
+session. If a provider forgot an idle session before any observable work, Voice
+Activation retries once and shows a context-loss notice; it never replays a
+request after output, a permission prompt, or tool activity.
 
-If the panel reports that the follow-up queue is full, wait for the current turn
-and queued speech to settle before speaking again. The queue is intentionally
-bounded at 16 requests.
-
-If a provider exits, emits invalid JSON, exceeds a protocol bound, or closes a
-pipe unexpectedly, the panel enters a failed state with bounded diagnostics.
-The failed process is discarded and a later trigger starts a fresh connection.
-
-If the panel remains on **Starting the agent**, wait for the 12-second startup
-deadline. Voice Activation discards the stalled process and retries once. A
-second stall ends the turn with an error instead of leaving the panel spinning.
-
-If the provider forgets a cached session, Voice Activation creates a new one and
-retries the prompt once when no work has started. A visible notice explains that
-the earlier provider context was lost. The app does not replay after streamed
-output, a permission request, or another sign of agent activity; repeat the
-request manually in that case so an action cannot run twice.
+See [Agent conversations](agent-conversations.md) for panel controls, recovery,
+and retention.
 
 ## An agent is waiting for permission
 
-With **Ask every time**, choose one of the exact options supplied by the provider
-in the panel or say `allow`, `allow all`, `deny`, or `deny all`. Spoken choices
-apply to the oldest visible request and collapse it immediately. Longer phrases
-remain agent follow-ups. Automatic permission levels select ACP's scoped option
-kinds and use the documented safer fallback when a provider omits that scope.
-Cancelling the run also cancels every pending permission request.
+With **Ask every time**, choose one provider-supplied option in the panel or say
+`allow`, `allow all`, `deny`, or `deny all`. The decision applies to the oldest
+visible request. Longer utterances remain ordinary follow-ups. Cancelling the
+turn settles all pending permission requests.
 
 ## Conversation speech or sounds do not play
 
-Confirm **Read replies aloud** and **Agent activity sounds** are enabled in Settings and
-that **Save Settings** succeeded. The macOS provider uses the configured locale's
-system voice and obeys the current output volume. For ElevenLabs, confirm the API
-key and selected Voice ID are valid and that the Mac can reach
-`api.elevenlabs.io`; use **Refresh** to reload the account catalog and **Test
-voice** to verify synthesis. If catalog loading fails, paste a known Voice ID in
-the fallback field. The key is read from macOS Keychain. A failed ElevenLabs
-request falls back to the macOS voice rather than dropping the spoken chunk. A
-thinking cue plays immediately when the request is accepted, before ACP startup;
-later cues repeat every 3.2 seconds. The pulse remains active while cloud speech
-is being generated and pauses when narration actually plays.
+Confirm the profile's reply-speech setting and **Agent activity sounds** are
+enabled, then save. macOS speech uses a system voice for the selected locale.
+For ElevenLabs, check the Keychain-backed API key, Voice ID, network access, and
+**Test voice**. A failed cloud synthesis falls back to macOS speech.
 
-Narration begins when a complete sentence arrives, when agent output transitions
-into thought or tool work, or 350 milliseconds after the first unfinished
-fragment. It does not wait for the whole agent process to finish. ElevenLabs
-prepares up to two segments outside the main actor, then plays every segment in
-order even if synthesis finishes out of order. The app stops active thinking and
-tool effects before delegate-tracked playback starts. It does not restart the
-microphone audio engine in front of the first spoken sample.
-Speaking during narration stops the current playback and captures that utterance
-as a follow-up. Conversation capture requests Apple's voice-processing mode to
-reduce speaker echo; unsupported audio devices fall back to ordinary capture.
+Narration starts from streamed user-facing reply text; code blocks, thought,
+tool, permission, and diagnostic content are not spoken. Speaking during reply
+audio stops playback and becomes a follow-up. Activity sounds yield to
+permissions and audible narration.
 
-The capture start cue plays only when capture begins; the end cue plays for
-submission, cancellation, timeout, and capture errors.
+See [Agent conversations](agent-conversations.md) and
+[Sound design](sound-design.md) for the complete behavior.
 
 ## Push-to-talk does not react
 
-The first profile defaults to Control-Option-Space. Every assigned combination
-appears next to its profile in the menu and can be changed inside that profile’s
-Settings card. Select **Save Settings** to register the new binding set. Another
-application may own a requested shortcut first; Voice Activation reports that
-conflict and restores all previous bindings. Keep the keys held while speaking
-and release them to submit through the selected profile.
+Confirm the shortcut shown for that profile, save any change, and keep the keys
+held while speaking. Release submits through the selected profile. If another
+application already owns the combination, Voice Activation reports the conflict
+and restores the previous bindings.
 
 ## Listening stops after joining or leaving a call
 
-Meeting software and audio devices can change the microphone's channel layout or
-sample rate. macOS stops active audio engines when that happens. Voice Activation
-automatically rebuilds its passive listener after the input settles; the menu may
-briefly show **Listening** while that recovery completes.
-
-If listening does not resume after a few seconds, confirm the intended microphone
-is still selected in System Settings and that Voice Activation retains Microphone
-and Speech Recognition access.
+Meeting software and audio devices can change microphone channel layout or
+sample rate. Voice Activation rebuilds passive listening after the input
+settles. If it does not recover, confirm the intended input device and both
+privacy grants in System Settings, then inspect `recognition` audio-configuration
+events in the trace.
 
 ## Launch at Login cannot be enabled
 
-- Move Voice Activation to `/Applications` and launch that copy before enabling
-  the option. Do not register the temporary bundle under `.build`.
-- Confirm the app bundle is code-signed with `codesign --verify --deep --strict`.
-- Open **System Settings › General › Login Items** and allow Voice Activation if
-  macOS says approval is required.
-- Return to Voice Activation Settings and toggle the option again. Registration
-  errors appear directly below the toggle.
+- Move Voice Activation to `/Applications` and launch that copy; do not register
+  the temporary bundle under `.build`.
+- Verify the bundle with `codesign --verify --deep --strict`.
+- Allow Voice Activation under **System Settings > General > Login Items** if
+  macOS requires approval, then toggle the setting again.
+
+See [Packaging](packaging.md) for the signed bundle workflow.
 
 ## macOS asks for privacy access after every rebuild
 
-The default development build is ad-hoc signed. Its identity changes when the
-executable changes, so macOS can request access again. Use a stable Apple
-Development signing identity and launch a stable copy from Applications:
+The default development bundle is ad-hoc signed, so its identity can change with
+the executable. Build with a stable installed development identity and launch a
+consistent copy from `/Applications`:
 
 ```bash
 SIGN_IDENTITY="Apple Development: Your Name (TEAMID)" make app
 ```
 
-See [Getting started](getting-started.md) for the complete build flow.
+## Related guides
+
+- [Getting started](getting-started.md)
+- [Wake profiles](wake-profiles.md)
+- [Command targets](command-targets.md)
+- [Agent conversations](agent-conversations.md)
+- [Diagnostics](diagnostics.md)
+- [Privacy and security](privacy-and-security.md)
