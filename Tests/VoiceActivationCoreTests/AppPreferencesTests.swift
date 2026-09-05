@@ -31,6 +31,9 @@ struct AppPreferencesTests {
         #expect(preferences.playsAgentWorkingSound)
         #expect(preferences.agentSpeechProvider == .system)
         #expect(preferences.elevenLabsVoiceID == "JBFqnCBsd6RMkjVDRZzb")
+        #expect(preferences.defaultSpeechVoice == TextToSpeechVoiceSelection(
+            backendID: .system,
+            voiceID: nil))
         #expect(preferences.wakeProfiles == [expectedProfile])
         #expect(preferences.wakePhrase == "computer")
         #expect(preferences.pushToTalkHotKey == .defaultValue)
@@ -74,12 +77,31 @@ struct AppPreferencesTests {
         #expect(!reader.playsAgentWorkingSound)
         #expect(reader.agentSpeechProvider == .elevenLabs)
         #expect(reader.elevenLabsVoiceID == "voice-123")
+        #expect(reader.defaultSpeechVoice == TextToSpeechVoiceSelection(
+            backendID: .elevenLabs,
+            voiceID: "voice-123"))
         #expect(reader.wakeProfiles == writer.wakeProfiles)
         #expect(reader.wakePhrase == "hey mac")
         #expect(reader.localeID == "en-GB")
         #expect(reader.pushToTalkHotKey == expectedHotKey)
         #expect(reader.executablePath == "/usr/bin/printf")
         #expect(reader.argumentTemplates == ["--", "{text}"])
+    }
+
+    @Test func defaultSpeechVoice_WhenChanged_RoundTripsNewRepresentation() throws {
+        let suite = "VoiceActivationTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        let writer = AppPreferences(defaults: defaults)
+        writer.defaultSpeechVoice = TextToSpeechVoiceSelection(
+            backendID: .system,
+            voiceID: "com.apple.voice.compact.en-US.Samantha")
+
+        let reader = AppPreferences(defaults: defaults)
+
+        #expect(reader.defaultSpeechVoice == TextToSpeechVoiceSelection(
+            backendID: .system,
+            voiceID: "com.apple.voice.compact.en-US.Samantha"))
     }
 
     @Test func pushToTalkHotKey_WhenStoredValuesAreInvalid_ReturnsDefault() throws {

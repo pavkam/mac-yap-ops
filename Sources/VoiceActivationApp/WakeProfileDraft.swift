@@ -11,6 +11,8 @@ enum WakeProfileTargetKind: String, CaseIterable {
 
 struct WakeProfileDraft: Equatable, Identifiable {
     var id: UUID
+    var name: String
+    var icon: ProfileIcon
     var wakePhrase: String
     var executablePath: String
     var commandArguments: ArgumentDraftCollection
@@ -19,6 +21,7 @@ struct WakeProfileDraft: Equatable, Identifiable {
     var accent: WakeProfileAccent
     var isEnabled: Bool
     var pushToTalkHotKey: PushToTalkHotKey?
+    var speechPreference: ProfileSpeechPreference
 
     var argumentTemplates: [String] {
         get { commandArguments.values }
@@ -38,13 +41,18 @@ struct WakeProfileDraft: Equatable, Identifiable {
 
     init(
         id: UUID = UUID(),
+        name: String? = nil,
+        icon: ProfileIcon = .defaultValue,
         wakePhrase: String,
         urlTemplate: String,
         accent: WakeProfileAccent,
         isEnabled: Bool = true,
-        pushToTalkHotKey: PushToTalkHotKey? = nil)
+        pushToTalkHotKey: PushToTalkHotKey? = nil,
+        speechPreference: ProfileSpeechPreference = .inherit)
     {
         self.id = id
+        self.name = name ?? Self.defaultName(for: wakePhrase)
+        self.icon = icon
         self.wakePhrase = wakePhrase
         executablePath = "/usr/bin/open"
         commandArguments = ArgumentDraftCollection(values: [urlTemplate])
@@ -54,10 +62,13 @@ struct WakeProfileDraft: Equatable, Identifiable {
         self.accent = accent
         self.isEnabled = isEnabled
         self.pushToTalkHotKey = pushToTalkHotKey
+        self.speechPreference = speechPreference
     }
 
     init(
         id: UUID = UUID(),
+        name: String? = nil,
+        icon: ProfileIcon = .defaultValue,
         wakePhrase: String,
         executablePath: String,
         argumentTemplates: [String],
@@ -65,9 +76,12 @@ struct WakeProfileDraft: Equatable, Identifiable {
         targetKind: WakeProfileTargetKind,
         accent: WakeProfileAccent,
         isEnabled: Bool = true,
-        pushToTalkHotKey: PushToTalkHotKey? = nil)
+        pushToTalkHotKey: PushToTalkHotKey? = nil,
+        speechPreference: ProfileSpeechPreference = .inherit)
     {
         self.id = id
+        self.name = name ?? Self.defaultName(for: wakePhrase)
+        self.icon = icon
         self.wakePhrase = wakePhrase
         self.executablePath = executablePath
         commandArguments = ArgumentDraftCollection(values: argumentTemplates)
@@ -76,14 +90,18 @@ struct WakeProfileDraft: Equatable, Identifiable {
         self.accent = accent
         self.isEnabled = isEnabled
         self.pushToTalkHotKey = pushToTalkHotKey
+        self.speechPreference = speechPreference
     }
 
     init(profile: WakeProfile) {
         id = profile.id
+        name = profile.name
+        icon = profile.icon
         wakePhrase = profile.wakePhrase
         accent = profile.accent
         isEnabled = profile.isEnabled
         pushToTalkHotKey = profile.pushToTalkHotKey
+        speechPreference = profile.speechPreference
         switch profile.action {
         case let .command(command):
             executablePath = command.executablePath
@@ -126,10 +144,18 @@ struct WakeProfileDraft: Equatable, Identifiable {
         }
         return try WakeProfile(
             id: id,
+            name: name,
+            icon: icon,
             wakePhrase: wakePhrase,
             action: action,
             accent: accent,
             isEnabled: isEnabled,
-            pushToTalkHotKey: pushToTalkHotKey)
+            pushToTalkHotKey: pushToTalkHotKey,
+            speechPreference: speechPreference)
+    }
+
+    private static func defaultName(for wakePhrase: String) -> String {
+        let value = wakePhrase.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        return value.isEmpty ? "New Profile" : value.capitalized
     }
 }

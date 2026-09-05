@@ -11,6 +11,7 @@ public final class AppPreferences {
         static let playsAgentWorkingSound = "playsAgentWorkingSound"
         static let agentSpeechProvider = "agentSpeechProvider"
         static let elevenLabsVoiceID = "elevenLabsVoiceID"
+        static let defaultSpeechVoice = "defaultSpeechVoice"
         static let wakePhrase = "wakePhrase"
         static let wakeProfiles = "wakeProfiles"
         static let localeID = "localeID"
@@ -83,6 +84,32 @@ public final class AppPreferences {
             defaults.set(
                 normalized(newValue, fallback: "JBFqnCBsd6RMkjVDRZzb"),
                 forKey: Key.elevenLabsVoiceID)
+        }
+    }
+
+    /// The app-wide backend and voice inherited by profiles without an override.
+    public var defaultSpeechVoice: TextToSpeechVoiceSelection {
+        get {
+            if let data = defaults.data(forKey: Key.defaultSpeechVoice),
+                let selection = try? JSONDecoder().decode(
+                    TextToSpeechVoiceSelection.self,
+                    from: data)
+            {
+                return selection
+            }
+            switch agentSpeechProvider {
+            case .system:
+                return TextToSpeechVoiceSelection(backendID: .system, voiceID: nil)
+            case .elevenLabs:
+                return TextToSpeechVoiceSelection(
+                    backendID: .elevenLabs,
+                    voiceID: elevenLabsVoiceID)
+            }
+        }
+        set {
+            if let data = try? JSONEncoder().encode(newValue) {
+                defaults.set(data, forKey: Key.defaultSpeechVoice)
+            }
         }
     }
 

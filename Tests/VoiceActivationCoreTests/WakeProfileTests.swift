@@ -6,6 +6,56 @@ import Testing
 @testable import VoiceActivationCore
 
 struct WakeProfileTests {
+    @Test func coding_WhenProfileHasIdentityAndSpeechPreference_RoundTripsAllValues() throws {
+        let profile = try WakeProfile(
+            name: "Research",
+            icon: .emoji("🔬"),
+            wakePhrase: "researcher",
+            urlTemplate: "https://example.com?q={urlText}",
+            accent: .purple,
+            speechPreference: .voice(TextToSpeechVoiceSelection(
+                backendID: .elevenLabs,
+                voiceID: "voice-1")))
+
+        let decoded = try JSONDecoder().decode(
+            WakeProfile.self,
+            from: JSONEncoder().encode(profile))
+
+        #expect(decoded == profile)
+    }
+
+    @Test func decoding_WhenProfilePredatesIdentityAndSpeech_DerivesSafeDefaults() throws {
+        let legacyJSON = """
+        {"id":"F39F8151-6192-452E-8C96-36D29AB7335D","wakePhrase":"hey researcher","executablePath":"/usr/bin/open","argumentTemplates":["https://example.com?q={urlText}"],"accent":"purple"}
+        """
+
+        let profile = try JSONDecoder().decode(
+            WakeProfile.self,
+            from: #require(legacyJSON.data(using: .utf8)))
+
+        #expect(profile.name == "Hey Researcher")
+        #expect(profile.icon == .systemSymbol("sparkles"))
+        #expect(profile.speechPreference == .inherit)
+    }
+
+    @Test func init_WhenProfileIdentityIsInvalid_RejectsIt() {
+        #expect(throws: WakeProfile.ValidationError.nameRequired) {
+            try WakeProfile(
+                name: "   ",
+                wakePhrase: "computer",
+                urlTemplate: "https://example.com?q={urlText}",
+                accent: .blue)
+        }
+        #expect(throws: WakeProfile.ValidationError.invalidIcon) {
+            try WakeProfile(
+                name: "Computer",
+                icon: .emoji("🤖🧠"),
+                wakePhrase: "computer",
+                urlTemplate: "https://example.com?q={urlText}",
+                accent: .blue)
+        }
+    }
+
     @Test func decoding_WhenProfilePredatesActionField_MigratesToCommandAction() throws {
         let legacyJSON = """
         {"id":"F39F8151-6192-452E-8C96-36D29AB7335D","wakePhrase":"sneek","executablePath":"/usr/bin/open","argumentTemplates":["https://example.com?q={urlText}"],"accent":"purple","isEnabled":false}

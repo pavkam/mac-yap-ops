@@ -15,12 +15,15 @@ struct WakeProfileDraftTests {
             keyLabel: "K")
         let profile = try WakeProfile(
             id: id,
+            name: "Command Center",
+            icon: .systemSymbol("terminal.fill"),
             wakePhrase: "computer",
             executablePath: "/usr/bin/printf",
             argumentTemplates: ["--format", "%s", "{text}", "two words", ""],
             accent: .orange,
             isEnabled: false,
-            pushToTalkHotKey: hotKey)
+            pushToTalkHotKey: hotKey,
+            speechPreference: .disabled)
 
         let roundTripped = try WakeProfileDraft(profile: profile).validatedProfile()
 
@@ -43,11 +46,16 @@ struct WakeProfileDraftTests {
             systemPrompt: "Answer like a terse staff engineer.")
         let profile = try WakeProfile(
             id: id,
+            name: "Darling",
+            icon: .emoji("💅"),
             wakePhrase: "darling",
             action: .agent(configuration),
             accent: .pink,
             isEnabled: false,
-            pushToTalkHotKey: hotKey)
+            pushToTalkHotKey: hotKey,
+            speechPreference: .voice(TextToSpeechVoiceSelection(
+                backendID: .elevenLabs,
+                voiceID: "voice-darling")))
 
         let roundTripped = try WakeProfileDraft(profile: profile).validatedProfile()
 
