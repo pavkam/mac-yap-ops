@@ -145,7 +145,42 @@ extension ACPAgentRunnerTests {
         await runner.shutdown()
     }
 
-    @Test func offerMidTurnInput_WhenRecordIsReplacedDuringResponse_DoesNotEvictReplacement()
+    @Test func offerMidTurnInput_WhenSafeResultOutlivesTurnSettlement_ReturnsItAsIs()
+        async throws
+    {
+        let transport = FakeACPTransport()
+        let gate = RunnerEventGate()
+        let runner = ACPAgentRunner(
+            transportFactory: RunnerTransportFactory(transports: [transport]),
+            testingHooks: ACPAgentRunnerTestingHooks(
+                beforeMidTurnOfferCompletion: { await gate.wait() }))
+        let profileID = UUID()
+        let configuration = try makeConfiguration(preset: .claude)
+        let activeRun = run(runner, profileID: profileID, configuration: configuration)
+        try await establishSteeringConnection(transport, workingDirectory: "/tmp/project")
+        _ = await transport.nextSentMessage()
+
+        let offer = Task {
+            try await runner.offerMidTurnInput(
+                profileID: profileID,
+                prompt: AgentPrompt(request: "also add tests", context: nil))
+        }
+        #expect(await transport.nextSentMessage()
+            == steeringRequest(id: 4, text: "also add tests"))
+        try await transport.feed(.response(
+            id: .integer(4),
+            result: .object(["outcome": .string("injected")])))
+        await gate.waitUntilEntered()
+
+        try await transport.feed(promptResponse(id: 3, stopReason: "end_turn"))
+        _ = try await activeRun.value
+        await gate.open()
+        #expect(try await offer.value == .injected)
+        #expect(await transport.observedTerminationCount() == 0)
+        await runner.shutdown()
+    }
+
+    @Test func offerMidTurnInput_WhenAmbiguousRecordIsReplaced_EvictsOnlyOldIdentity()
         async throws
     {
         let oldTransport = FakeACPTransport()
@@ -155,7 +190,7 @@ extension ACPAgentRunnerTests {
             transportFactory: RunnerTransportFactory(
                 transports: [oldTransport, replacementTransport]),
             testingHooks: ACPAgentRunnerTestingHooks(
-                beforeMidTurnOfferIdentityValidation: { await gate.wait() }))
+                beforeMidTurnOfferCompletion: { await gate.wait() }))
         let profileID = UUID()
         let configuration = try makeConfiguration(preset: .claude)
         let oldRun = run(runner, profileID: profileID, configuration: configuration)
@@ -171,13 +206,12 @@ extension ACPAgentRunnerTests {
             == steeringRequest(id: 4, text: "also add tests"))
         try await oldTransport.feed(.response(
             id: .integer(4),
-            result: .object(["outcome": .string("injected")])))
+            result: .object(["outcome": .string("startedNewTurn")])))
         await gate.waitUntilEntered()
-
-        await runner.reset(profileIDs: [profileID])
         await #expect(throws: ACPClientError.connectionClosed) {
             try await oldRun.value
         }
+
         let replacementRun = run(
             runner,
             profileID: profileID,

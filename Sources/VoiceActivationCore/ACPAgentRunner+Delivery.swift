@@ -24,31 +24,12 @@ extension ACPAgentRunner {
         else {
             return .promptRequired
         }
-        let turnToken = turn.token
-
         do {
             let result = try await connection.offerMidTurnInput(prompt)
-            await testingHooks.beforeMidTurnOfferIdentityValidation()
-            let stillOwnsConnection = activeTurn?.token == turnToken
-                && activeTurn?.profileID == profileID
-                && activeTurn?.recordID == recordID
-                && activeTurn?.connection === connection
-                && activeTurn?.isCancelling == false
-                && records[profileID]?.id == recordID
-                && records[profileID]?.connection === connection
-                && records[profileID]?.exitStatus == nil
-            guard stillOwnsConnection else {
-                guard result == .injected else {
-                    return .promptRequired
-                }
-                await evictAmbiguousMidTurnInputRecord(
-                    profileID: profileID,
-                    recordID: recordID,
-                    connection: connection)
-                throw ACPClientError.ambiguousMidTurnInput
-            }
+            await testingHooks.beforeMidTurnOfferCompletion()
             return result
         } catch let error as ACPClientError where error == .ambiguousMidTurnInput {
+            await testingHooks.beforeMidTurnOfferCompletion()
             await evictAmbiguousMidTurnInputRecord(
                 profileID: profileID,
                 recordID: recordID,
