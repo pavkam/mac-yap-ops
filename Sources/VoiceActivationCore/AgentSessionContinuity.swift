@@ -231,11 +231,29 @@ public struct AgentContinuityPromptContext: Codable, Equatable, Sendable {
 
     /// Creates fixed-schema continuity metadata without conversation content.
     public init(
-        sessionState: AgentContinuityPromptSessionState?,
+        sessionState: AgentContinuityPromptSessionState,
+        previousTurnInterrupted: Bool
+    ) {
+        self.init(
+            validatedSessionState: sessionState,
+            previousTurnInterrupted: previousTurnInterrupted)
+    }
+
+    /// Creates honest interruption metadata for a normal new or live-cached session.
+    ///
+    /// This is the only public construction path whose encoded `sessionState` is `null`.
+    public static func previousTurnInterruptedInNormalSession() -> Self {
+        Self(
+            validatedSessionState: nil,
+            previousTurnInterrupted: true)
+    }
+
+    private init(
+        validatedSessionState: AgentContinuityPromptSessionState?,
         previousTurnInterrupted: Bool
     ) {
         schema = Self.schemaIdentifier
-        self.sessionState = sessionState
+        sessionState = validatedSessionState
         self.previousTurnInterrupted = previousTurnInterrupted
     }
 
@@ -264,12 +282,27 @@ public struct AgentContinuityPromptContext: Codable, Equatable, Sendable {
                 debugDescription: "Unsupported agent continuity prompt schema")
         }
         schema = decodedSchema
-        sessionState = try container.decodeIfPresent(
+        guard container.contains(.sessionState) else {
+            throw DecodingError.keyNotFound(
+                CodingKeys.sessionState,
+                DecodingError.Context(
+                    codingPath: container.codingPath,
+                    debugDescription: "Missing agent continuity session state"))
+        }
+        let decodedSessionState = try container.decodeIfPresent(
             AgentContinuityPromptSessionState.self,
             forKey: .sessionState)
-        previousTurnInterrupted = try container.decode(
+        let decodedPreviousTurnInterrupted = try container.decode(
             Bool.self,
             forKey: .previousTurnInterrupted)
+        guard decodedSessionState != nil || decodedPreviousTurnInterrupted else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .sessionState,
+                in: container,
+                debugDescription: "A normal session requires interrupted previous work")
+        }
+        sessionState = decodedSessionState
+        previousTurnInterrupted = decodedPreviousTurnInterrupted
     }
 }
 

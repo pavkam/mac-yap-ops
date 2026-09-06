@@ -94,10 +94,21 @@ extension ACPAgentRunner {
         activation: AgentSessionActivation,
         providerFingerprint: String
     ) async {
+        await saveBookmark(
+            profileID: profileID,
+            sessionID: activation.sessionID,
+            providerFingerprint: providerFingerprint)
+    }
+
+    func saveBookmark(
+        profileID: UUID,
+        sessionID: String,
+        providerFingerprint: String
+    ) async {
         do {
             try await continuityStore.save(bookmark: AgentSessionBookmark(
                 profileID: profileID,
-                sessionID: activation.sessionID,
+                sessionID: sessionID,
                 providerFingerprint: providerFingerprint,
                 lastAccessOrdinal: 0))
         } catch {

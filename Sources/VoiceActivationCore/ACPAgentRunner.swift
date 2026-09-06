@@ -264,7 +264,12 @@ public actor ACPAgentRunner: AgentHarnessRunning {
                     skipBookmarkForNextConnection = false
                     freshAfterUnavailableBookmark = false
                 } catch let error as ACPClientError {
-                    guard error.isSessionUnavailable,
+                    let usedRestoration = activeTurn?.token == token
+                        && activeTurn?.connectionAttemptUsedRestoration == true
+                    let permitsFreshFallback = error.isSessionUnavailable
+                        || error == .eventDeliveryOverflow
+                    guard usedRestoration,
+                          permitsFreshFallback,
                           !didAttemptSessionRecovery,
                           !skipBookmarkForNextConnection,
                           ownsActiveTurn(token),
@@ -389,6 +394,7 @@ public actor ACPAgentRunner: AgentHarnessRunning {
                         key: workKey,
                         state: publicationState)
                     guard !didAttemptSessionRecovery,
+                        !publicationState.snapshot().frameWasPublished,
                         error.isSessionUnavailable,
                         ownsActiveTurn(token),
                         !isActiveTurnCancelling(token)

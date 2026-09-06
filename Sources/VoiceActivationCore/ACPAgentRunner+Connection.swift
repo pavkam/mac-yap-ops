@@ -18,7 +18,7 @@ extension ACPAgentRunner {
             cached.configuration == configuration,
             cached.connection != nil,
             cached.exitStatus == nil,
-            cached.sessionID != nil
+            let cachedSessionID = cached.sessionID
         {
             diagnostics.record(
                 category: .agent,
@@ -30,6 +30,15 @@ extension ACPAgentRunner {
                 ])
             markAccessed(cached)
             updateActiveTurnRecord(token: turnToken, record: cached)
+            await saveBookmark(
+                profileID: profileID,
+                sessionID: cachedSessionID,
+                providerFingerprint: providerFingerprint)
+            try ensureActiveTurn(token: turnToken)
+            guard records[profileID]?.id == cached.id,
+                  cached.connection != nil,
+                  cached.exitStatus == nil
+            else { throw ACPAgentRunnerError.cancelled }
             return ACPAgentConnectionAcquisition(record: cached, activation: nil)
         }
 

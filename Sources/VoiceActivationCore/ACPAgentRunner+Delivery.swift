@@ -21,10 +21,13 @@ extension ACPAgentRunner {
         case .new, nil:
             state = nil
         }
-        guard state != nil || previousTurnInterrupted else { return nil }
-        return AgentContinuityPromptContext(
-            sessionState: state,
-            previousTurnInterrupted: previousTurnInterrupted)
+        if let state {
+            return AgentContinuityPromptContext(
+                sessionState: state,
+                previousTurnInterrupted: previousTurnInterrupted)
+        }
+        guard previousTurnInterrupted else { return nil }
+        return .previousTurnInterruptedInNormalSession()
     }
 
     func preparePromptPublication(

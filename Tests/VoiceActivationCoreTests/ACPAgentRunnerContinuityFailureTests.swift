@@ -243,6 +243,154 @@ struct ACPAgentRunnerContinuityFailureTests {
         #expect(await unused.allSentMessages().isEmpty)
     }
 
+    @Test func run_WhenRestorationReplayOverflows_FallsBackFreshBeforePrompt()
+        async throws
+    {
+        let profileID = UUID()
+        let otherProfileID = UUID()
+        let configuration = try configuration()
+        let targetBookmark = matchingBookmark(
+            profileID: profileID,
+            configuration: configuration)
+        let otherBookmark = AgentSessionBookmark(
+            profileID: otherProfileID,
+            sessionID: "other-session",
+            providerFingerprint: AgentProviderFingerprint.make(configuration: configuration),
+            lastAccessOrdinal: 2)
+        let store = RecordingAgentContinuityStore(
+            bookmarks: [targetBookmark, otherBookmark])
+        let restoring = FakeACPTransport()
+        let fresh = FakeACPTransport()
+        await configureFreshAutoResponses(fresh, sessionID: "fresh-after-overflow")
+        let factory = RunnerTransportFactory(transports: [restoring, fresh])
+        let recorder = RunnerStreamEventRecorder()
+        let runner = ACPAgentRunner(
+            transportFactory: factory,
+            continuityStore: store,
+            settleClock: ImmediateACPAgentRunnerClock())
+        let run = startRun(
+            runner,
+            profileID: profileID,
+            configuration: configuration,
+            recorder: recorder)
+
+        _ = await restoring.nextSentMessage()
+        try await restoring.feed(initializeResponse(loadSession: true))
+        #expect(await requestMethod(restoring.nextSentMessage()) == "session/load")
+        for index in 0...AgentRunEventDelivery.maximumPendingEntries {
+            try await restoring.feed(.notification(
+                method: "session/update",
+                params: .object([
+                    "sessionId": .string("saved-session"),
+                    "update": .object([
+                        "sessionUpdate": .string("current_mode_update"),
+                        "currentModeId": .string("mode-\(index)"),
+                    ]),
+                ])))
+        }
+
+        #expect(try await run.value == AgentRunResult(stopReason: .endTurn))
+        #expect(await factory.createdConfigurations().count == 2)
+        #expect(await restoring.allSentMessages().compactMap(requestMethod) == [
+            "initialize", "session/load",
+        ])
+        #expect(await fresh.allSentMessages().compactMap(requestMethod) == [
+            "initialize", "session/new", "session/prompt",
+        ])
+        let calls = await store.recordedCalls()
+        #expect(calls.contains(.remove([profileID])))
+        let snapshot = await store.snapshot()
+        #expect(Set(snapshot.bookmarks.map(\.profileID)) == [profileID, otherProfileID])
+        #expect(snapshot.bookmarks.first {
+            $0.profileID == profileID
+        }?.sessionID == "fresh-after-overflow")
+
+        let events = await recorder.recordedEvents()
+        guard case let .restorationStarted(token, _) = events.first else {
+            Issue.record("Expected restoration start")
+            return
+        }
+        #expect(events.contains(.restorationAborted(token: token)))
+        #expect(!events.contains { event in
+            if case .restored = event { return true }
+            return false
+        })
+    }
+
+    @Test func run_WhenLiveProfileIsReused_TouchesBookmarkBeforeStoreOverflow()
+        async throws
+    {
+        let profileID = UUID()
+        let configuration = try configuration()
+        let store = InMemoryAgentContinuityStore()
+        let liveTransport = FakeACPTransport()
+        let firstRunner = ACPAgentRunner(
+            transportFactory: RunnerTransportFactory(transports: [liveTransport]),
+            continuityStore: store,
+            settleClock: ImmediateACPAgentRunnerClock())
+
+        let firstRun = startRun(
+            firstRunner,
+            profileID: profileID,
+            configuration: configuration)
+        try await establishNewSession(liveTransport, sessionID: "live-session")
+        _ = await liveTransport.nextSentMessage()
+        try await liveTransport.feed(promptResponse(id: 3))
+        _ = try await firstRun.value
+
+        let fingerprint = AgentProviderFingerprint.make(configuration: configuration)
+        for index in 0..<(AgentContinuityStorePolicy.maximumRecords - 1) {
+            try await store.save(bookmark: AgentSessionBookmark(
+                profileID: UUID(),
+                sessionID: "filler-\(index)",
+                providerFingerprint: fingerprint,
+                lastAccessOrdinal: 0))
+        }
+
+        let reuse = startRun(
+            firstRunner,
+            profileID: profileID,
+            configuration: configuration)
+        #expect(await requestMethod(liveTransport.nextSentMessage()) == "session/prompt")
+        try await liveTransport.feed(promptResponse(id: 4))
+        _ = try await reuse.value
+
+        try await store.save(bookmark: AgentSessionBookmark(
+            profileID: UUID(),
+            sessionID: "overflow",
+            providerFingerprint: fingerprint,
+            lastAccessOrdinal: 0))
+        await firstRunner.shutdown()
+
+        let restoringTransport = FakeACPTransport()
+        let secondRunner = ACPAgentRunner(
+            transportFactory: RunnerTransportFactory(transports: [restoringTransport]),
+            continuityStore: store,
+            settleClock: ImmediateACPAgentRunnerClock())
+        let restoredRun = startRun(
+            secondRunner,
+            profileID: profileID,
+            configuration: configuration)
+        _ = await restoringTransport.nextSentMessage()
+        try await restoringTransport.feed(initializeResponse(loadSession: true))
+        let restorationRequest = await restoringTransport.nextSentMessage()
+        let restoredByLoad = requestMethod(restorationRequest) == "session/load"
+        #expect(restoredByLoad)
+        if restoredByLoad {
+            #expect(encodedSessionID(restorationRequest) == "live-session")
+            try await restoringTransport.feed(.response(
+                id: .integer(2),
+                result: .object([:])))
+        } else {
+            try await restoringTransport.feed(.response(
+                id: .integer(2),
+                result: .object(["sessionId": .string("unexpected-fresh")])))
+        }
+        _ = await restoringTransport.nextSentMessage()
+        try await restoringTransport.feed(promptResponse(id: 3))
+        _ = try await restoredRun.value
+    }
+
     private func configuration(
         workingDirectory: String = "/tmp/project"
     ) throws -> AgentHarnessConfiguration {
@@ -328,6 +476,13 @@ struct ACPAgentRunnerContinuityFailureTests {
         return method
     }
 
+    private func encodedSessionID(_ message: ACPMessage) -> String? {
+        guard case let .request(_, _, .object(parameters)) = message,
+              case let .string(sessionID) = parameters["sessionId"]
+        else { return nil }
+        return sessionID
+    }
+
     private func sessionUnavailableResponse(id: Int64) -> ACPMessage {
         .errorResponse(
             id: .integer(id),
@@ -338,5 +493,37 @@ struct ACPAgentRunnerContinuityFailureTests {
                     "resourceType": .string("session"),
                     "resourceId": .string("saved-session"),
                 ])))
+    }
+
+    private func configureFreshAutoResponses(
+        _ transport: FakeACPTransport,
+        sessionID: String
+    ) async {
+        await transport.handleSends { message in
+            guard case let .request(id, method, _) = message else { return }
+            let response: ACPMessage
+            switch method {
+            case "initialize":
+                response = .response(
+                    id: id,
+                    result: .object([
+                        "protocolVersion": .integer(1),
+                        "agentCapabilities": .object(["loadSession": .bool(false)]),
+                        "agentInfo": .object(["name": .string("test-agent")]),
+                        "authMethods": .array([]),
+                    ]))
+            case "session/new":
+                response = .response(
+                    id: id,
+                    result: .object(["sessionId": .string(sessionID)]))
+            case "session/prompt":
+                response = .response(
+                    id: id,
+                    result: .object(["stopReason": .string("end_turn")]))
+            default:
+                return
+            }
+            try await transport.feed(response)
+        }
     }
 }
