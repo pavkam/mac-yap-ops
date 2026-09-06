@@ -69,7 +69,9 @@ extension ACPClientConnectionTests {
         let connection = try await establishConnection(transport: transport)
         let connectedGate = AgentEventGate()
         let promptTask = Task {
-            try await connection.prompt("Cancel during publication") { event in
+            try await connection.prompt(AgentPrompt(
+                request: "Cancel during publication",
+                context: nil)) { event in
                 if case .connected = event {
                     await connectedGate.pause()
                 }
@@ -80,22 +82,9 @@ extension ACPClientConnectionTests {
         await connection.cancel()
         await connectedGate.open()
 
-        #expect(await transport.nextSentMessage() == .request(
-            id: .integer(3),
-            method: "session/prompt",
-            params: .object([
-                "sessionId": .string("session-1"),
-                "prompt": .array([
-                    .object([
-                        "type": .string("text"),
-                        "text": .string(ACPClientConnection.markdownPresentationInstruction),
-                    ]),
-                    .object([
-                        "type": .string("text"),
-                        "text": .string("Cancel during publication"),
-                    ]),
-                ]),
-            ])))
+        #expect(await transport.nextSentMessage() == promptRequest(
+            id: 3,
+            text: "Cancel during publication"))
         #expect(await transport.nextSentMessage() == .notification(
             method: "session/cancel",
             params: .object(["sessionId": .string("session-1")])))
@@ -111,7 +100,9 @@ extension ACPClientConnectionTests {
         let connection = try await establishConnection(transport: transport)
         await transport.suspendNextSend()
         let promptTask = Task {
-            try await connection.prompt("Cancel during write") { _ in }
+            try await connection.prompt(AgentPrompt(
+                request: "Cancel during write",
+                context: nil)) { _ in }
         }
         await transport.waitUntilSendIsSuspended()
 
@@ -120,22 +111,9 @@ extension ACPClientConnectionTests {
         #expect(await transport.allSentMessages().count == 2)
 
         await transport.resumeSuspendedSend()
-        #expect(await transport.nextSentMessage() == .request(
-            id: .integer(3),
-            method: "session/prompt",
-            params: .object([
-                "sessionId": .string("session-1"),
-                "prompt": .array([
-                    .object([
-                        "type": .string("text"),
-                        "text": .string(ACPClientConnection.markdownPresentationInstruction),
-                    ]),
-                    .object([
-                        "type": .string("text"),
-                        "text": .string("Cancel during write"),
-                    ]),
-                ]),
-            ])))
+        #expect(await transport.nextSentMessage() == promptRequest(
+            id: 3,
+            text: "Cancel during write"))
         #expect(await transport.nextSentMessage() == .notification(
             method: "session/cancel",
             params: .object(["sessionId": .string("session-1")])))
@@ -194,7 +172,9 @@ extension ACPClientConnectionTests {
         let connection = try await establishConnection(transport: transport)
         let callbackReturned = AgentEventSignal()
         let promptTask = Task {
-            try await connection.prompt("Close from callback") { event in
+            try await connection.prompt(AgentPrompt(
+                request: "Close from callback",
+                context: nil)) { event in
                 guard case .agentMessageDelta = event else {
                     return
                 }
@@ -226,7 +206,9 @@ extension ACPClientConnectionTests {
         let connectedGate = AgentEventGate()
         let callbackReturned = AgentEventSignal()
         let promptTask = Task {
-            try await connection.prompt("Close after response") { event in
+            try await connection.prompt(AgentPrompt(
+                request: "Close after response",
+                context: nil)) { event in
                 switch event {
                 case .connected:
                     await connectedGate.pause()

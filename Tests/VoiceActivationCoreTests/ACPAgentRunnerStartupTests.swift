@@ -67,13 +67,13 @@ extension ACPAgentRunnerTests {
     }
 
     @Test(.timeLimit(.minutes(1)))
-    func run_WhenCachedSessionNoLongerExists_ReconnectsAndRetriesOnce() async throws {
+    func run_WhenPublishedPromptReturnsUnavailable_DoesNotRetryUtterance() async throws {
         let staleTransport = FakeACPTransport()
-        let replacementTransport = FakeACPTransport()
-        let factory = RunnerTransportFactory(
-            transports: [staleTransport, replacementTransport])
-        let runner = ACPAgentRunner(transportFactory: factory)
-        let recorder = RunnerEventRecorder()
+        let factory = RunnerTransportFactory(transports: [staleTransport])
+        let store = RecordingAgentContinuityStore()
+        let runner = ACPAgentRunner(
+            transportFactory: factory,
+            continuityStore: store)
         let profileID = UUID()
         let configuration = try makeConfiguration()
 
@@ -89,12 +89,12 @@ extension ACPAgentRunnerTests {
         try await staleTransport.feed(promptResponse(id: 3, stopReason: "end_turn"))
         _ = try await warmup.value
 
-        let recoveredRun = Task {
+        let failedRun = Task {
             try await runner.run(
                 profileID: profileID,
                 configuration: configuration,
-                prompt: "Continue safely",
-                onEvent: { event in await recorder.record(event) })
+                prompt: AgentPrompt(request: "Continue safely", context: nil),
+                onEvent: { _ in })
         }
         #expect(await staleTransport.nextSentMessage() == promptRequest(
             id: 4,
@@ -110,26 +110,23 @@ extension ACPAgentRunnerTests {
                     "resourceId": .string("stale-session"),
                 ]))))
 
-        try await establishConnection(
-            replacementTransport,
-            workingDirectory: "/tmp/project",
-            sessionID: "replacement-session")
-        #expect(await replacementTransport.nextSentMessage() == promptRequest(
-            id: 3,
-            text: "Continue safely",
-            sessionID: "replacement-session"))
-        try await replacementTransport.feed(promptResponse(id: 3, stopReason: "end_turn"))
-
-        #expect(try await recoveredRun.value == AgentRunResult(stopReason: .endTurn))
-        #expect(await recorder.recordedEvents() == [
-            .connected(agentName: "Test Agent", sessionID: "stale-session"),
-            .metadata(
-                kind: AgentRunMetadataKind.sessionRecovered,
-                summary: ACPAgentRunner.sessionRecoveryNotice),
-            .connected(agentName: "Test Agent", sessionID: "replacement-session"),
-        ])
+        await #expect(throws: ACPClientError.sessionUnavailable(
+            code: -32_002,
+            message: "Resource not found")) {
+            try await failedRun.value
+        }
+        #expect(await staleTransport.allSentMessages().filter {
+            guard case .request(_, "session/prompt", _) = $0 else { return false }
+            return true
+        }.count == 2)
+        #expect((await store.snapshot()).interruptedWork.count == 1)
+        #expect((await store.snapshot()).interruptedWork.first?.state == .active)
         #expect(await staleTransport.observedTerminationCount() == 1)
-        #expect(await factory.createdConfigurations() == [configuration, configuration])
+        #expect(await factory.createdConfigurations() == [configuration])
+        #expect(!(await store.recordedCalls()).contains { call in
+            if case .remove = call { return true }
+            return false
+        })
 
         await runner.shutdown()
     }
@@ -154,7 +151,7 @@ extension ACPAgentRunnerTests {
             try await runner.run(
                 profileID: profileID,
                 configuration: configuration,
-                prompt: "Recover startup",
+                prompt: AgentPrompt(request: "Recover startup", context: nil),
                 onEvent: { event in await recorder.record(event) })
         }
 
@@ -351,12 +348,9 @@ extension ACPAgentRunnerTests {
         await runner.shutdown()
     }
 
-    @Test func run_WhenReplacementSessionIsAlsoMissing_RetriesOnlyOnce() async throws {
+    @Test func run_WhenFreshPromptReturnsUnavailable_DoesNotRetryUtterance() async throws {
         let firstTransport = FakeACPTransport()
-        let secondTransport = FakeACPTransport()
-        let unusedTransport = FakeACPTransport()
-        let factory = RunnerTransportFactory(
-            transports: [firstTransport, secondTransport, unusedTransport])
+        let factory = RunnerTransportFactory(transports: [firstTransport])
         let runner = ACPAgentRunner(transportFactory: factory)
         let configuration = try makeConfiguration()
         let activeRun = run(runner, profileID: UUID(), configuration: configuration)
@@ -370,25 +364,14 @@ extension ACPAgentRunnerTests {
             id: .integer(3),
             error: ACPJSONRPCError(code: -32_603, message: "Unknown session")))
 
-        try await establishConnection(
-            secondTransport,
-            workingDirectory: "/tmp/project",
-            sessionID: "second-session")
-        _ = await secondTransport.nextSentMessage()
-        try await secondTransport.feed(.errorResponse(
-            id: .integer(3),
-            error: ACPJSONRPCError(code: -32_603, message: "Unknown session")))
-
         await #expect(throws: ACPClientError.sessionUnavailable(
             code: -32_603,
             message: "Unknown session"))
         {
             try await activeRun.value
         }
-        #expect(await factory.createdConfigurations() == [configuration, configuration])
+        #expect(await factory.createdConfigurations() == [configuration])
         #expect(await firstTransport.observedTerminationCount() == 1)
-        #expect(await secondTransport.observedTerminationCount() == 1)
-        #expect(await unusedTransport.observedTerminationCount() == 0)
         await runner.shutdown()
     }
 

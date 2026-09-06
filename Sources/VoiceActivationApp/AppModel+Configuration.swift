@@ -5,6 +5,26 @@ import Foundation
 import VoiceActivationCore
 
 extension AppModel {
+    /// Refreshes the displayed Accessibility state without showing a system prompt.
+    func refreshMacContextAccessStatus() {
+        macContextAccessStatus = macContextAccess.currentStatus()
+    }
+
+    /// Refreshes Accessibility state when the Settings window becomes visible.
+    func settingsDidAppear() {
+        refreshMacContextAccessStatus()
+    }
+
+    /// Refreshes Accessibility state after the application becomes active.
+    func applicationDidBecomeActive() {
+        refreshMacContextAccessStatus()
+    }
+
+    /// Requests the system Accessibility prompt only in response to the Settings action.
+    func requestMacContextAccess() {
+        macContextAccess.requestMacContextAccess()
+    }
+
     /// Coalesces concurrent speech authorization requests into one shared task.
     func ensurePermissions() async -> Bool {
         guard !isShutdown else {
@@ -123,6 +143,7 @@ extension AppModel {
     nonisolated static func eventKind(_ event: AgentRunEvent) -> String {
         switch event {
         case .connected: "connected"
+        case .userMessageDelta: "user_message_delta"
         case .agentMessageDelta: "agent_message_delta"
         case .thoughtDelta: "thought_delta"
         case .artifact: "artifact"

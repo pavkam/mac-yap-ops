@@ -30,6 +30,19 @@ private final class ControlledShutdownArtifactOpener: AgentArtifactOpening {
 
 
 extension AppModelTests {
+    @MainActor @Test func permissionRequestGate_WhenAwaitingRegistration_CompletesAfterRequestRegisters()
+        async
+    {
+        let permission = PermissionRequestGate()
+        let request = Task { @MainActor in await permission.request() }
+
+        await permission.waitUntilWaiting()
+
+        #expect(permission.isWaiting)
+        permission.resolve(true)
+        #expect(await request.value)
+    }
+
     @MainActor @Test func togglePassiveListening_WhenProfilesDiffer_PausesWithoutChangingProfiles()
         throws
     {
@@ -58,6 +71,8 @@ extension AppModelTests {
         defaults.removePersistentDomain(forName: suite)
         let preferences = AppPreferences(defaults: defaults)
         preferences.passiveEnabled = false
+        let permission = PermissionRequestGate()
+        let speech = AppModelSpeechSessionSpy()
         let profiles = [
             try WakeProfile(
                 wakePhrase: "computer",
@@ -76,8 +91,8 @@ extension AppModelTests {
             recordingOverlay: AppModelOverlayStub(),
             agentRunPanel: AppModelAgentPanelSpy(),
             shortcut: ShortcutSpy(),
-            speechSession: AppModelSpeechSessionSpy(),
-            permissionRequest: { true },
+            speechSession: speech,
+            permissionRequest: { await permission.request() },
             soundPlayer: SilentCaptureSoundPlayer(),
             agentConversationAudioPlayer: SilentAgentConversationAudioPlayer(),
             agentSpeechCredentialStore: SilentAgentSpeechCredentialStore(),
@@ -85,7 +100,9 @@ extension AppModelTests {
 
         await model.start()
         model.togglePassiveListening()
-        await waitUntil { model.state == .listening }
+        await permission.waitUntilWaiting()
+        permission.resolve(true)
+        await speech.waitUntilStarted()
 
         #expect(model.passiveEnabled)
         #expect(preferences.passiveEnabled)
@@ -200,7 +217,7 @@ extension AppModelTests {
             startsAutomatically: false)
 
         model.setPassiveEnabled(true)
-        await waitUntil { permission.isWaiting }
+        await permission.waitUntilWaiting()
         #expect(permission.isWaiting)
         model.setPassiveEnabled(false)
         permission.resolve(true)
@@ -233,7 +250,7 @@ extension AppModelTests {
             startsAutomatically: false)
 
         model.setPassiveEnabled(true)
-        await waitUntil { permission.isWaiting }
+        await permission.waitUntilWaiting()
         model.setPassiveEnabled(false)
         permission.resolve(false)
         await waitUntil { permission.completionCount == 1 }
@@ -289,7 +306,8 @@ extension AppModelTests {
             agentSpeechCredentialStore: SilentAgentSpeechCredentialStore(),
             startsAutomatically: false)
         let startup = Task { @MainActor in await model.start() }
-        await waitUntil { permission.isWaiting && !shortcut.startedProfiles.isEmpty }
+        await permission.waitUntilWaiting()
+        #expect(!shortcut.startedProfiles.isEmpty)
         let profileID = try #require(shortcut.startedProfiles.first?.first?.id)
 
         shortcut.press(profileID)
@@ -323,7 +341,7 @@ extension AppModelTests {
             agentSpeechCredentialStore: SilentAgentSpeechCredentialStore(),
             startsAutomatically: false)
         let startup = Task { @MainActor in await model.start() }
-        await waitUntil { permission.isWaiting }
+        await permission.waitUntilWaiting()
 
         await model.shutdown()
         permission.resolve(true)
@@ -390,7 +408,7 @@ extension AppModelTests {
             agentSpeechCredentialStore: SilentAgentSpeechCredentialStore(),
             startsAutomatically: false)
         let startup = Task { @MainActor in await model.start() }
-        await waitUntil { permission.isWaiting }
+        await permission.waitUntilWaiting()
 
         model.setPassiveEnabled(false)
         permission.resolve(true)
@@ -444,7 +462,7 @@ extension AppModelTests {
         await model.start()
 
         shortcut.press(firstProfile.id)
-        await waitUntil { permission.isWaiting }
+        await permission.waitUntilWaiting()
         shortcut.release(firstProfile.id)
         shortcut.press(secondProfile.id)
         permission.resolve(true)

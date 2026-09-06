@@ -9,8 +9,8 @@ struct ACPEventDecoderTests {
     @Test func event_WhenStableSessionUpdatesArrive_ReturnsTypedEvents() throws {
         let fixtures: [(String, AgentRunEvent)] = [
             (
-                #"{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"Run tests"},"messageId":"user-1"}"#,
-                .metadata(kind: "user_message_chunk", summary: "User message chunk (user-1)")),
+                #"{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"Run tests","_meta":{"ciobanu.org.voiceActivation":{"promptBlockRole":"request"}}},"messageId":"user-1"}"#,
+                .userMessageDelta(messageID: "user-1", text: "Run tests")),
             (
                 #"{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Working"},"messageId":"agent-1"}"#,
                 .agentMessageDelta(messageID: "agent-1", text: "Working")),

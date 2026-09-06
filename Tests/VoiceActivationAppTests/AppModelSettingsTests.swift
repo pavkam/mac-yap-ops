@@ -9,6 +9,188 @@ import Testing
 
 
 extension AppModelTests {
+    @MainActor @Test
+    func macContextAccessController_WhenStatusRefreshes_UsesOnlyNonpromptingCheck() {
+        let native = MacContextAccessNativeSpy(isTrusted: false)
+        let controller = MacContextAccessController(native: native)
+
+        let status = controller.currentStatus()
+
+        #expect(status == .notAuthorized)
+        #expect(native.statusChecks == 1)
+        #expect(native.promptingChecks == 0)
+    }
+
+    @MainActor @Test
+    func macContextAccessController_WhenAccessIsExplicitlyRequested_PromptsExactlyOnce() {
+        let native = MacContextAccessNativeSpy(isTrusted: false)
+        let controller = MacContextAccessController(native: native)
+
+        controller.requestMacContextAccess()
+
+        #expect(native.statusChecks == 0)
+        #expect(native.promptingChecks == 1)
+    }
+
+    @MainActor @Test
+    func macContextSettingsAction_WhenEnableIsInvoked_PromptsOnceWithoutClaimingAuthorization()
+        throws
+    {
+        let access = MacContextAccessSpy(status: .notAuthorized)
+        access.statusAfterPrompt = .authorized
+        let fixture = try Fixture(macContextAccess: access)
+        let actions = MacContextSettingsActions(model: fixture.model)
+
+        actions.enableAccessibility()
+
+        #expect(access.promptingChecks == 1)
+        #expect(access.statusChecks == 0)
+        #expect(fixture.model.macContextAccessStatus == .notAuthorized)
+    }
+
+    @MainActor @Test
+    func macContextSettingsAction_WhenSectionAppears_RefreshesStatusWithoutPrompting() throws {
+        let access = MacContextAccessSpy(status: .authorized)
+        let fixture = try Fixture(macContextAccess: access)
+        let actions = MacContextSettingsActions(model: fixture.model)
+
+        actions.appear()
+
+        #expect(access.statusChecks == 1)
+        #expect(access.promptingChecks == 0)
+        #expect(fixture.model.macContextAccessStatus == .authorized)
+    }
+
+    @MainActor @Test
+    func macContextAccessStatus_WhenLifecycleRefreshes_UsesNonpromptingChecksWithoutPolling()
+        async throws
+    {
+        let access = MacContextAccessSpy(status: .notAuthorized)
+        let fixture = try Fixture(macContextAccess: access)
+
+        await fixture.model.start()
+        access.status = .authorized
+        fixture.model.settingsDidAppear()
+        access.status = .notAuthorized
+        fixture.model.applicationDidBecomeActive()
+
+        #expect(access.statusChecks == 3)
+        #expect(access.promptingChecks == 0)
+        #expect(fixture.model.macContextAccessStatus == .notAuthorized)
+    }
+
+    @MainActor @Test
+    func saveSettings_WhenMacContextDraftChanges_PersistsAndAppliesCaptureOnlyAfterSuccess()
+        async throws
+    {
+        let target = MacContextTarget(
+            processIdentifier: 42,
+            applicationName: "Safari",
+            bundleIdentifier: "com.apple.Safari")
+        let capturer = MacContextCapturerSpy(target: target)
+        let fixture = try Fixture(macContextCapturer: capturer)
+        fixture.model.capturesMacContext = false
+
+        let saved = await fixture.model.saveSettings()
+        let runtimeTarget = fixture.model.coordinator.macContextCapturer.currentTarget()
+
+        #expect(saved)
+        #expect(!fixture.preferences.capturesMacContext)
+        #expect(runtimeTarget == nil)
+        #expect(capturer.currentTargetCount == 0)
+    }
+
+    @MainActor @Test
+    func saveSettings_WhenValidationFails_PreservesSavedAndRuntimeMacContextEnablement()
+        async throws
+    {
+        let target = MacContextTarget(
+            processIdentifier: 42,
+            applicationName: "Safari",
+            bundleIdentifier: "com.apple.Safari")
+        let capturer = MacContextCapturerSpy(target: target)
+        let fixture = try Fixture(macContextCapturer: capturer)
+        fixture.model.capturesMacContext = false
+        fixture.model.wakeProfiles[0].urlTemplate = "https://example.com/static"
+
+        let saved = await fixture.model.saveSettings()
+        let runtimeTarget = fixture.model.coordinator.macContextCapturer.currentTarget()
+
+        #expect(!saved)
+        #expect(fixture.preferences.capturesMacContext)
+        #expect(runtimeTarget == target)
+        #expect(capturer.currentTargetCount == 1)
+    }
+
+    @MainActor @Test
+    func configurableMacContextCapturer_WhenDisabled_StartsNoTargetOrCaptureWork() async {
+        let target = MacContextTarget(
+            processIdentifier: 42,
+            applicationName: "Safari",
+            bundleIdentifier: "com.apple.Safari")
+        let capturer = MacContextCapturerSpy(target: target)
+        let configurable = ConfigurableMacContextCapturer(capturer: capturer, enabled: false)
+
+        let currentTarget = configurable.currentTarget()
+        let snapshot = await configurable.capture(target)
+
+        #expect(currentTarget == nil)
+        #expect(snapshot.captureState == .targetUnavailable)
+        #expect(capturer.currentTargetCount == 0)
+        #expect(capturer.captureCount == 0)
+    }
+
+    @MainActor @Test
+    func coordinator_WhenMacContextCapturerIsInjected_UsesThatInstanceForAgentTurns()
+        async throws
+    {
+        let profile = try makeAgentProfile(pushToTalkHotKey: .defaultValue)
+        let target = MacContextTarget(
+            processIdentifier: 42,
+            applicationName: "Safari",
+            bundleIdentifier: "com.apple.Safari")
+        let snapshot = MacContextSnapshot.normalized(
+            state: .complete,
+            target: target,
+            windowTitle: "Mac context plan",
+            documentURL: nil,
+            selectedText: "privacy controls",
+            resources: [])
+        let capturer = MacContextCapturerSpy(target: target, snapshot: snapshot)
+        let runner = AppModelAgentRunnerSpy()
+        let fixture = try Fixture(
+            profiles: [profile],
+            agentRunner: runner,
+            macContextCapturer: capturer,
+            isExecutableFile: { _ in true },
+            isDirectory: { _ in true })
+        await fixture.model.start()
+
+        fixture.shortcut.press(profile.id)
+        await waitUntil { fixture.speech.mode == .pushToTalk }
+        fixture.speech.emit("summarize this")
+        fixture.shortcut.release(profile.id)
+        await waitUntil { await runner.recordedInvocations().count == 1 }
+
+        let invocation = try #require(await runner.recordedInvocations().first)
+        #expect(invocation.prompt.context == snapshot)
+        #expect(capturer.currentTargetCount == 1)
+        #expect(capturer.captureCount == 1)
+    }
+
+    @MainActor @Test
+    func macContextSettingsPresentation_WhenAuthorizationChanges_ShowsTruthfulCopyAndAction() {
+        let unauthorized = MacContextSettingsPresentation(accessStatus: .notAuthorized)
+        let authorized = MacContextSettingsPresentation(accessStatus: .authorized)
+
+        #expect(unauthorized.toggleLabel == "Include focused Mac context in agent requests")
+        #expect(unauthorized.accessStatusText == "Accessibility not authorized")
+        #expect(unauthorized.showsEnableAccessibilityButton)
+        #expect(authorized.accessStatusText == "Accessibility authorized")
+        #expect(!authorized.showsEnableAccessibilityButton)
+        #expect(unauthorized.disclosureText == "When enabled, Voice Activation sends the focused app’s name and bundle identifier, focused window title and document URL, selected text, and up to eight selected resource links outside Voice Activation to the selected ACP provider.")
+    }
+
     @MainActor @Test func setPushToTalkHotKey_WhenRecorded_ChangesOnlyThatProfileDraft() throws {
         let fixture = try Fixture()
         let profileID = fixture.model.wakeProfiles[0].id
@@ -332,7 +514,9 @@ extension AppModelTests {
 
         let invocation = try #require(await runner.recordedInvocations().first)
         #expect(invocation.profileID == profile.id)
-        #expect(invocation.prompt == "inspect this repository")
+        #expect(invocation.prompt == AgentPrompt(
+            request: "inspect this repository",
+            context: nil))
 
         fixture.model.wakeProfiles[0].agentHarness.executablePath = "/agents/changed"
         let saved = await fixture.model.saveSettings()

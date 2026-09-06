@@ -9,6 +9,159 @@ import Testing
 
 extension VoiceActivationCoordinatorTests {
     @MainActor
+    @Test func agentConversation_WhenUtteranceCompletes_AttachesFrozenMacContext() async throws {
+        let target = MacContextTarget(
+            processIdentifier: 42,
+            applicationName: "Safari",
+            bundleIdentifier: "com.apple.Safari")
+        let context = ControlledMacContextCapturer(
+            target: target,
+            snapshot: makeMacContextSnapshot(target: target, selectedText: "selected"))
+        let fixture = try Fixture(
+            profiles: [try makeAgentProfile()],
+            contextCapturer: context)
+        fixture.coordinator.setPassiveEnabled(true)
+
+        fixture.speech.emit("agent summarize this", isFinal: true)
+        await waitUntil { await fixture.agentRunner.recordedInvocations().count == 1 }
+
+        let invocation = try #require(await fixture.agentRunner.recordedInvocations().first)
+        #expect(context.currentTargetCallCount == 1)
+        #expect(context.capturedTargets == [target])
+        #expect(invocation.prompt.request == "summarize this")
+        #expect(invocation.prompt.context?.selectedText == "selected")
+        await fixture.agentRunner.complete(runIndex: 0)
+    }
+
+    @MainActor
+    @Test func agentConversation_WhenFollowUpIsQueued_UsesContextFrozenAtAdmission() async throws {
+        let safari = MacContextTarget(
+            processIdentifier: 42,
+            applicationName: "Safari",
+            bundleIdentifier: "com.apple.Safari")
+        let finder = MacContextTarget(
+            processIdentifier: 84,
+            applicationName: "Finder",
+            bundleIdentifier: "com.apple.finder")
+        let context = ControlledMacContextCapturer(
+            target: safari,
+            snapshot: makeMacContextSnapshot(target: safari, selectedText: "Safari selection"))
+        let fixture = try Fixture(
+            profiles: [try makeAgentProfile()],
+            contextCapturer: context)
+        fixture.coordinator.setPassiveEnabled(true)
+        fixture.speech.emit("agent inspect this", isFinal: true)
+        await waitUntil { await fixture.agentRunner.recordedInvocations().count == 1 }
+
+        context.target = finder
+        context.nextSnapshot = makeMacContextSnapshot(
+            target: finder,
+            selectedText: "Finder selection at admission")
+        context.suspendsCaptures = true
+        fixture.speech.emit("also inspect these", isFinal: true)
+        await waitUntil { context.capturedTargets.count == 2 }
+        context.nextSnapshot = makeMacContextSnapshot(
+            target: finder,
+            selectedText: "Finder selection after admission")
+        context.completeCapture(at: 1)
+        await waitUntil { await fixture.agentRunner.recordedInvocations().count == 2 }
+
+        let invocations = await fixture.agentRunner.recordedInvocations()
+        #expect(invocations[1].prompt.context?.applicationName == "Finder")
+        #expect(invocations[1].prompt.context?.selectedText == "Finder selection at admission")
+        await fixture.agentRunner.complete(runIndex: 0)
+        await fixture.agentRunner.complete(runIndex: 1)
+    }
+
+    @MainActor
+    @Test func agentConversation_WhenContextCaptureTimesOut_AttachesTimedOutSnapshot() async throws {
+        let target = MacContextTarget(
+            processIdentifier: 42,
+            applicationName: "Safari",
+            bundleIdentifier: "com.apple.Safari")
+        let context = ControlledMacContextCapturer(
+            target: target,
+            snapshot: makeMacContextSnapshot(target: target, state: .timedOut))
+        let fixture = try Fixture(
+            profiles: [try makeAgentProfile()],
+            contextCapturer: context)
+        fixture.coordinator.setPassiveEnabled(true)
+
+        fixture.speech.emit("agent explain this", isFinal: true)
+        await waitUntil { await fixture.agentRunner.recordedInvocations().count == 1 }
+
+        let invocation = try #require(await fixture.agentRunner.recordedInvocations().first)
+        #expect(invocation.prompt.context?.captureState == .timedOut)
+        #expect(invocation.prompt.context?.applicationName == "Safari")
+        await fixture.agentRunner.complete(runIndex: 0)
+    }
+
+    @MainActor
+    @Test func cancelAgentRun_WhenContextCaptureIsPending_NeverEntersRunner() async throws {
+        let target = MacContextTarget(
+            processIdentifier: 42,
+            applicationName: "Safari",
+            bundleIdentifier: nil)
+        let context = ControlledMacContextCapturer(target: target)
+        context.suspendsCaptures = true
+        let fixture = try Fixture(
+            profiles: [try makeAgentProfile()],
+            contextCapturer: context)
+        fixture.coordinator.setPassiveEnabled(true)
+        fixture.speech.emit("agent never start", isFinal: true)
+        await waitUntil { context.capturedTargets.count == 1 }
+
+        fixture.coordinator.cancelAgentRun()
+        await waitUntil {
+            let cancelCount = await fixture.agentRunner.cancelCount
+            return context.cancelledCaptureIndices == [0] && cancelCount == 1
+        }
+
+        #expect(await fixture.agentRunner.recordedInvocations().isEmpty)
+        #expect(await fixture.agentRunner.recordedRunAttemptCount() == 0)
+    }
+
+    @MainActor
+    @Test func agentConversation_WhenOldCaptureCompletesLate_DoesNotPopulateLaterTurn() async throws {
+        let safari = MacContextTarget(
+            processIdentifier: 42,
+            applicationName: "Safari",
+            bundleIdentifier: nil)
+        let finder = MacContextTarget(
+            processIdentifier: 84,
+            applicationName: "Finder",
+            bundleIdentifier: nil)
+        let context = ControlledMacContextCapturer(target: safari)
+        context.suspendsCaptures = true
+        context.resolvesCancellation = false
+        let fixture = try Fixture(
+            profiles: [try makeAgentProfile()],
+            contextCapturer: context)
+        fixture.coordinator.setPassiveEnabled(true)
+        fixture.speech.emit("agent old request", isFinal: true)
+        await waitUntil { context.capturedTargets.count == 1 }
+        fixture.coordinator.cancelAgentRun()
+        await waitUntil { await fixture.agentRunner.cancelCount == 1 }
+
+        context.target = finder
+        context.nextSnapshot = makeMacContextSnapshot(target: finder, selectedText: "new")
+        fixture.speech.emit("new request", isFinal: true)
+        await waitUntil { context.capturedTargets.count == 2 }
+        context.completeCapture(at: 1)
+        await waitUntil { await fixture.agentRunner.recordedInvocations().count == 1 }
+        context.completeCapture(
+            at: 0,
+            with: makeMacContextSnapshot(target: safari, selectedText: "old"))
+        try await Task.sleep(for: .milliseconds(30))
+
+        let invocations = await fixture.agentRunner.recordedInvocations()
+        #expect(await fixture.agentRunner.recordedRunAttemptCount() == 1)
+        #expect(invocations.map(\.prompt.request) == ["new request"])
+        #expect(invocations.first?.prompt.context?.selectedText == "new")
+        await fixture.agentRunner.complete(runIndex: 0)
+    }
+
+    @MainActor
     @Test func agentExecution_WhenAppKitTracksEvents_PublishesStreamingOutputImmediately()
         async throws
     {
@@ -98,7 +251,9 @@ extension VoiceActivationCoordinatorTests {
             ControlledAgentRunner.Invocation(
                 profileID: agentProfile.id,
                 configuration: try makeAgentConfiguration(),
-                prompt: "inspect the parser"),
+                prompt: AgentPrompt(request: "inspect the parser", context: nil),
+                restorationNeed: .visibleHistory,
+                runContinuity: AgentRunContinuityRequest()),
         ])
         guard case let .started(runID, startedProfile, prompt) = lifecycleEvents.first else {
             Issue.record("Expected an agent run start")
@@ -145,8 +300,8 @@ extension VoiceActivationCoordinatorTests {
         await waitUntil { await fixture.agentRunner.recordedInvocations().count == 2 }
 
         #expect(await fixture.agentRunner.recordedInvocations().map(\.prompt) == [
-            "inspect the parser",
-            "now show me the tests",
+            AgentPrompt(request: "inspect the parser", context: nil),
+            AgentPrompt(request: "now show me the tests", context: nil),
         ])
         #expect(lifecycleEvents.contains(.followUpSubmitted(
             runID: runID,
@@ -170,8 +325,8 @@ extension VoiceActivationCoordinatorTests {
         }
 
         #expect(await fixture.agentRunner.recordedInvocations().map(\.prompt) == [
-            "inspect this",
-            "actually run the tests",
+            AgentPrompt(request: "inspect this", context: nil),
+            AgentPrompt(request: "actually run the tests", context: nil),
         ])
         await fixture.agentRunner.complete(runIndex: 0)
         await fixture.agentRunner.complete(runIndex: 1)
@@ -281,8 +436,8 @@ extension VoiceActivationCoordinatorTests {
         let invocations = await fixture.agentRunner.recordedInvocations()
         #expect(speechCancellationCount == 1)
         #expect(invocations.map(\.prompt) == [
-            "explain this",
-            "thank you",
+            AgentPrompt(request: "explain this", context: nil),
+            AgentPrompt(request: "thank you", context: nil),
         ])
         guard invocations.count == 2 else { return }
         await fixture.agentRunner.complete(runIndex: 1)
@@ -427,7 +582,12 @@ extension VoiceActivationCoordinatorTests {
             wakePhrase: "computer",
             urlTemplate: "https://example.com/?q={urlText}",
             accent: .blue)
-        let fixture = try Fixture(profiles: [profile])
+        let target = MacContextTarget(
+            processIdentifier: 42,
+            applicationName: "Safari",
+            bundleIdentifier: nil)
+        let context = ControlledMacContextCapturer(target: target)
+        let fixture = try Fixture(profiles: [profile], contextCapturer: context)
         fixture.coordinator.setPassiveEnabled(true)
 
         fixture.speech.emit("computer preserve this", isFinal: true)
@@ -438,6 +598,8 @@ extension VoiceActivationCoordinatorTests {
         let expectedTemplate = try profile.commandTemplate
         #expect(await fixture.agentRunner.recordedInvocations().isEmpty)
         #expect(await fixture.runner.recordedTemplates().first == expectedTemplate)
+        #expect(context.currentTargetCallCount == 0)
+        #expect(context.capturedTargets.isEmpty)
     }
 
     @MainActor @Test func agentEvent_WhenExecutionGenerationIsStale_IsIgnored() async throws {

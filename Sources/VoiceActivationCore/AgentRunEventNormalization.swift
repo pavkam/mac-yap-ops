@@ -33,6 +33,9 @@ enum AgentRunEventNormalizer {
 
     static func normalize(_ event: AgentRunEvent) throws -> AgentRunEventNormalization {
         switch event {
+        case let .userMessageDelta(messageID, text):
+            try validate(identifier: messageID)
+            return textEntries(kind: .userMessage(messageID), text: text)
         case let .agentMessageDelta(messageID, text):
             try validate(identifier: messageID)
             return textEntries(kind: .agentMessage(messageID), text: text)

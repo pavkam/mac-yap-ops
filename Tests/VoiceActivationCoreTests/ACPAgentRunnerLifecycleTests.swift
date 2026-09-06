@@ -47,7 +47,7 @@ extension ACPAgentRunnerTests {
             try await runner.run(
                 profileID: UUID(),
                 configuration: try makeConfiguration(workingDirectory: "/tmp/second"),
-                prompt: "Overlapping",
+                prompt: AgentPrompt(request: "Overlapping", context: nil),
                 onEvent: { _ in })
         }
         #expect(await factory.createdConfigurations().count == 1)
@@ -231,7 +231,7 @@ extension ACPAgentRunnerTests {
             let result = try await runner.run(
                 profileID: UUID(),
                 configuration: try makeConfiguration(),
-                prompt: "Drain success",
+                prompt: AgentPrompt(request: "Drain success", context: nil),
                 onEvent: { _ in await gate.wait() })
             await completion.complete()
             return result
@@ -266,7 +266,7 @@ extension ACPAgentRunnerTests {
                 _ = try await runner.run(
                     profileID: UUID(),
                     configuration: try makeConfiguration(),
-                    prompt: "Drain failure",
+                    prompt: AgentPrompt(request: "Drain failure", context: nil),
                     onEvent: { _ in await gate.wait() })
             } catch {
                 await completion.complete()
@@ -306,7 +306,7 @@ extension ACPAgentRunnerTests {
             try await runner.run(
                 profileID: UUID(),
                 configuration: try makeConfiguration(),
-                prompt: "Overflow runner",
+                prompt: AgentPrompt(request: "Overflow runner", context: nil),
                 onEvent: { event in
                     await gate.wait()
                     await recorder.record(event)
@@ -375,7 +375,7 @@ extension ACPAgentRunnerTests {
             try await runner.run(
                 profileID: UUID(),
                 configuration: try makeConfiguration(),
-                prompt: "After shutdown",
+                prompt: AgentPrompt(request: "After shutdown", context: nil),
                 onEvent: { _ in })
         }
     }
@@ -391,7 +391,7 @@ extension ACPAgentRunnerTests {
             try await runner.run(
                 profileID: UUID(),
                 configuration: try makeConfiguration(),
-                prompt: "Shutdown while draining",
+                prompt: AgentPrompt(request: "Shutdown while draining", context: nil),
                 onEvent: { _ in await gate.wait() })
         }
         try await establishConnection(transport, workingDirectory: "/tmp/project")
@@ -421,7 +421,7 @@ extension ACPAgentRunnerTests {
             try await runner.run(
                 profileID: UUID(),
                 configuration: try makeConfiguration(),
-                prompt: "Shutdown before success",
+                prompt: AgentPrompt(request: "Shutdown before success", context: nil),
                 onEvent: { _ in })
         }
         try await establishConnection(transport, workingDirectory: "/tmp/project")

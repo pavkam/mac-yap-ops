@@ -339,6 +339,8 @@ public enum AgentRunMetadataKind {
 public enum AgentRunEvent: Equatable, Sendable {
     /// The ACP connection completed initialization and opened a session.
     case connected(agentName: String, sessionID: String)
+    /// A user-text fragment whose request provenance was validated by the event source.
+    case userMessageDelta(messageID: String?, text: String)
     /// A streaming fragment of user-visible Markdown from the agent.
     case agentMessageDelta(messageID: String?, text: String)
     /// A streaming fragment of agent reasoning that may be collapsed in the UI.

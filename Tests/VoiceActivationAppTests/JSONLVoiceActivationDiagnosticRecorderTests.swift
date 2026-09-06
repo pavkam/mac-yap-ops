@@ -76,4 +76,37 @@ struct JSONLVoiceActivationDiagnosticRecorderTests {
         #expect(newest.contains("\"index\":\"11\""))
         #expect(recorder.rotatedLogURLs.count == 2)
     }
+
+    @Test func record_WhenPromptPayloadCountsUseSafeKeys_PersistsTheirValues() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let recorder = try JSONLVoiceActivationDiagnosticRecorder(directoryURL: directory)
+
+        recorder.record(
+            category: .acp,
+            event: "acp_client.prompt_started",
+            level: .info,
+            fields: [
+                "request_byte_count": "27",
+                "mac_snapshot_block_byte_count": "512",
+                "resource_link_count": "1",
+                "block_count": "4",
+            ])
+        recorder.flush()
+
+        let data = try Data(contentsOf: recorder.currentLogURL)
+        let line = try #require(String(decoding: data, as: UTF8.self)
+            .split(separator: "\n")
+            .first)
+        let object = try #require(
+            JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])
+        let fields = try #require(object["fields"] as? [String: String])
+        #expect(fields == [
+            "request_byte_count": "27",
+            "mac_snapshot_block_byte_count": "512",
+            "resource_link_count": "1",
+            "block_count": "4",
+        ])
+    }
 }

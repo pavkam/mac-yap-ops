@@ -16,7 +16,7 @@ extension ACPAgentRunnerTests {
             try await runner.run(
                 profileID: UUID(),
                 configuration: try makeConfiguration(),
-                prompt: "Edit",
+                prompt: AgentPrompt(request: "Edit", context: nil),
                 onEvent: { event in await recorder.record(event) })
         }
         try await establishConnection(transport, workingDirectory: "/tmp/project")
@@ -143,7 +143,7 @@ extension ACPAgentRunnerTests {
             try await runner.run(
                 profileID: profileIDs[1],
                 configuration: configurations[1],
-                prompt: "Continue evicted profile",
+                prompt: AgentPrompt(request: "Continue evicted profile", context: nil),
                 onEvent: { event in await recorder.record(event) })
         }
         try await establishConnection(
@@ -254,7 +254,7 @@ extension ACPAgentRunnerTests {
             try await runner.run(
                 profileID: UUID(),
                 configuration: try makeConfiguration(),
-                prompt: "Inspect",
+                prompt: AgentPrompt(request: "Inspect", context: nil),
                 onEvent: { event in await recorder.record(event) })
         }
         try await establishConnection(transport, workingDirectory: "/tmp/project")
@@ -292,7 +292,7 @@ extension ACPAgentRunnerTests {
             try await runner.run(
                 profileID: profileID,
                 configuration: try makeConfiguration(),
-                prompt: "Inspect",
+                prompt: AgentPrompt(request: "Inspect", context: nil),
                 onEvent: { event in await recorder.record(event) })
         }
         try await establishConnection(transport, workingDirectory: "/tmp/project")
@@ -332,7 +332,7 @@ extension ACPAgentRunnerTests {
             try await runner.run(
                 profileID: profileID,
                 configuration: configuration,
-                prompt: "First",
+                prompt: AgentPrompt(request: "First", context: nil),
                 onEvent: { event in await firstRecorder.record(event) })
         }
         try await establishConnection(firstTransport, workingDirectory: "/tmp/project")
@@ -353,7 +353,7 @@ extension ACPAgentRunnerTests {
             try await runner.run(
                 profileID: profileID,
                 configuration: configuration,
-                prompt: "Second",
+                prompt: AgentPrompt(request: "Second", context: nil),
                 onEvent: { event in await secondRecorder.record(event) })
         }
         try await establishConnection(secondTransport, workingDirectory: "/tmp/project")
@@ -387,7 +387,7 @@ extension ACPAgentRunnerTests {
             try await runner.run(
                 profileID: UUID(),
                 configuration: try makeConfiguration(),
-                prompt: "Inspect",
+                prompt: AgentPrompt(request: "Inspect", context: nil),
                 onEvent: { event in await recorder.record(event) })
         }
         try await establishConnection(transport, workingDirectory: "/tmp/project")
@@ -427,7 +427,7 @@ extension ACPAgentRunnerTests {
             let result = try await runner.run(
                 profileID: UUID(),
                 configuration: try makeConfiguration(),
-                prompt: "Inspect",
+                prompt: AgentPrompt(request: "Inspect", context: nil),
                 onEvent: { _ in })
             await completion.complete()
             return result
@@ -492,7 +492,7 @@ extension ACPAgentRunnerTests {
             try await runner.run(
                 profileID: profileID,
                 configuration: try makeConfiguration(),
-                prompt: "Inspect",
+                prompt: AgentPrompt(request: "Inspect", context: nil),
                 onEvent: { _ in await gate.wait() })
         }
         try await establishConnection(transport, workingDirectory: "/tmp/project")
@@ -526,7 +526,7 @@ extension ACPAgentRunnerTests {
             try await runner.run(
                 profileID: UUID(),
                 configuration: try makeConfiguration(),
-                prompt: "Inspect",
+                prompt: AgentPrompt(request: "Inspect", context: nil),
                 onEvent: { event in await recorder.record(event) })
         }
         try await establishConnection(transport, workingDirectory: "/tmp/project")

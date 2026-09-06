@@ -56,13 +56,16 @@ public struct ContinuousACPAgentRunnerClock: ACPAgentRunnerClock, Sendable {
 
 struct ACPAgentRunnerTestingHooks: Sendable {
     let beforeCancelledExitWaitReturns: @Sendable () async -> Void
+    let afterPromptResponseBeforeDeliveryDrain: @Sendable () async -> Void
     let beforeSuccessIsPublished: @Sendable () async -> Void
 
     init(
         beforeCancelledExitWaitReturns: @escaping @Sendable () async -> Void = {},
+        afterPromptResponseBeforeDeliveryDrain: @escaping @Sendable () async -> Void = {},
         beforeSuccessIsPublished: @escaping @Sendable () async -> Void = {}
     ) {
         self.beforeCancelledExitWaitReturns = beforeCancelledExitWaitReturns
+        self.afterPromptResponseBeforeDeliveryDrain = afterPromptResponseBeforeDeliveryDrain
         self.beforeSuccessIsPublished = beforeSuccessIsPublished
     }
 }
@@ -89,6 +92,7 @@ public actor ACPAgentRunner: AgentHarnessRunning {
     static let promptSettlePeriod = Duration.milliseconds(25)
 
     let transportFactory: any ACPTransportCreating
+    let continuityStore: any AgentContinuityStoring
     let clock: any ACPAgentRunnerClock
     let startupClock: any ACPAgentRunnerClock
     let drainClock: any ACPAgentRunnerClock
@@ -105,18 +109,21 @@ public actor ACPAgentRunner: AgentHarnessRunning {
     ///
     /// - Parameters:
     ///   - transportFactory: Creates one process transport per fresh session.
+    ///   - continuityStore: Retains bounded identifier-only session continuity.
     ///   - clock: Controls cancellation deadlines.
     ///   - drainClock: Controls post-exit stream draining.
     ///   - settleClock: Controls the short successful-prompt process-settlement window.
     ///   - diagnostics: Records privacy-safe lifecycle metadata.
     public init(
         transportFactory: any ACPTransportCreating = ACPProcessTransportFactory(),
+        continuityStore: any AgentContinuityStoring = InMemoryAgentContinuityStore(),
         clock: any ACPAgentRunnerClock = ContinuousACPAgentRunnerClock(),
         drainClock: any ACPAgentRunnerClock = ContinuousACPAgentRunnerClock(),
         settleClock: any ACPAgentRunnerClock = ContinuousACPAgentRunnerClock(),
         diagnostics: any VoiceActivationDiagnosticRecording = VoiceActivationDiagnostics.shared
     ) {
         self.transportFactory = transportFactory
+        self.continuityStore = continuityStore
         self.clock = clock
         startupClock = ContinuousACPAgentRunnerClock()
         self.drainClock = drainClock
@@ -127,6 +134,7 @@ public actor ACPAgentRunner: AgentHarnessRunning {
 
     init(
         transportFactory: any ACPTransportCreating = ACPProcessTransportFactory(),
+        continuityStore: any AgentContinuityStoring = InMemoryAgentContinuityStore(),
         clock: any ACPAgentRunnerClock = ContinuousACPAgentRunnerClock(),
         startupClock: any ACPAgentRunnerClock = ContinuousACPAgentRunnerClock(),
         drainClock: any ACPAgentRunnerClock = ContinuousACPAgentRunnerClock(),
@@ -135,6 +143,7 @@ public actor ACPAgentRunner: AgentHarnessRunning {
         diagnostics: any VoiceActivationDiagnosticRecording = VoiceActivationDiagnostics.shared
     ) {
         self.transportFactory = transportFactory
+        self.continuityStore = continuityStore
         self.clock = clock
         self.startupClock = startupClock
         self.drainClock = drainClock
@@ -146,20 +155,27 @@ public actor ACPAgentRunner: AgentHarnessRunning {
     /// Runs a prompt using the profile's cached session, recovering stale sessions once.
     ///
     /// - Parameters:
+    ///   - admission: The single-use gate claimed before any runner side effect.
     ///   - profileID: The owner of the reusable ACP session.
     ///   - configuration: The validated process and permission configuration.
-    ///   - prompt: The complete prompt sent to the harness.
-    ///   - onEvent: Receives ordered streaming output and control events.
+    ///   - prompt: The typed request and optional Mac context sent to the harness.
+    ///   - restorationNeed: Whether restoration should replay visible history.
+    ///   - runContinuity: Consume-on-publication interrupted-work metadata.
+    ///   - onEvent: Receives ordered source-qualified stream events.
     /// - Returns: The terminal result reported by the harness.
     /// - Throws: ``ACPAgentRunnerError`` or an underlying transport/protocol error.
     public func run(
+        admission: AgentRunAdmission,
         profileID: UUID,
         configuration: AgentHarnessConfiguration,
-        prompt: String,
-        onEvent: @escaping @Sendable (AgentRunEvent) async -> Void
+        prompt: AgentPrompt,
+        restorationNeed: AgentSessionRestorationNeed,
+        runContinuity: AgentRunContinuityRequest,
+        onEvent: @escaping @Sendable (AgentRunStreamEvent) async -> Void
     ) async throws
         -> AgentRunResult
     {
+        guard admission.claim() else { throw CancellationError() }
         guard !isShutDown else {
             diagnostics.record(
                 category: .agent,
@@ -183,7 +199,7 @@ public actor ACPAgentRunner: AgentHarnessRunning {
             fields: [
                 "turn_id": token.uuidString,
                 "profile_id": profileID.uuidString,
-                "input_character_count": String(prompt.count),
+                "request_byte_count": String(prompt.request.utf8.count),
                 "cached_session_count": String(records.count),
                 "task_priority": String(Task.currentPriority.rawValue),
             ])
@@ -199,7 +215,7 @@ public actor ACPAgentRunner: AgentHarnessRunning {
                     "event_kind": event.runnerDiagnosticName,
                     "task_priority": String(Task.currentPriority.rawValue),
                 ])
-            await onEvent(event)
+            await onEvent(.live(event))
             diagnostics.record(
                 category: .agent,
                 event: "acp_runner.delivery_handler_finished",
@@ -219,22 +235,53 @@ public actor ACPAgentRunner: AgentHarnessRunning {
             connection: nil,
             completion: completion,
             delivery: delivery,
+            streamEventHandler: onEvent,
             isCancelling: false,
-            deliveryOverflowed: false)
+            deliveryOverflowed: false,
+            restorationToken: nil,
+            restorationRecordID: nil,
+            connectionAttemptUsedRestoration: false)
 
         var runRecord: ACPAgentConnectionRecord?
         var didAttemptSessionRecovery = false
         var didAttemptStartupRecovery = false
         var shouldPublishSessionRecoveryNotice = false
         var shouldPublishStartupRecoveryNotice = false
+        var skipBookmarkForNextConnection = false
+        var freshAfterUnavailableBookmark = false
         do {
             while true {
-                let record: ACPAgentConnectionRecord
+                let acquisition: ACPAgentConnectionAcquisition
                 do {
-                    record = try await connectionRecord(
+                    acquisition = try await connectionRecord(
                         profileID: profileID,
                         configuration: configuration,
-                        turnToken: token)
+                        restorationNeed: restorationNeed,
+                        turnToken: token,
+                        skipBookmark: skipBookmarkForNextConnection,
+                        freshAfterUnavailableBookmark: freshAfterUnavailableBookmark,
+                        onEvent: onEvent)
+                    skipBookmarkForNextConnection = false
+                    freshAfterUnavailableBookmark = false
+                } catch let error as ACPClientError {
+                    let usedRestoration = activeTurn?.token == token
+                        && activeTurn?.connectionAttemptUsedRestoration == true
+                    let permitsFreshFallback = error.isSessionUnavailable
+                        || error == .eventDeliveryOverflow
+                    guard usedRestoration,
+                          permitsFreshFallback,
+                          !didAttemptSessionRecovery,
+                          !skipBookmarkForNextConnection,
+                          ownsActiveTurn(token),
+                          !isActiveTurnCancelling(token)
+                    else { throw error }
+                    didAttemptSessionRecovery = true
+                    await removeContinuityRecords(profileIDs: [profileID])
+                    try ensureActiveTurn(token: token)
+                    skipBookmarkForNextConnection = true
+                    freshAfterUnavailableBookmark = true
+                    shouldPublishSessionRecoveryNotice = true
+                    continue
                 } catch let error as ACPAgentRunnerError {
                     guard error == .startupTimedOut,
                         !didAttemptStartupRecovery,
@@ -244,6 +291,14 @@ public actor ACPAgentRunner: AgentHarnessRunning {
                         throw error
                     }
                     didAttemptStartupRecovery = true
+                    let restorationTimedOut = activeTurn?.token == token
+                        && activeTurn?.connectionAttemptUsedRestoration == true
+                    if restorationTimedOut {
+                        await removeContinuityRecords(profileIDs: [profileID])
+                        try ensureActiveTurn(token: token)
+                        skipBookmarkForNextConnection = true
+                        freshAfterUnavailableBookmark = true
+                    }
                     shouldPublishStartupRecoveryNotice = true
                     diagnostics.record(
                         category: .agent,
@@ -255,6 +310,7 @@ public actor ACPAgentRunner: AgentHarnessRunning {
                         ])
                     continue
                 }
+                let record = acquisition.record
                 runRecord = record
                 guard ownsActiveTurn(token),
                     !isActiveTurnCancelling(token),
@@ -287,9 +343,46 @@ public actor ACPAgentRunner: AgentHarnessRunning {
                     evictedProfileIDs.removeAll { $0 == profileID }
                 }
 
+                let continuity = continuityContext(
+                    activation: acquisition.activation,
+                    previousTurnInterrupted: runContinuity.previousTurnInterrupted)
+                let composedPrompt = AgentPrompt(
+                    request: prompt.request,
+                    context: prompt.context,
+                    continuity: continuity)
+                guard let activatedSessionID = record.sessionID else {
+                    throw ACPClientError.malformedResponse("The session is not initialized.")
+                }
+                let workKey = AgentInterruptedWorkKey(
+                    profileID: profileID,
+                    sessionID: activatedSessionID,
+                    occurrenceID: UUID())
+                let publicationState = ACPAgentPromptPublicationState()
+                let publicationHooks = ACPClientPromptPublicationHooks(
+                    beforePublication: { [weak self] in
+                        guard let self else { throw ACPAgentRunnerError.cancelled }
+                        try await self.preparePromptPublication(
+                            key: workKey,
+                            turnToken: token,
+                            profileID: profileID,
+                            recordID: recordID)
+                        publicationState.markMarkerWritten()
+                    },
+                    afterPublication: { [weak self] in
+                        publicationState.markFramePublished()
+                        await self?.confirmPromptPublication(
+                            turnToken: token,
+                            profileID: profileID,
+                            recordID: recordID,
+                            acknowledgementKeys: runContinuity.ordinaryInterruptedWorkKeys)
+                    })
+
                 let result: AgentRunResult
                 do {
-                    result = try await connection.prompt(prompt) { [weak self] event in
+                    result = try await connection.prompt(
+                        composedPrompt,
+                        publicationHooks: publicationHooks
+                    ) { [weak self] event in
                         await self?.forward(
                             event: event,
                             turnToken: token,
@@ -297,7 +390,11 @@ public actor ACPAgentRunner: AgentHarnessRunning {
                             recordID: recordID)
                     }
                 } catch let error as ACPClientError {
+                    await clearWorkIfPromptWasNotPublished(
+                        key: workKey,
+                        state: publicationState)
                     guard !didAttemptSessionRecovery,
+                        !publicationState.snapshot().frameWasPublished,
                         error.isSessionUnavailable,
                         ownsActiveTurn(token),
                         !isActiveTurnCancelling(token)
@@ -319,9 +416,12 @@ public actor ACPAgentRunner: AgentHarnessRunning {
                         profileID: profileID,
                         recordID: recordID,
                         fallbackRecord: record)
+                    await removeContinuityRecords(profileIDs: [profileID])
                     runRecord = nil
                     clearActiveTurnConnection(token: token)
                     try ensureActiveTurn(token: token)
+                    skipBookmarkForNextConnection = true
+                    freshAfterUnavailableBookmark = true
                     shouldPublishSessionRecoveryNotice = true
                     continue
                 }
@@ -329,6 +429,8 @@ public actor ACPAgentRunner: AgentHarnessRunning {
                     throw ACPClientError.malformedResponse(
                         "A cancelled prompt returned a non-cancelled stopReason.")
                 }
+
+                await testingHooks.afterPromptResponseBeforeDeliveryDrain()
 
                 if await processExitWasObservedDuringPromptSettlement(record: record) {
                     _ = await record.exitTask?.result
@@ -347,6 +449,13 @@ public actor ACPAgentRunner: AgentHarnessRunning {
                 }
                 guard activeTurn?.deliveryOverflowed == false else {
                     throw ACPAgentRunnerError.eventDeliveryOverflow
+                }
+                if isActiveTurnCancelling(token), result.stopReason != .cancelled {
+                    throw ACPAgentRunnerError.cancelled
+                }
+                await clearSettledWork(workKey)
+                guard activeTurn?.token == token else {
+                    throw ACPAgentRunnerError.cancelled
                 }
                 if isActiveTurnCancelling(token), result.stopReason != .cancelled {
                     throw ACPAgentRunnerError.cancelled
@@ -444,7 +553,13 @@ public actor ACPAgentRunner: AgentHarnessRunning {
                 "has_connection": String(turn.connection != nil),
             ])
         turn.isCancelling = true
+        let restorationToken = turn.restorationToken
+        turn.restorationToken = nil
+        turn.restorationRecordID = nil
         activeTurn = turn
+        if let restorationToken {
+            await turn.streamEventHandler(.restorationAborted(token: restorationToken))
+        }
 
         let token = turn.token
         let profileID = turn.profileID
@@ -495,8 +610,14 @@ public actor ACPAgentRunner: AgentHarnessRunning {
             fields: ["profile_count": String(profileIDs.count)])
         var removed: [ACPAgentConnectionRecord] = []
         var discardedDelivery: AgentRunEventDelivery?
+        var abortedRestoration: (
+            AgentRestorationToken,
+            @Sendable (AgentRunStreamEvent) async -> Void)?
         if let turn = activeTurn, profileIDs.contains(turn.profileID) {
             discardedDelivery = turn.delivery
+            if let token = turn.restorationToken {
+                abortedRestoration = (token, turn.streamEventHandler)
+            }
             activeTurn = nil
         }
         for profileID in profileIDs {
@@ -507,11 +628,15 @@ public actor ACPAgentRunner: AgentHarnessRunning {
         }
         evictedProfileIDs.removeAll { profileIDs.contains($0) }
 
+        if let (token, handler) = abortedRestoration {
+            await handler(.restorationAborted(token: token))
+        }
         await discardedDelivery?.finish(.discard)
 
         for record in removed {
             await dispose(record)
         }
+        await removeContinuityRecords(profileIDs: profileIDs)
         diagnostics.record(
             category: .agent,
             event: "acp_runner.reset_finished",
@@ -532,6 +657,9 @@ public actor ACPAgentRunner: AgentHarnessRunning {
 
         if let turn = activeTurn {
             activeTurn = nil
+            if let token = turn.restorationToken {
+                await turn.streamEventHandler(.restorationAborted(token: token))
+            }
             await turn.delivery.finish(.discard)
             if let connection = turn.connection {
                 Task {

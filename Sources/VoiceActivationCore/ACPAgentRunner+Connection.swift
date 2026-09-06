@@ -7,12 +7,18 @@ extension ACPAgentRunner {
     func connectionRecord(
         profileID: UUID,
         configuration: AgentHarnessConfiguration,
-        turnToken: UUID
-    ) async throws -> ACPAgentConnectionRecord {
+        restorationNeed: AgentSessionRestorationNeed,
+        turnToken: UUID,
+        skipBookmark: Bool,
+        freshAfterUnavailableBookmark: Bool,
+        onEvent: @escaping @Sendable (AgentRunStreamEvent) async -> Void
+    ) async throws -> ACPAgentConnectionAcquisition {
+        let providerFingerprint = AgentProviderFingerprint.make(configuration: configuration)
         if let cached = records[profileID],
             cached.configuration == configuration,
             cached.connection != nil,
-            cached.exitStatus == nil
+            cached.exitStatus == nil,
+            let cachedSessionID = cached.sessionID
         {
             diagnostics.record(
                 category: .agent,
@@ -24,9 +30,21 @@ extension ACPAgentRunner {
                 ])
             markAccessed(cached)
             updateActiveTurnRecord(token: turnToken, record: cached)
-            return cached
+            await saveBookmark(
+                profileID: profileID,
+                sessionID: cachedSessionID,
+                providerFingerprint: providerFingerprint)
+            try ensureActiveTurn(token: turnToken)
+            guard records[profileID]?.id == cached.id,
+                  cached.connection != nil,
+                  cached.exitStatus == nil
+            else { throw ACPAgentRunnerError.cancelled }
+            return ACPAgentConnectionAcquisition(record: cached, activation: nil)
         }
 
+        let configurationChanged = records[profileID].map {
+            $0.configuration != configuration
+        } ?? false
         if let replaced = records.removeValue(forKey: profileID) {
             diagnostics.record(
                 category: .agent,
@@ -36,6 +54,31 @@ extension ACPAgentRunner {
                     "record_id": replaced.id.uuidString,
                 ])
             await dispose(replaced)
+            try ensureActiveTurn(token: turnToken)
+        }
+        if configurationChanged {
+            await removeContinuityRecords(profileIDs: [profileID])
+            try ensureActiveTurn(token: turnToken)
+        }
+
+        var restoration: AgentSessionRestorationRequest?
+        if !skipBookmark && !configurationChanged {
+            do {
+                if let bookmark = try await continuityStore.bookmark(for: profileID) {
+                    try ensureActiveTurn(token: turnToken)
+                    if bookmark.providerFingerprint == providerFingerprint {
+                        restoration = try AgentSessionRestorationRequest(
+                            sessionID: bookmark.sessionID,
+                            need: restorationNeed,
+                            token: AgentRestorationToken())
+                    } else {
+                        await removeContinuityRecords(profileIDs: [profileID])
+                    }
+                }
+            } catch {
+                recordContinuityStoreFailure(operation: "read")
+                restoration = nil
+            }
             try ensureActiveTurn(token: turnToken)
         }
 
@@ -71,22 +114,53 @@ extension ACPAgentRunner {
                 "record_id": record.id.uuidString,
             ])
         updateActiveTurnRecord(token: turnToken, record: record)
+        establishRestoration(
+            restoration?.token,
+            recordID: record.id,
+            turnToken: turnToken)
         await startObservers(for: record)
 
         do {
-            let connection = try await connect(
+            if let restoration {
+                await onEvent(.restorationStarted(
+                    token: restoration.token,
+                    sessionID: restoration.sessionID))
+                try ensureRestorationCurrent(
+                    token: restoration.token,
+                    recordID: record.id,
+                    turnToken: turnToken)
+            }
+            let result = try await connect(
                 record: record,
                 transport: transport,
-                configuration: configuration)
+                configuration: configuration,
+                restoration: restoration,
+                turnToken: turnToken,
+                onEvent: onEvent)
             guard records[profileID]?.id == record.id,
                 ownsActiveTurn(turnToken),
                 !isActiveTurnCancelling(turnToken)
             else {
                 await transport.terminate()
-                await connection.close()
+                await result.connection.close()
                 throw ACPAgentRunnerError.cancelled
             }
-            record.connection = connection
+            var activation = result.activation
+            if freshAfterUnavailableBookmark, case .new(let sessionID) = activation {
+                activation = .freshAfterUnavailableBookmark(sessionID: sessionID)
+            }
+            if case .freshBecauseRestorationUnsupported = activation {
+                await removeContinuityRecords(profileIDs: [profileID])
+                try ensureActiveTurn(token: turnToken)
+            }
+            await saveBookmark(
+                profileID: profileID,
+                activation: activation,
+                providerFingerprint: providerFingerprint)
+            try ensureActiveTurn(token: turnToken)
+
+            record.connection = result.connection
+            record.sessionID = activation.sessionID
             diagnostics.record(
                 category: .agent,
                 event: "acp_runner.connection_ready",
@@ -96,12 +170,32 @@ extension ACPAgentRunner {
                     "record_id": record.id.uuidString,
                     "cached_session_count": String(records.count),
                 ])
-            updateActiveTurn(token: turnToken, record: record, connection: connection)
+            updateActiveTurn(
+                token: turnToken,
+                record: record,
+                connection: result.connection)
+            if let restoration {
+                try await completeRestoration(
+                    token: restoration.token,
+                    recordID: record.id,
+                    turnToken: turnToken,
+                    activation: activation,
+                    onEvent: onEvent)
+            }
             try await evictLeastRecentlyUsedSessionIfNeeded(
                 preservingRecordID: record.id,
                 turnToken: turnToken)
-            return record
+            return ACPAgentConnectionAcquisition(
+                record: record,
+                activation: activation)
         } catch {
+            if let restoration {
+                await abortRestorationIfCurrent(
+                    token: restoration.token,
+                    recordID: record.id,
+                    turnToken: turnToken,
+                    onEvent: onEvent)
+            }
             diagnostics.record(
                 category: .agent,
                 event: "acp_runner.connection_failed",
@@ -123,14 +217,18 @@ extension ACPAgentRunner {
     func connect(
         record: ACPAgentConnectionRecord,
         transport: any ACPTransport,
-        configuration: AgentHarnessConfiguration
-    ) async throws -> ACPClientConnection {
+        configuration: AgentHarnessConfiguration,
+        restoration: AgentSessionRestorationRequest?,
+        turnToken: UUID,
+        onEvent: @escaping @Sendable (AgentRunStreamEvent) async -> Void
+    ) async throws -> ACPConnectionResult {
         let startedAtUptime = DispatchTime.now().uptimeNanoseconds
         let connectionDiagnostics = diagnostics
         diagnostics.record(
             category: .acp,
             event: "acp_runner.handshake_started",
             fields: ["record_id": record.id.uuidString])
+        let recordID = record.id
         let outcome = await withTaskGroup(of: ACPAgentConnectionStartupOutcome.self) { group in
             group.addTask { [startupClock] in
                 await startupClock.sleep(for: Self.connectionStartupTimeout)
@@ -142,6 +240,15 @@ extension ACPAgentRunner {
                         try await ACPClientConnection.connect(
                             transport: transport,
                             configuration: configuration,
+                            restoration: restoration,
+                            onRestoredEvent: { [weak self] token, event in
+                                await self?.forwardRestored(
+                                    token: token,
+                                    event: event,
+                                    recordID: recordID,
+                                    turnToken: turnToken,
+                                    onEvent: onEvent)
+                            },
                             diagnostics: connectionDiagnostics))
                 } catch {
                     return .failed(error)

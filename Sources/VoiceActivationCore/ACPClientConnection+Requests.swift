@@ -4,7 +4,12 @@
 import Foundation
 
 extension ACPClientConnection {
-    func start() async throws {
+    func start(
+        restoration: AgentSessionRestorationRequest?,
+        onRestoredEvent: @escaping @Sendable (AgentRestorationToken, AgentRunEvent) async -> Void,
+        clientCapabilityFragments: [ACPJSONValue],
+        afterRestorationResponseValidation: @escaping @Sendable () async -> Void
+    ) async throws -> AgentSessionActivation {
         let startedAtUptime = DispatchTime.now().uptimeNanoseconds
         diagnostics.record(
             category: .acp,
@@ -13,17 +18,21 @@ extension ACPClientConnection {
                 "connection_id": connectionID.uuidString,
                 "provider": configuration.preset.rawValue,
             ])
-        let output = await transport.output()
-        receiveTask = Task {
-            await self.receive(output)
-        }
 
         do {
+            try Task.checkCancellation()
+            let clientCapabilities = try ACPClientCapabilities.compose(
+                clientCapabilityFragments)
+            let output = await transport.output()
+            try Task.checkCancellation()
+            receiveTask = Task {
+                await self.receive(output)
+            }
             let initializeResult = try await sendRequest(
                 method: "initialize",
                 params: .object([
                     "protocolVersion": .integer(1),
-                    "clientCapabilities": .object([:]),
+                    "clientCapabilities": clientCapabilities,
                     "clientInfo": .object([
                         "name": .string(Self.clientName),
                         "title": .string(Self.clientTitle),
@@ -31,38 +40,38 @@ extension ACPClientConnection {
                     ]),
                 ]))
             try applyInitializeResult(initializeResult)
+            try Task.checkCancellation()
 
-            let newSessionResult: ACPJSONValue
-            do {
-                newSessionResult = try await sendRequest(
-                    method: "session/new",
-                    params: .object([
-                        "cwd": .string(configuration.workingDirectory),
-                        "mcpServers": .array([]),
-                    ]))
-            } catch let error as ACPClientError {
-                if case .remoteError(let code, _) = error, code == -32_000 {
-                    let methods = authenticationMethodNames
-                    await close()
-                    throw ACPClientError.authenticationRequired(methods: methods)
+            let activation: AgentSessionActivation
+            if let restoration {
+                switch AgentSessionRestorationPolicy.operation(
+                    need: restoration.need,
+                    capabilities: sessionRestorationCapabilities)
+                {
+                case .load:
+                    activation = try await loadSession(
+                        restoration,
+                        deliversReplay: true,
+                        onRestoredEvent: onRestoredEvent,
+                        afterResponseValidation: afterRestorationResponseValidation)
+                case .loadDiscardingReplay:
+                    activation = try await loadSession(
+                        restoration,
+                        deliversReplay: false,
+                        onRestoredEvent: onRestoredEvent,
+                        afterResponseValidation: afterRestorationResponseValidation)
+                case .resume:
+                    activation = try await resumeSession(
+                        restoration,
+                        afterResponseValidation: afterRestorationResponseValidation)
+                case .new:
+                    activation = try await newSession(
+                        restorationWasUnsupported: true)
                 }
-                throw error
+            } else {
+                activation = try await newSession(restorationWasUnsupported: false)
             }
-
-            let newSessionObject = try requiredObject(
-                newSessionResult,
-                named: "session/new result")
-            let decodedSessionID = try requiredString(
-                newSessionObject["sessionId"],
-                named: "sessionId")
-            guard !decodedSessionID.isEmpty else {
-                throw ACPClientError.malformedResponse("sessionId is empty.")
-            }
-            guard decodedSessionID.utf8.count <= ACPEventDecoder.maximumOpaqueIdentifierBytes else {
-                throw ACPClientError.malformedResponse(
-                    "sessionId exceeds the opaque identifier limit.")
-            }
-            sessionID = decodedSessionID
+            try Task.checkCancellation()
             diagnostics.record(
                 category: .acp,
                 event: "acp_client.connection_ready",
@@ -70,9 +79,14 @@ extension ACPClientConnection {
                     "connection_id": connectionID.uuidString,
                     "duration_ms": String(Self.elapsedMilliseconds(since: startedAtUptime)),
                     "authentication_method_count": String(authenticationMethodNames.count),
+                    "load_session": String(sessionRestorationCapabilities.loadSession),
+                    "resume_session": String(sessionRestorationCapabilities.resumeSession),
+                    "operation": activation.diagnosticOperation,
                 ])
+            return activation
         } catch {
-            let clientError = userSafeError(error)
+            let detachedRestoration = detachRestoration()
+            await discardRestoration(detachedRestoration)
             await close()
             diagnostics.record(
                 category: .acp,
@@ -83,7 +97,13 @@ extension ACPClientConnection {
                     "duration_ms": String(Self.elapsedMilliseconds(since: startedAtUptime)),
                     "error_type": String(describing: type(of: error)),
                 ])
-            throw clientError
+            if Task.isCancelled || error is CancellationError {
+                throw CancellationError()
+            }
+            if let capabilityError = error as? ACPClientCapabilitiesError {
+                throw capabilityError
+            }
+            throw userSafeError(error)
         }
     }
 
@@ -95,6 +115,8 @@ extension ACPClientConnection {
         guard protocolVersion == 1 else {
             throw ACPClientError.incompatibleProtocol(selected: protocolVersion)
         }
+        sessionRestorationCapabilities = try ACPSessionRestorationCapabilities.decode(
+            from: result["agentCapabilities"])
 
         if let agentInfo = result["agentInfo"], agentInfo != .null {
             let information = try requiredObject(agentInfo, named: "agentInfo")
@@ -121,11 +143,205 @@ extension ACPClientConnection {
             }
     }
 
+    func newSession(restorationWasUnsupported: Bool) async throws -> AgentSessionActivation {
+        let result: ACPJSONValue
+        do {
+            result = try await sendRequest(
+                method: "session/new",
+                params: .object([
+                    "cwd": .string(configuration.workingDirectory),
+                    "mcpServers": .array([]),
+                ]))
+        } catch let error as ACPClientError {
+            if case .remoteError(let code, _) = error, code == -32_000 {
+                throw ACPClientError.authenticationRequired(methods: authenticationMethodNames)
+            }
+            throw error
+        }
+
+        let object = try requiredObject(result, named: "session/new result")
+        let decodedSessionID = try validatedSessionID(
+            object["sessionId"],
+            named: "session/new sessionId")
+        sessionID = decodedSessionID
+        if restorationWasUnsupported {
+            return .freshBecauseRestorationUnsupported(sessionID: decodedSessionID)
+        }
+        return .new(sessionID: decodedSessionID)
+    }
+
+    func loadSession(
+        _ restoration: AgentSessionRestorationRequest,
+        deliversReplay: Bool,
+        onRestoredEvent: @escaping @Sendable (AgentRestorationToken, AgentRunEvent) async -> Void,
+        afterResponseValidation: @escaping @Sendable () async -> Void
+    ) async throws -> AgentSessionActivation {
+        let delivery = AgentRunEventDelivery(mode: .staged) { event in
+            await onRestoredEvent(restoration.token, event)
+        }
+        let state = ACPClientRestorationState(
+            token: restoration.token,
+            sessionID: restoration.sessionID,
+            mode: .load(deliversReplay: deliversReplay),
+            delivery: delivery)
+        sessionID = restoration.sessionID
+        activeRestoration = state
+
+        do {
+            let result = try await sendRestorationRequest(
+                method: "session/load",
+                params: restorationParameters(sessionID: restoration.sessionID),
+                state: state)
+            _ = try requiredObject(result, named: "session/load result")
+            await afterResponseValidation()
+            try ensureOpen()
+            try Task.checkCancellation()
+            guard activeRestoration === state, state.responseWasReceived else {
+                throw terminalError ?? ACPClientError.connectionClosed
+            }
+
+            if deliversReplay {
+                delivery.startConsuming()
+                await delivery.finish(.drain)
+            } else {
+                await delivery.finish(.discard)
+            }
+            try Task.checkCancellation()
+            guard activeRestoration === state else {
+                throw terminalError ?? ACPClientError.connectionClosed
+            }
+            try ensureOpen()
+            activeRestoration = nil
+            return .loaded(sessionID: restoration.sessionID)
+        } catch {
+            let detached = detachRestoration(matching: state)
+            await discardRestoration(detached)
+            throw error
+        }
+    }
+
+    func resumeSession(
+        _ restoration: AgentSessionRestorationRequest,
+        afterResponseValidation: @escaping @Sendable () async -> Void
+    ) async throws -> AgentSessionActivation {
+        let state = ACPClientRestorationState(
+            token: restoration.token,
+            sessionID: restoration.sessionID,
+            mode: .resume)
+        sessionID = restoration.sessionID
+        activeRestoration = state
+
+        do {
+            let result = try await sendRestorationRequest(
+                method: "session/resume",
+                params: restorationParameters(sessionID: restoration.sessionID),
+                state: state)
+            _ = try requiredObject(result, named: "session/resume result")
+            await afterResponseValidation()
+            try ensureOpen()
+            try Task.checkCancellation()
+            guard activeRestoration === state, state.responseWasReceived else {
+                throw terminalError ?? ACPClientError.connectionClosed
+            }
+            try ensureOpen()
+            activeRestoration = nil
+            return .resumed(sessionID: restoration.sessionID)
+        } catch {
+            let detached = detachRestoration(matching: state)
+            await discardRestoration(detached)
+            throw error
+        }
+    }
+
+    func restorationParameters(sessionID: String) -> ACPJSONValue {
+        .object([
+            "sessionId": .string(sessionID),
+            "cwd": .string(configuration.workingDirectory),
+            "mcpServers": .array([]),
+        ])
+    }
+
+    func sendRestorationRequest(
+        method: String,
+        params: ACPJSONValue,
+        state: ACPClientRestorationState
+    ) async throws -> ACPJSONValue {
+        try ensureOpen()
+        try Task.checkCancellation()
+        let id = try reserveRequestID()
+        state.requestID = id
+        pendingRequestMethods[id] = method
+        pendingRequestStartedAt[id] = DispatchTime.now().uptimeNanoseconds
+        diagnostics.record(
+            category: .acp,
+            event: "acp_client.request_started",
+            fields: [
+                "connection_id": connectionID.uuidString,
+                "request_id": requestIDDescription(id),
+                "method": method,
+            ])
+
+        do {
+            try await write(.request(id: id, method: method, params: params))
+            try Task.checkCancellation()
+        } catch {
+            pendingRequests.removeValue(forKey: id)
+            pendingRequestMethods.removeValue(forKey: id)
+            pendingRequestStartedAt.removeValue(forKey: id)
+            if error is CancellationError {
+                throw error
+            }
+            let failure = ACPClientError.connectionClosed
+            finalize(with: failure)
+            await terminateTransport()
+            throw failure
+        }
+
+        return try await waitForResponse(id: id)
+    }
+
+    func validatedSessionID(
+        _ value: ACPJSONValue?,
+        named name: String
+    ) throws -> String {
+        let identifier = try requiredString(value, named: name)
+        guard !identifier.isEmpty,
+              identifier.utf8.count <= ACPEventDecoder.maximumOpaqueIdentifierBytes
+        else {
+            throw ACPClientError.malformedResponse("Invalid session identifier.")
+        }
+        return identifier
+    }
+
+    func detachRestoration(
+        matching expected: ACPClientRestorationState? = nil
+    ) -> ACPClientRestorationState? {
+        guard let current = activeRestoration,
+              expected == nil || current === expected
+        else {
+            return nil
+        }
+        activeRestoration = nil
+        return current
+    }
+
+    func discardRestoration(_ state: ACPClientRestorationState?) async {
+        guard let state else {
+            return
+        }
+        await state.delivery?.finish(.discard)
+    }
+
+    func cancelStartup() async {
+        await close()
+    }
+
     func sendRequest(
         method: String,
         params: ACPJSONValue?
     ) async throws -> ACPJSONValue {
         try ensureOpen()
+        try Task.checkCancellation()
         let id = try reserveRequestID()
         pendingRequestMethods[id] = method
         pendingRequestStartedAt[id] = DispatchTime.now().uptimeNanoseconds
@@ -140,10 +356,14 @@ extension ACPClientConnection {
 
         do {
             try await write(.request(id: id, method: method, params: params))
+            try Task.checkCancellation()
         } catch {
             pendingRequests.removeValue(forKey: id)
             pendingRequestMethods.removeValue(forKey: id)
             pendingRequestStartedAt.removeValue(forKey: id)
+            if error is CancellationError {
+                throw error
+            }
             let failure = ACPClientError.connectionClosed
             finalize(with: failure)
             await terminateTransport()
@@ -153,7 +373,10 @@ extension ACPClientConnection {
         return try await waitForResponse(id: id)
     }
 
-    func sendPromptRequest(params: ACPJSONValue?) async throws -> ACPJSONValue {
+    func sendPromptRequest(
+        params: ACPJSONValue?,
+        publicationHooks: ACPClientPromptPublicationHooks
+    ) async throws -> ACPJSONValue {
         try ensureOpen()
         let id = try reserveRequestID()
         activePromptRequestID = id
@@ -169,6 +392,15 @@ extension ACPClientConnection {
             ])
 
         do {
+            try await publicationHooks.beforePublication()
+        } catch {
+            pendingRequests.removeValue(forKey: id)
+            pendingRequestMethods.removeValue(forKey: id)
+            pendingRequestStartedAt.removeValue(forKey: id)
+            throw ACPClientError.promptPublicationPreparationFailed
+        }
+
+        do {
             try await write(.request(id: id, method: "session/prompt", params: params))
         } catch {
             pendingRequests.removeValue(forKey: id)
@@ -181,6 +413,7 @@ extension ACPClientConnection {
         }
 
         promptFrameWasPublished = true
+        await publicationHooks.afterPublication()
         await sendCancelIfPromptWasPublished()
         return try await waitForResponse(id: id)
     }

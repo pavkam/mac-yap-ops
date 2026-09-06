@@ -46,6 +46,9 @@ push-to-talk details, see [Getting started](docs/getting-started.md).
   and no shell evaluation.
 - Cursor, Codex, Claude, and custom ACP v1 providers with editable executable,
   working folder, system prompt, and permission policy.
+- Focused Mac-context snapshots for ACP requests: one bounded snapshot per
+  admitted utterance, enabled by default, with an explicit Accessibility action
+  in Settings. Direct commands never receive this context.
 - A non-activating, result-first conversation panel with native previews for
   generated images, PDFs, documents, and local resources; ordered turns,
   bounded follow-ups, provider-exposed thinking and tools, spoken permission
@@ -70,9 +73,22 @@ services. Provider authentication stays with its CLI. The optional ElevenLabs
 key stays in macOS Keychain.
 
 The app does not maintain a conversation-history database or audio archive.
-Diagnostics exclude prompts, transcripts, credentials, provider content, and
-audio. See [Privacy and security](docs/privacy-and-security.md) for the complete
-data, persistence, and retention boundaries.
+Diagnostics exclude prompts, transcripts, credentials, provider content, audio,
+and Mac-context snapshot values or content. See
+[Privacy and security](docs/privacy-and-security.md) for the complete data,
+persistence, and retention boundaries.
+
+When focused Mac context is enabled, Voice Activation can send the selected ACP
+provider a one-shot description of the focused app, window or document,
+selection, and selected resource references. Accessibility is checked without
+prompting during normal use; the system prompt appears only after choosing
+**Enable Accessibility…** in Settings. Voice Activation does not persist or log
+snapshot values or content; it records safe capture metadata only. The provider
+may retain or replay submitted prompt blocks under its own session policy. See
+[Privacy and security](docs/privacy-and-security.md) for the complete authority,
+then [Configuration](docs/configuration.md),
+[ACP agent harness](docs/agent-harness.md), and
+[Troubleshooting](docs/troubleshooting.md).
 
 ## Documentation
 

@@ -78,6 +78,7 @@ Stdout is protocol-only for ACP. Stderr is bounded diagnostics.
 | Streaming updates arrive only after a menu closes, a drag ends, or another event occurs | Delivery depended on the default run-loop mode | Re-enter through `MainRunLoopScheduler`; record `main_delivery_ms` and `run_loop_mode`, then test event-tracking delivery. |
 | Passive listening dies after joining or leaving a call | The input device or audio-engine format changed under the active speech session | Observe audio-engine configuration changes, retire the old generation, and rebuild passive recognition from the new format. |
 | Cancelled work later repopulates a panel, restarts speech, or completes a newer turn | Identity was invalidated after cancellation or not checked after suspension | Advance the generation/run/turn identity first, cancel owned work second, and reject every late callback in a regression test. |
+| Retired privacy-sensitive work still contacts a native service | A queued worker began IPC after its input was cancelled or superseded | Gate the worker on its still-active identity before its first native IPC call; cancellation alone does not retract queued work. |
 
 These cases are not permission to add retries or sleeps. First prove which
 boundary stopped progressing with paired diagnostics and one controlled test.

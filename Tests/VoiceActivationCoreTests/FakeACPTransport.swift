@@ -27,9 +27,11 @@ actor FakeACPTransport: ACPTransport {
     private var streamsWereFinished = false
     private var outputCallCount = 0
     private var shouldSuspendNextSend = false
+    private var shouldFailNextSend = false
     private var sendIsSuspended = false
     private var suspendedSendContinuation: CheckedContinuation<Void, Never>?
     private var suspendedSendWaiters: [CheckedContinuation<Void, Never>] = []
+    private var sendHandler: (@Sendable (ACPMessage) async throws -> Void)?
 
     init(finishesReadStreamsOnTermination: Bool = true) {
         self.finishesReadStreamsOnTermination = finishesReadStreamsOnTermination
@@ -73,6 +75,11 @@ actor FakeACPTransport: ACPTransport {
             sendIsSuspended = false
         }
 
+        if shouldFailNextSend {
+            shouldFailNextSend = false
+            throw FakeACPTransportError.outputFailed
+        }
+
         rawFrames.append(data)
         sentMessages.append(message)
 
@@ -81,6 +88,7 @@ actor FakeACPTransport: ACPTransport {
         } else {
             sentMessageWaiters.removeFirst().resume(returning: message)
         }
+        try await sendHandler?(message)
     }
 
     func waitForExit() async -> Int32 {
@@ -132,6 +140,16 @@ actor FakeACPTransport: ACPTransport {
 
     func suspendNextSend() {
         shouldSuspendNextSend = true
+    }
+
+    func failNextSend() {
+        shouldFailNextSend = true
+    }
+
+    func handleSends(
+        _ handler: @escaping @Sendable (ACPMessage) async throws -> Void
+    ) {
+        sendHandler = handler
     }
 
     func waitUntilSendIsSuspended() async {

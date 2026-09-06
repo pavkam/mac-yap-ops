@@ -18,6 +18,7 @@ struct SettingsView: View {
                     voiceSection
                     conversationSection
                     applicationSection
+                    MacContextSettingsSection(model: model)
                     privacyNote
                 }
                 .padding(28)
@@ -36,6 +37,7 @@ struct SettingsView: View {
         .onChange(of: model.localeID) { saved = false }
         .onChange(of: model.readsAgentRepliesAloud) { saved = false }
         .onChange(of: model.playsAgentWorkingSound) { saved = false }
+        .onChange(of: model.capturesMacContext) { saved = false }
         .onChange(of: model.defaultSpeechVoice) { saved = false }
         .onChange(of: model.elevenLabsAPIKey) { saved = false }
         .task {
@@ -266,7 +268,7 @@ extension WakeProfileAccent {
     }
 }
 
-private struct SettingsCard<Content: View>: View {
+struct SettingsCard<Content: View>: View {
     let title: String
     let subtitle: String
     let systemImage: String

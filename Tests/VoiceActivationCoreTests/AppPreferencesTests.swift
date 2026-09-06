@@ -6,6 +6,27 @@ import Testing
 @testable import VoiceActivationCore
 
 struct AppPreferencesTests {
+    @Test func capturesMacContext_WhenDefaultsAreEmpty_DefaultsToTrue() throws {
+        let suite = "VoiceActivationMacContextDefaultsTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+
+        let capturesMacContext = AppPreferences(defaults: defaults).capturesMacContext
+
+        #expect(capturesMacContext)
+    }
+
+    @Test func capturesMacContext_WhenChanged_RoundTripsThroughDefaults() throws {
+        let suite = "VoiceActivationMacContextPersistenceTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        AppPreferences(defaults: defaults).capturesMacContext = false
+
+        let capturesMacContext = AppPreferences(defaults: defaults).capturesMacContext
+
+        #expect(!capturesMacContext)
+    }
+
     @Test func wakeProfiles_WhenStoredProfileIsCorrupt_DoesNotRewriteStoredBytes() throws {
         let suite = "VoiceActivationTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))

@@ -11,7 +11,9 @@ extension ACPClientConnectionTests {
         transport: FakeACPTransport,
         policy: AgentPermissionPolicy = .ask,
         preset: AgentHarnessPreset = .codex,
-        systemPrompt: String = "") async throws -> ACPClientConnection
+        systemPrompt: String = "",
+        diagnostics: any VoiceActivationDiagnosticRecording = VoiceActivationDiagnostics.shared
+    ) async throws -> ACPClientConnection
     {
         let connectionTask = Task {
             try await ACPClientConnection.connect(
@@ -19,7 +21,8 @@ extension ACPClientConnectionTests {
                 configuration: try makeConfiguration(
                     policy: policy,
                     preset: preset,
-                    systemPrompt: systemPrompt))
+                    systemPrompt: systemPrompt),
+                diagnostics: diagnostics).connection
         }
         _ = await transport.nextSentMessage()
         try await transport.feed(initializeResponse())
@@ -30,6 +33,35 @@ extension ACPClientConnectionTests {
         return try await connectionTask.value
     }
 
+    final class ConnectionDiagnosticRecorder: VoiceActivationDiagnosticRecording,
+        @unchecked Sendable
+    {
+        struct Entry: Sendable {
+            let event: String
+            let fields: [String: String]
+        }
+
+        private let lock = NSLock()
+        private var entries: [Entry] = []
+
+        func record(
+            category: VoiceActivationDiagnosticCategory,
+            event: String,
+            level: VoiceActivationDiagnosticLevel,
+            fields: [String: String]
+        ) {
+            lock.withLock {
+                entries.append(Entry(event: event, fields: fields))
+            }
+        }
+
+        func flush() {}
+
+        func snapshot() -> [Entry] {
+            lock.withLock { entries }
+        }
+    }
+
     func prompt(
         _ connection: ACPClientConnection,
         text: String,
@@ -37,9 +69,26 @@ extension ACPClientConnectionTests {
     {
         Task {
             try await connection.prompt(
-                text,
+                AgentPrompt(request: text, context: nil),
                 onEvent: { event in await recorder.record(event) })
         }
+    }
+
+    func promptRequest(id: Int64, text: String, sessionID: String = "session-1") -> ACPMessage {
+        .request(
+            id: .integer(id),
+            method: "session/prompt",
+            params: .object([
+                "sessionId": .string(sessionID),
+                "prompt": .array([
+                    ACPClientConnection.encodedPromptBlock(for: .text(
+                        role: .instruction,
+                        value: ACPClientConnection.markdownPresentationInstruction)),
+                    ACPClientConnection.encodedPromptBlock(for: .text(
+                        role: .request,
+                        value: text)),
+                ]),
+            ]))
     }
 
     func assertCursorBlockingRequestIsCancelled(method: String) async throws {
@@ -133,13 +182,14 @@ extension ACPClientConnectionTests {
     func permissionRequest(
         id: ACPRequestID,
         toolID: String = "tool-1",
-        options: [ACPJSONValue]) -> ACPMessage
+        options: [ACPJSONValue],
+        sessionID: String = "session-1") -> ACPMessage
     {
         .request(
             id: id,
             method: "session/request_permission",
             params: .object([
-                "sessionId": .string("session-1"),
+                "sessionId": .string(sessionID),
                 "toolCall": .object([
                     "toolCallId": .string(toolID),
                     "title": .string("Edit a file"),

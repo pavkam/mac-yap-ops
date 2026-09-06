@@ -10,6 +10,7 @@ import VoiceActivationCore
 struct VoiceActivationApp: App {
     @State private var model: AppModel
     @State private var launchAtLogin: LaunchAtLoginSetting
+    @State private var applicationActivationMonitor: ApplicationActivationMonitor
 
     @MainActor
     init() {
@@ -67,12 +68,21 @@ struct VoiceActivationApp: App {
             }
         }
 
-        _model = State(
-            initialValue: AppModel(
-                agentSpeechCredentialStore: credentialStore,
-                diagnostics: diagnostics))
+        let preferences = AppPreferences()
+        let macContextSnapshotter = SystemMacContextSnapshotter()
+        let macContextAccess = MacContextAccessController()
+        let model = AppModel(
+            preferences: preferences,
+            agentSpeechCredentialStore: credentialStore,
+            macContextAccess: macContextAccess,
+            macContextCapturer: macContextSnapshotter,
+            diagnostics: diagnostics)
+        let applicationActivationMonitor = ApplicationActivationMonitor()
+        applicationActivationMonitor.start(model: model)
+        _model = State(initialValue: model)
         _launchAtLogin = State(
             initialValue: LaunchAtLoginSetting(diagnostics: diagnostics))
+        _applicationActivationMonitor = State(initialValue: applicationActivationMonitor)
     }
 
     var body: some Scene {

@@ -7,6 +7,7 @@ import Foundation
 public final class AppPreferences {
     private enum Key {
         static let passiveEnabled = "passiveEnabled"
+        static let capturesMacContext = "capturesMacContext"
         static let readsAgentRepliesAloud = "readsAgentRepliesAloud"
         static let playsAgentWorkingSound = "playsAgentWorkingSound"
         static let agentSpeechProvider = "agentSpeechProvider"
@@ -40,6 +41,16 @@ public final class AppPreferences {
                 : defaults.bool(forKey: Key.passiveEnabled)
         }
         set { defaults.set(newValue, forKey: Key.passiveEnabled) }
+    }
+
+    /// Whether admitted ACP requests include a bounded snapshot of the focused Mac context.
+    public var capturesMacContext: Bool {
+        get {
+            defaults.object(forKey: Key.capturesMacContext) == nil
+                ? true
+                : defaults.bool(forKey: Key.capturesMacContext)
+        }
+        set { defaults.set(newValue, forKey: Key.capturesMacContext) }
     }
 
     /// Whether complete streamed agent thoughts are queued for speech synthesis.

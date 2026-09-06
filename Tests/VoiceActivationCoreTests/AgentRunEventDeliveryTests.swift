@@ -112,8 +112,167 @@ private final class DeliveryRetentionBox: @unchecked Sendable {
     }
 }
 
+private enum StagedNormalizationOverflowFixture: CaseIterable, Sendable {
+    case output
+    case diagnostic
+    case control
+
+    var event: AgentRunEvent {
+        switch self {
+        case .output:
+            .agentMessageDelta(
+                messageID: "message",
+                text: String(
+                    repeating: "o",
+                    count: AgentRunEventDelivery.maximumPendingOutputBytes + 1))
+        case .diagnostic:
+            .diagnostic(String(
+                repeating: "d",
+                count: AgentRunEventDelivery.maximumPendingDiagnosticBytes + 1))
+        case .control:
+            .metadata(
+                kind: "",
+                summary: String(repeating: "c", count: 64 * 1_024 + 1))
+        }
+    }
+}
+
 @Suite(.serialized)
 struct AgentRunEventDeliveryTests {
+    @Test func send_WhenConsumerStartsPaused_AdmitsExactlyTheEntryLimit() async {
+        let recorder = DeliveryEventRecorder()
+        let delivery = AgentRunEventDelivery(
+            mode: .staged,
+            handler: { event in await recorder.record(event) })
+
+        for index in 0..<AgentRunEventDelivery.maximumPendingEntries {
+            #expect(delivery.send(.metadata(kind: "control", summary: "\(index)")) == .accepted)
+        }
+        let beforeOverflow = delivery.snapshotForTesting
+        #expect(beforeOverflow.pendingEntryCount == 256)
+        #expect(await recorder.recordedEvents().isEmpty)
+
+        #expect(delivery.send(.metadata(kind: "control", summary: "overflow")) == .capacityExceeded)
+        let afterOverflow = delivery.snapshotForTesting
+        #expect(afterOverflow.state == .draining)
+        #expect(afterOverflow.pendingOutputBytes == beforeOverflow.pendingOutputBytes)
+        #expect(afterOverflow.pendingDiagnosticBytes == beforeOverflow.pendingDiagnosticBytes)
+        #expect(afterOverflow.pendingControlBytes == beforeOverflow.pendingControlBytes)
+        #expect(afterOverflow.pendingEntryCount == beforeOverflow.pendingEntryCount)
+        #expect(afterOverflow.discardedOutputBytes == beforeOverflow.discardedOutputBytes)
+        #expect(afterOverflow.discardedOutputEntries == beforeOverflow.discardedOutputEntries)
+        #expect(afterOverflow.discardedDiagnosticBytes == beforeOverflow.discardedDiagnosticBytes)
+        await delivery.finish(.discard)
+    }
+
+    @Test func send_WhenConsumerStartsPaused_AdmitsExactlyTheControlByteLimit() async {
+        let delivery = AgentRunEventDelivery(mode: .staged) { _ in }
+        let chunk = String(repeating: "c", count: 64 * 1_024)
+
+        for _ in 0..<8 {
+            #expect(delivery.send(.metadata(kind: "", summary: chunk)) == .accepted)
+        }
+        let beforeOverflow = delivery.snapshotForTesting
+        #expect(beforeOverflow.pendingControlBytes == 512 * 1_024)
+        #expect(beforeOverflow.pendingEntryCount == 8)
+
+        #expect(delivery.send(.metadata(kind: "", summary: "x")) == .capacityExceeded)
+        let afterOverflow = delivery.snapshotForTesting
+        #expect(afterOverflow.pendingControlBytes == beforeOverflow.pendingControlBytes)
+        #expect(afterOverflow.pendingEntryCount == beforeOverflow.pendingEntryCount)
+        await delivery.finish(.discard)
+    }
+
+    @Test func send_WhenConsumerStartsPaused_HoldsExactOutputBoundUntilActivated() async {
+        let recorder = DeliveryEventRecorder()
+        let delivery = AgentRunEventDelivery(
+            mode: .staged,
+            handler: { event in await recorder.record(event) })
+        let output = String(repeating: "x", count: 512 * 1_024)
+
+        #expect(delivery.send(.agentMessageDelta(messageID: "message", text: output)) == .accepted)
+        #expect(delivery.snapshotForTesting.pendingOutputBytes == 512 * 1_024)
+        #expect(delivery.snapshotForTesting.pendingEntryCount == 1)
+        #expect(await recorder.recordedEvents().isEmpty)
+
+        let beforeOverflow = delivery.snapshotForTesting
+        #expect(delivery.send(.agentMessageDelta(messageID: "message", text: "x")) == .capacityExceeded)
+        let afterOverflow = delivery.snapshotForTesting
+        #expect(afterOverflow.state == .draining)
+        #expect(afterOverflow.pendingOutputBytes == beforeOverflow.pendingOutputBytes)
+        #expect(afterOverflow.pendingDiagnosticBytes == beforeOverflow.pendingDiagnosticBytes)
+        #expect(afterOverflow.pendingControlBytes == beforeOverflow.pendingControlBytes)
+        #expect(afterOverflow.pendingEntryCount == beforeOverflow.pendingEntryCount)
+        #expect(afterOverflow.discardedOutputBytes == beforeOverflow.discardedOutputBytes)
+        #expect(afterOverflow.discardedOutputEntries == beforeOverflow.discardedOutputEntries)
+        #expect(afterOverflow.discardedDiagnosticBytes == beforeOverflow.discardedDiagnosticBytes)
+        #expect(await recorder.recordedEvents().isEmpty)
+
+        delivery.startConsuming()
+        await delivery.finish(.drain)
+        #expect(await recorder.recordedEvents() == [
+            .agentMessageDelta(messageID: "message", text: output),
+        ])
+    }
+
+    @Test func send_WhenStagedDiagnosticsCoalesce_AdmitsExactlySixteenKiB() async {
+        let recorder = DeliveryEventRecorder()
+        let delivery = AgentRunEventDelivery(
+            mode: .staged,
+            handler: { event in await recorder.record(event) })
+        let half = String(repeating: "d", count: 8 * 1_024)
+
+        #expect(delivery.send(.diagnostic(half)) == .accepted)
+        #expect(delivery.send(.diagnostic(half)) == .accepted)
+        let beforeOverflow = delivery.snapshotForTesting
+        #expect(beforeOverflow.pendingDiagnosticBytes == 16 * 1_024)
+        #expect(beforeOverflow.pendingEntryCount == 1)
+        #expect(await recorder.recordedEvents().isEmpty)
+
+        #expect(delivery.send(.diagnostic("x")) == .capacityExceeded)
+        let afterOverflow = delivery.snapshotForTesting
+        #expect(afterOverflow.state == .draining)
+        #expect(afterOverflow.pendingOutputBytes == beforeOverflow.pendingOutputBytes)
+        #expect(afterOverflow.pendingDiagnosticBytes == beforeOverflow.pendingDiagnosticBytes)
+        #expect(afterOverflow.pendingControlBytes == beforeOverflow.pendingControlBytes)
+        #expect(afterOverflow.pendingEntryCount == beforeOverflow.pendingEntryCount)
+        #expect(afterOverflow.discardedOutputBytes == beforeOverflow.discardedOutputBytes)
+        #expect(afterOverflow.discardedOutputEntries == beforeOverflow.discardedOutputEntries)
+        #expect(afterOverflow.discardedDiagnosticBytes == beforeOverflow.discardedDiagnosticBytes)
+        #expect(await recorder.recordedEvents().isEmpty)
+
+        delivery.startConsuming()
+        await delivery.finish(.drain)
+        #expect(await recorder.recordedEvents() == [
+            .diagnostic(half + half),
+        ])
+    }
+
+    @Test(arguments: StagedNormalizationOverflowFixture.allCases)
+    fileprivate func send_WhenStagedNormalizationWouldDiscardPayload_RejectsAtomically(
+        fixture: StagedNormalizationOverflowFixture
+    ) async {
+        let recorder = DeliveryEventRecorder()
+        let delivery = AgentRunEventDelivery(
+            mode: .staged,
+            handler: { delivered in await recorder.record(delivered) })
+        let beforeOverflow = delivery.snapshotForTesting
+
+        #expect(delivery.send(fixture.event) == .capacityExceeded)
+        let afterOverflow = delivery.snapshotForTesting
+        #expect(afterOverflow.state == .draining)
+        #expect(afterOverflow.pendingOutputBytes == beforeOverflow.pendingOutputBytes)
+        #expect(afterOverflow.pendingDiagnosticBytes == beforeOverflow.pendingDiagnosticBytes)
+        #expect(afterOverflow.pendingControlBytes == beforeOverflow.pendingControlBytes)
+        #expect(afterOverflow.pendingEntryCount == beforeOverflow.pendingEntryCount)
+        #expect(afterOverflow.discardedOutputBytes == beforeOverflow.discardedOutputBytes)
+        #expect(afterOverflow.discardedOutputEntries == beforeOverflow.discardedOutputEntries)
+        #expect(afterOverflow.discardedDiagnosticBytes == beforeOverflow.discardedDiagnosticBytes)
+        delivery.startConsuming()
+        await delivery.finish(.drain)
+        #expect(await recorder.recordedEvents().isEmpty)
+    }
+
     @Test func send_WhenCreatedFromBackgroundCallback_DeliversAtUserInitiatedPriority() async {
         let recorder = DeliveryPriorityRecorder()
         let retention = DeliveryRetentionBox()
@@ -431,7 +590,17 @@ struct AgentRunEventDeliveryTests {
             #expect(delivery.send(event) == .accepted)
             admitted.append(event)
         }
+        let beforeOverflow = delivery.snapshotForTesting
         #expect(delivery.send(.metadata(kind: "control", summary: "overflow")) == .capacityExceeded)
+        let afterOverflow = delivery.snapshotForTesting
+        #expect(afterOverflow.state == .draining)
+        #expect(afterOverflow.pendingOutputBytes == beforeOverflow.pendingOutputBytes)
+        #expect(afterOverflow.pendingDiagnosticBytes == beforeOverflow.pendingDiagnosticBytes)
+        #expect(afterOverflow.pendingControlBytes == beforeOverflow.pendingControlBytes)
+        #expect(afterOverflow.pendingEntryCount == beforeOverflow.pendingEntryCount)
+        #expect(afterOverflow.discardedOutputBytes == beforeOverflow.discardedOutputBytes)
+        #expect(afterOverflow.discardedOutputEntries == beforeOverflow.discardedOutputEntries)
+        #expect(afterOverflow.discardedDiagnosticBytes == beforeOverflow.discardedDiagnosticBytes)
         #expect(delivery.send(.metadata(kind: "control", summary: "after")) == .stopped)
 
         let draining = Task { await delivery.finish(.drain) }

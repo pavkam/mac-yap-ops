@@ -54,6 +54,12 @@ The useful question is “which owner had the value and did not hand it off?”
 | Launch at Login fails | Bundle path, signature, `SMAppService.mainApp` observed state | Test injected service first; manually use a stable `/Applications` copy |
 | Permission/signing/resource failure | Real bundle, `Info.plist`, signature, stable path | Build with `make app`; `swift run` is the wrong experiment |
 
+For intentionally suppressed queued work, do not wait for the work that must
+never start. Put a controlled executor behind a pre-operation handshake, retire
+the owner, then release the executor and assert that the guarded operation was
+not entered. This makes the cancellation boundary deterministic instead of
+turning a no-op into a timing test.
+
 ## Concurrency-specific checks
 
 Do not "fix" a race by adding a delay or removing actor annotations. Verify:

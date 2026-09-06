@@ -30,6 +30,10 @@ final class AppModel {
     var readsAgentRepliesAloud: Bool
     /// Whether quiet activity audio should fill otherwise silent agent work.
     var playsAgentWorkingSound: Bool
+    /// Whether saved ACP requests may include bounded focused Mac context.
+    var capturesMacContext: Bool
+    /// The last nonprompting Accessibility trust status observed by a lifecycle refresh.
+    var macContextAccessStatus: MacContextAccessStatus = .notAuthorized
     /// The editable app-wide speech selection inherited by profiles.
     var defaultSpeechVoice: TextToSpeechVoiceSelection {
         didSet {
@@ -98,6 +102,8 @@ final class AppModel {
     @ObservationIgnored let isExecutableFile: @MainActor (String) -> Bool
     @ObservationIgnored let isDirectory: @MainActor (String) -> Bool
     @ObservationIgnored let permissionRequest: @MainActor () async -> Bool
+    @ObservationIgnored let macContextAccess: any MacContextAccessControlling
+    @ObservationIgnored let macContextCapturer: ConfigurableMacContextCapturer
     @ObservationIgnored let shortcut: any PushToTalkShortcutManaging
     @ObservationIgnored let overlayPresenter: RecordingOverlayPresenter
     @ObservationIgnored let agentRunPresentation: AgentRunPresentation
@@ -128,6 +134,7 @@ final class AppModel {
         speechSession: speechSession,
         commandRunner: commandRunner,
         agentRunner: agentRunner,
+        contextCapturer: macContextCapturer,
         configuration: { [weak self] in
             guard let self else { throw ModelError.unavailable }
             return try self.savedConfiguration()
@@ -158,6 +165,9 @@ final class AppModel {
         elevenLabsVoicePreview: any ElevenLabsVoicePreviewing =
             ElevenLabsVoicePreviewPlayer(),
         textToSpeechBackendRegistry: TextToSpeechBackendRegistry? = nil,
+        macContextAccess: any MacContextAccessControlling =
+            UnavailableMacContextAccessController(),
+        macContextCapturer: any MacContextCapturing = EmptyMacContextCapturer(),
         isExecutableFile: @escaping @MainActor (String) -> Bool = AppModel.executableFileExists,
         isDirectory: @escaping @MainActor (String) -> Bool = AppModel.directoryExists,
         startsAutomatically: Bool = true,
@@ -188,6 +198,10 @@ final class AppModel {
         self.isExecutableFile = isExecutableFile
         self.isDirectory = isDirectory
         self.permissionRequest = permissionRequest
+        self.macContextAccess = macContextAccess
+        self.macContextCapturer = ConfigurableMacContextCapturer(
+            capturer: macContextCapturer,
+            enabled: preferences.capturesMacContext)
         self.agentSpeechCredentialStore = agentSpeechCredentialStore
         self.elevenLabsVoicePreview = elevenLabsVoicePreview
         self.textToSpeechBackendRegistry = textToSpeechBackendRegistry ?? .live(
@@ -214,6 +228,7 @@ final class AppModel {
         localeID = preferences.localeID
         readsAgentRepliesAloud = preferences.readsAgentRepliesAloud
         playsAgentWorkingSound = preferences.playsAgentWorkingSound
+        capturesMacContext = preferences.capturesMacContext
         self.defaultSpeechVoice = defaultSpeechVoice
         self.retainedElevenLabsVoiceID = retainedElevenLabsVoiceID
         elevenLabsAPIKey = storedElevenLabsAPIKey
@@ -224,6 +239,7 @@ final class AppModel {
                 "profile_count": String(activeWakeProfiles.count),
                 "enabled_profile_count": String(activeWakeProfiles.count(where: \.isEnabled)),
                 "passive_enabled": String(passiveEnabled),
+                "captures_mac_context": String(capturesMacContext),
                 "speech_backend": defaultSpeechVoice.backendID.rawValue,
                 "cloud_api_configured": String(!storedElevenLabsAPIKey.isEmpty),
                 "starts_automatically": String(startsAutomatically),
@@ -490,6 +506,8 @@ final class AppModel {
         if !profileIDsToReset.isEmpty {
             await agentRunner.reset(profileIDs: profileIDsToReset)
         }
+        preferences.capturesMacContext = capturesMacContext
+        macContextCapturer.setEnabled(capturesMacContext)
         settingsError = nil
         coordinator.refreshConfiguration()
         diagnostics.record(

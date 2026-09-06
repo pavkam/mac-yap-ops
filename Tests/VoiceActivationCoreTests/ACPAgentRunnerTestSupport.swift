@@ -17,7 +17,7 @@ extension ACPAgentRunnerTests {
             try await runner.run(
                 profileID: profileID,
                 configuration: configuration,
-                prompt: prompt,
+                prompt: AgentPrompt(request: prompt, context: nil),
                 onEvent: { _ in })
         }
     }
@@ -93,23 +93,31 @@ extension ACPAgentRunnerTests {
     func promptRequest(
         id: Int64,
         text: String,
-        sessionID: String = "session-1") -> ACPMessage
+        sessionID: String = "session-1",
+        continuityState: AgentContinuityPromptSessionState? = nil
+    ) -> ACPMessage
     {
-        .request(
+        var blocks = [
+            ACPClientConnection.encodedPromptBlock(for: .text(
+                role: .instruction,
+                value: ACPClientConnection.markdownPresentationInstruction)),
+        ]
+        if let continuityState {
+            blocks.append(ACPClientConnection.encodedPromptBlock(for: .text(
+                role: .continuity,
+                value: """
+                {"previousTurnInterrupted":false,"schema":"voice-activation.agent-continuity.v1","sessionState":"\(continuityState.rawValue)"}
+                """)))
+        }
+        blocks.append(ACPClientConnection.encodedPromptBlock(for: .text(
+            role: .request,
+            value: text)))
+        return .request(
             id: .integer(id),
             method: "session/prompt",
             params: .object([
                 "sessionId": .string(sessionID),
-                "prompt": .array([
-                    .object([
-                        "type": .string("text"),
-                        "text": .string(ACPClientConnection.markdownPresentationInstruction),
-                    ]),
-                    .object([
-                        "type": .string("text"),
-                        "text": .string(text),
-                    ]),
-                ]),
+                "prompt": .array(blocks),
             ]))
     }
 

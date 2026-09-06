@@ -134,7 +134,9 @@ actor ControlledAgentRunner: AgentHarnessRunning {
     struct Invocation: Equatable, Sendable {
         let profileID: UUID
         let configuration: AgentHarnessConfiguration
-        let prompt: String
+        let prompt: AgentPrompt
+        let restorationNeed: AgentSessionRestorationNeed
+        let runContinuity: AgentRunContinuityRequest
     }
 
     struct PermissionResolution: Equatable, Sendable {
@@ -145,20 +147,37 @@ actor ControlledAgentRunner: AgentHarnessRunning {
 
     private(set) var cancelCount = 0
     private(set) var shutdownCount = 0
+    private var runAttempts = 0
     private var invocations: [Invocation] = []
     private var permissionResolutions: [PermissionResolution] = []
-    private var eventHandlers: [@Sendable (AgentRunEvent) async -> Void] = []
+    private var eventHandlers: [@Sendable (AgentRunStreamEvent) async -> Void] = []
     private var completions: [CheckedContinuation<AgentRunResult, any Error>?] = []
     private var activeRunIndex: Int?
     private var delaysCancellation = false
+    private var completesImmediately = false
     private var cancellationWaiters: [CheckedContinuation<Void, Never>] = []
+    private var preClaimGate: AgentRunnerPreClaimGate?
+    private var postClaimBarrier: AgentRunnerActorBarrier?
 
     func run(
+        admission: AgentRunAdmission,
         profileID: UUID,
         configuration: AgentHarnessConfiguration,
-        prompt: String,
-        onEvent: @escaping @Sendable (AgentRunEvent) async -> Void
+        prompt: AgentPrompt,
+        restorationNeed: AgentSessionRestorationNeed,
+        runContinuity: AgentRunContinuityRequest,
+        onEvent: @escaping @Sendable (AgentRunStreamEvent) async -> Void
     ) async throws -> AgentRunResult {
+        if let preClaimGate {
+            self.preClaimGate = nil
+            await preClaimGate.waitBeforeClaim()
+        }
+        guard admission.claim() else { throw CancellationError() }
+        if let postClaimBarrier {
+            postClaimBarrier.block()
+            self.postClaimBarrier = nil
+        }
+        runAttempts += 1
         guard activeRunIndex == nil else {
             throw ControlledAgentRunnerError.turnAlreadyActive
         }
@@ -167,9 +186,15 @@ actor ControlledAgentRunner: AgentHarnessRunning {
         invocations.append(Invocation(
             profileID: profileID,
             configuration: configuration,
-            prompt: prompt))
+            prompt: prompt,
+            restorationNeed: restorationNeed,
+            runContinuity: runContinuity))
         eventHandlers.append(onEvent)
         activeRunIndex = runIndex
+        if completesImmediately {
+            activeRunIndex = nil
+            return AgentRunResult(stopReason: .endTurn)
+        }
         return try await withCheckedThrowingContinuation { continuation in
             completions.append(continuation)
         }
@@ -207,12 +232,28 @@ actor ControlledAgentRunner: AgentHarnessRunning {
         invocations
     }
 
+    func recordedRunAttemptCount() -> Int {
+        runAttempts
+    }
+
     func recordedPermissionResolutions() -> [PermissionResolution] {
         permissionResolutions
     }
 
     func delayCancellation() {
         delaysCancellation = true
+    }
+
+    func completeRunsImmediately() {
+        completesImmediately = true
+    }
+
+    func blockBeforeAdmissionClaim(using gate: AgentRunnerPreClaimGate) {
+        preClaimGate = gate
+    }
+
+    func blockAfterAdmissionClaim(using barrier: AgentRunnerActorBarrier) {
+        postClaimBarrier = barrier
     }
 
     func releaseCancellation() {
@@ -225,7 +266,7 @@ actor ControlledAgentRunner: AgentHarnessRunning {
     }
 
     func emit(_ event: AgentRunEvent, from runIndex: Int) async {
-        await eventHandlers[runIndex](event)
+        await eventHandlers[runIndex](.live(event))
     }
 
     func complete(
@@ -262,6 +303,166 @@ enum ControlledAgentRunnerError: Error, LocalizedError {
             "The fake agent run failed."
         }
     }
+}
+
+@MainActor
+final class ControlledMacContextCapturer: MacContextCapturing {
+    private struct SuspendedCapture {
+        let snapshot: MacContextSnapshot
+        let continuation: CheckedContinuation<MacContextSnapshot, Never>
+    }
+
+    var target: MacContextTarget?
+    var nextSnapshot: MacContextSnapshot?
+    var suspendsCaptures = false
+    var resolvesCancellation = true
+    var onCaptureCancellation: (@Sendable (Int) -> Void)?
+    private(set) var currentTargetCallCount = 0
+    private(set) var capturedTargets: [MacContextTarget] = []
+    private(set) var cancelledCaptureIndices: [Int] = []
+    private var suspendedCaptures: [Int: SuspendedCapture] = [:]
+
+    init(target: MacContextTarget? = nil, snapshot: MacContextSnapshot? = nil) {
+        self.target = target
+        nextSnapshot = snapshot
+    }
+
+    func currentTarget() -> MacContextTarget? {
+        currentTargetCallCount += 1
+        return target
+    }
+
+    func capture(_ target: MacContextTarget) async -> MacContextSnapshot {
+        let captureIndex = capturedTargets.count
+        capturedTargets.append(target)
+        let frozenSnapshot = nextSnapshot ?? makeMacContextSnapshot(
+            target: target,
+            state: .targetUnavailable)
+        let onCaptureCancellation = onCaptureCancellation
+        guard suspendsCaptures else { return frozenSnapshot }
+
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                suspendedCaptures[captureIndex] = SuspendedCapture(
+                    snapshot: frozenSnapshot,
+                    continuation: continuation)
+            }
+        } onCancel: {
+            onCaptureCancellation?(captureIndex)
+            Task { @MainActor [weak self] in
+                self?.cancelCapture(at: captureIndex)
+            }
+        }
+    }
+
+    func completeCapture(at index: Int, with snapshot: MacContextSnapshot? = nil) {
+        guard let capture = suspendedCaptures.removeValue(forKey: index) else { return }
+        capture.continuation.resume(returning: snapshot ?? capture.snapshot)
+    }
+
+    private func cancelCapture(at index: Int) {
+        cancelledCaptureIndices.append(index)
+        guard resolvesCancellation else { return }
+        completeCapture(at: index)
+    }
+}
+
+actor AgentRunnerPreClaimGate {
+    private var didReachPreClaim = false
+    private var isOpen = false
+    private var reachObservers: [CheckedContinuation<Void, Never>] = []
+    private var claimWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func waitBeforeClaim() async {
+        didReachPreClaim = true
+        let observers = reachObservers
+        reachObservers.removeAll()
+        for observer in observers {
+            observer.resume()
+        }
+        guard !isOpen else { return }
+        await withCheckedContinuation { continuation in
+            claimWaiters.append(continuation)
+        }
+    }
+
+    func waitUntilRunReachedPreClaim() async {
+        guard !didReachPreClaim else { return }
+        await withCheckedContinuation { continuation in
+            reachObservers.append(continuation)
+        }
+    }
+
+    func releaseClaim() {
+        isOpen = true
+        let waiters = claimWaiters
+        claimWaiters.removeAll()
+        for waiter in waiters {
+            waiter.resume()
+        }
+    }
+}
+
+final class AgentRunnerActorBarrier: @unchecked Sendable {
+    private let condition = NSCondition()
+    private let releaseSemaphore = DispatchSemaphore(value: 0)
+    private var entered = false
+
+    func block() {
+        condition.lock()
+        entered = true
+        condition.broadcast()
+        condition.unlock()
+        releaseSemaphore.wait()
+    }
+
+    func isEntered() -> Bool {
+        condition.lock()
+        defer { condition.unlock() }
+        return entered
+    }
+
+    func release() {
+        releaseSemaphore.signal()
+    }
+}
+
+final class ContextCancellationOwnershipProbe: @unchecked Sendable {
+    struct Observation: Equatable {
+        let captureIndex: Int
+        let hasActiveInput: Bool
+        let pendingInputCount: Int
+        let executionGeneration: Int
+    }
+
+    private let lock = NSLock()
+    private var values: [Observation] = []
+
+    func append(_ observation: Observation) {
+        lock.lock()
+        values.append(observation)
+        lock.unlock()
+    }
+
+    func observations() -> [Observation] {
+        lock.lock()
+        defer { lock.unlock() }
+        return values
+    }
+}
+
+func makeMacContextSnapshot(
+    target: MacContextTarget,
+    state: MacContextCaptureState = .complete,
+    selectedText: String? = nil
+) -> MacContextSnapshot {
+    MacContextSnapshot.normalized(
+        state: state,
+        target: target,
+        windowTitle: nil,
+        documentURL: nil,
+        selectedText: selectedText,
+        resources: [])
 }
 
 func makeAgentConfiguration(

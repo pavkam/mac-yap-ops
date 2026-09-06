@@ -95,6 +95,31 @@ See [Command targets](command-targets.md) for expansion and shell-safety rules.
 Provider preset and authentication details are in
 [Agent providers](agent-providers.md).
 
+## An agent lacks focused Mac context
+
+Open **Settings… > Mac context** and confirm **Include focused Mac context in
+agent requests** is on, then **Save Settings**. It defaults to on, but it only
+applies to ACP agent requests; direct commands are intentionally unchanged.
+
+The displayed Accessibility status refreshes without prompting. If it says
+**Accessibility not authorized**, choose **Enable Accessibility…** and complete
+macOS's prompt. Voice Activation never asks automatically. Before authorization,
+the agent can still receive the frozen app name and bundle identifier with
+`captureState: "accessibility_not_authorized"`; it cannot receive protected
+window, selection, or resource values.
+
+For an unavailable or slow target, the request continues with app identity and
+`target_unavailable`, `accessibility_failed`, or `timed_out`. Native capture has
+a 500 ms deadline, so waiting longer will not enrich that same turn. Say a new
+follow-up after returning to the intended app; each admitted utterance captures
+its own target and late or cancelled work cannot change a newer turn.
+
+Context is bounded to app identity, an optional window title/document URL,
+12 KiB of selected text, and eight selected resource references. Resource links
+do not include file contents. Voice Activation does not resolve phrases such as
+“this” or act on the snapshot; the configured ACP agent decides how to use it.
+See [ACP agent harness](agent-harness.md) for the full schema and bounds.
+
 ## Agent output stops or the panel remains open
 
 A completed turn keeps the conversation and microphone available for a
@@ -110,6 +135,11 @@ A provider failure preserves useful output. The next follow-up starts a fresh
 session. If a provider forgot an idle session before any observable work, Voice
 Activation retries once and shows a context-loss notice; it never replays a
 request after output, a permission prompt, or tool activity.
+
+Voice Activation does not persist or log focused Mac snapshot values or content;
+it may record safe capture metadata. A provider may retain or replay submitted
+blocks in its own session, so use that provider's retention controls when they
+apply.
 
 See [Agent conversations](agent-conversations.md) for panel controls, recovery,
 and retention.

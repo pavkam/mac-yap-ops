@@ -17,6 +17,7 @@ extension AgentRunEvent {
     var presentationDiagnosticName: String {
         switch self {
         case .connected: "connected"
+        case .userMessageDelta: "user_message_delta"
         case .agentMessageDelta: "agent_message_delta"
         case .thoughtDelta: "thought_delta"
         case .artifact: "artifact"
@@ -39,7 +40,8 @@ extension AgentRunEvent {
             message.count
         case .metadata(_, let summary), .unknown(_, let summary):
             summary.count
-        case .connected, .artifact, .toolCall, .toolCallUpdate, .plan, .permissionRequested,
+        case .connected, .userMessageDelta, .artifact, .toolCall, .toolCallUpdate, .plan,
+            .permissionRequested,
             .deliveryNotice:
             0
         }
@@ -55,7 +57,7 @@ extension AgentRunEvent {
             update.content.artifactMetrics
         case let .permissionRequested(request):
             request.toolCall.content.artifactMetrics
-        case .connected, .agentMessageDelta, .thoughtDelta, .plan, .metadata,
+        case .connected, .userMessageDelta, .agentMessageDelta, .thoughtDelta, .plan, .metadata,
             .diagnostic, .unknown, .deliveryNotice:
             (0, 0)
         }

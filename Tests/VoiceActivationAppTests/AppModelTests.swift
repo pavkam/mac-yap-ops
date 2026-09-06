@@ -88,6 +88,7 @@ final class AppModelSpeechSessionSpy: SpeechSessionProtocol {
     private(set) var startCount = 0
     private(set) var mode: SpeechSessionMode?
     private var onUpdate: ((SpeechUpdate) -> Void)?
+    private var startContinuations: [CheckedContinuation<Void, Never>] = []
 
     func start(
         mode: SpeechSessionMode,
@@ -99,11 +100,21 @@ final class AppModelSpeechSessionSpy: SpeechSessionProtocol {
         startCount += 1
         self.mode = mode
         self.onUpdate = onUpdate
+        let waiters = startContinuations
+        startContinuations = []
+        for waiter in waiters {
+            waiter.resume()
+        }
     }
 
     func stop() {
         mode = nil
         onUpdate = nil
+    }
+
+    func waitUntilStarted() async {
+        guard startCount == 0 else { return }
+        await withCheckedContinuation { startContinuations.append($0) }
     }
 
     func emit(_ transcript: String, isFinal: Bool = false) {
@@ -119,13 +130,14 @@ actor AppModelAgentRunnerSpy: AgentHarnessRunning {
     struct Invocation: Equatable, Sendable {
         let profileID: UUID
         let configuration: AgentHarnessConfiguration
-        let prompt: String
+        let prompt: AgentPrompt
     }
 
     private var invocations: [Invocation] = []
     private var resets: [Set<UUID>] = []
     private var shouldDelayReset = false
     private var resetContinuation: CheckedContinuation<Void, Never>?
+    private var resetWaiters: [CheckedContinuation<Void, Never>] = []
     private let events: [AgentRunEvent]
 
     init(events: [AgentRunEvent] = []) {
@@ -133,18 +145,22 @@ actor AppModelAgentRunnerSpy: AgentHarnessRunning {
     }
 
     func run(
+        admission: AgentRunAdmission,
         profileID: UUID,
         configuration: AgentHarnessConfiguration,
-        prompt: String,
-        onEvent: @escaping @Sendable (AgentRunEvent) async -> Void
+        prompt: AgentPrompt,
+        restorationNeed: AgentSessionRestorationNeed,
+        runContinuity: AgentRunContinuityRequest,
+        onEvent: @escaping @Sendable (AgentRunStreamEvent) async -> Void
     ) async throws -> AgentRunResult {
+        guard admission.claim() else { throw CancellationError() }
         invocations.append(
             Invocation(
                 profileID: profileID,
                 configuration: configuration,
                 prompt: prompt))
         for event in events {
-            await onEvent(event)
+            await onEvent(.live(event))
         }
         return AgentRunResult(stopReason: .endTurn)
     }
@@ -160,7 +176,14 @@ actor AppModelAgentRunnerSpy: AgentHarnessRunning {
     func reset(profileIDs: Set<UUID>) async {
         resets.append(profileIDs)
         guard shouldDelayReset else { return }
-        await withCheckedContinuation { resetContinuation = $0 }
+        await withCheckedContinuation {
+            resetContinuation = $0
+            let waiters = resetWaiters
+            resetWaiters.removeAll()
+            for waiter in waiters {
+                waiter.resume()
+            }
+        }
     }
 
     func shutdown() async {}
@@ -169,6 +192,10 @@ actor AppModelAgentRunnerSpy: AgentHarnessRunning {
     func recordedResets() -> [Set<UUID>] { resets }
     func delayReset() { shouldDelayReset = true }
     func resetIsWaiting() -> Bool { resetContinuation != nil }
+    func waitUntilResetIsWaiting() async {
+        guard resetContinuation == nil else { return }
+        await withCheckedContinuation { resetWaiters.append($0) }
+    }
     func releaseReset() {
         shouldDelayReset = false
         resetContinuation?.resume()
@@ -189,13 +216,17 @@ actor AppModelPermissionAgentRunnerSpy: AgentHarnessRunning {
     private var continuation: CheckedContinuation<AgentRunResult, Never>?
 
     func run(
+        admission: AgentRunAdmission,
         profileID: UUID,
         configuration: AgentHarnessConfiguration,
-        prompt: String,
-        onEvent: @escaping @Sendable (AgentRunEvent) async -> Void
+        prompt: AgentPrompt,
+        restorationNeed: AgentSessionRestorationNeed,
+        runContinuity: AgentRunContinuityRequest,
+        onEvent: @escaping @Sendable (AgentRunStreamEvent) async -> Void
     ) async throws -> AgentRunResult {
+        guard admission.claim() else { throw CancellationError() }
         await onEvent(
-            .permissionRequested(
+            .live(.permissionRequested(
                 AgentPermissionRequest(
                     turnToken: turnToken,
                     requestID: requestID,
@@ -217,7 +248,7 @@ actor AppModelPermissionAgentRunnerSpy: AgentHarnessRunning {
                             id: "deny-once",
                             label: "Deny",
                             kind: .rejectOnce),
-                    ])))
+                    ]))))
         return await withCheckedContinuation { continuation = $0 }
     }
 
@@ -335,15 +366,28 @@ final class AppModelElevenLabsVoicePreviewSpy: ElevenLabsVoicePreviewing {
 @MainActor
 final class PermissionRequestGate {
     private var continuations: [CheckedContinuation<Bool, Never>] = []
+    private var waitingContinuations: [CheckedContinuation<Void, Never>] = []
     private(set) var requestCount = 0
     private(set) var completionCount = 0
     var isWaiting: Bool { !continuations.isEmpty }
 
     func request() async -> Bool {
         requestCount += 1
-        let granted = await withCheckedContinuation { continuations.append($0) }
+        let granted = await withCheckedContinuation { continuation in
+            continuations.append(continuation)
+            let waiters = waitingContinuations
+            waitingContinuations = []
+            for waiter in waiters {
+                waiter.resume()
+            }
+        }
         completionCount += 1
         return granted
+    }
+
+    func waitUntilWaiting() async {
+        guard continuations.isEmpty else { return }
+        await withCheckedContinuation { waitingContinuations.append($0) }
     }
 
     func resolve(_ granted: Bool) {

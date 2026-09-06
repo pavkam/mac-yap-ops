@@ -101,9 +101,17 @@ changes, and the terminal recognition event.
 
 Production events must not include prompts, transcripts, response text, API
 keys, authorization, credentials, raw provider content, request or response
-bodies, or audio. Field names containing `api_key`, `authorization`, `content`,
-`credential`, `prompt`, `secret`, `text`, `token`, or `transcript` are replaced
-with `<redacted>` before writing.
+bodies, audio, or Mac-context snapshot values or content. Field names containing
+`api_key`, `authorization`, `content`, `credential`, `prompt`, `secret`, `text`,
+`token`, or `transcript` are replaced with `<redacted>` before writing.
+
+Focused Mac-context capture records `mac_context.capture_started` followed by
+one `mac_context.capture_finished`. The terminal entry has only
+`capture_state`, `terminal_state`, `duration_ms`, boolean presence flags for
+window title, document URL, and selection, `selection_byte_count`, and
+`resource_count`. It never records the app identity, title, URL, selection,
+resource name, JSON, or prompt values. Terminal state is `completed`,
+`fallback`, `timed_out`, or `cancelled`.
 
 Redaction by field name is only a final guardrail. The trace can still contain
 configured executable paths, working folders, provider names, locale IDs,
