@@ -31,8 +31,12 @@ enum AgentPermissionVoiceCommand {
         let phrase = normalized(transcript)
         guard !phrase.isEmpty else { return nil }
 
-        if let exact = options.first(where: { normalized($0.label) == phrase }) {
-            return .select(optionID: exact.id)
+        let exact = options.filter { normalized($0.label) == phrase }
+        if exact.count == 1, let option = exact.first {
+            return .select(optionID: option.id)
+        }
+        if exact.count > 1 {
+            return nil
         }
         if allowAlwaysPhrases.contains(phrase) {
             return selection(
@@ -50,11 +54,13 @@ enum AgentPermissionVoiceCommand {
             return selection(
                 preferred: .rejectAlways,
                 fallback: .rejectOnce,
-                options: options) ?? .cancel
+                options: options)
         }
         if rejectOncePhrases.contains(phrase) {
-            return options.first(where: { $0.kind == .rejectOnce })
-                .map { .select(optionID: $0.id) } ?? .cancel
+            return selection(
+                preferred: .rejectOnce,
+                fallback: .rejectAlways,
+                options: options)
         }
         return nil
     }
@@ -62,12 +68,21 @@ enum AgentPermissionVoiceCommand {
     private static func selection(
         preferred: AgentPermissionOptionKind,
         fallback: AgentPermissionOptionKind,
-        options: [AgentPermissionOption]) -> AgentPermissionVoiceDecision?
+        options: [AgentPermissionOption]
+    ) -> AgentPermissionVoiceDecision?
     {
-        options.first(where: { $0.kind == preferred })
-            .map { .select(optionID: $0.id) }
-            ?? options.first(where: { $0.kind == fallback })
-                .map { .select(optionID: $0.id) }
+        let preferredOptions = options.filter { $0.kind == preferred }
+        if preferredOptions.count == 1, let option = preferredOptions.first {
+            return .select(optionID: option.id)
+        }
+        guard preferredOptions.isEmpty else {
+            return nil
+        }
+        let fallbackOptions = options.filter { $0.kind == fallback }
+        if fallbackOptions.count == 1, let option = fallbackOptions.first {
+            return .select(optionID: option.id)
+        }
+        return nil
     }
 
     private static func normalized(_ value: String) -> String {

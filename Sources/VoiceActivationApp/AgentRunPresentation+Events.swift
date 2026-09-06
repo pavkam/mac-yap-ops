@@ -63,7 +63,8 @@ extension AgentRunPresentation {
             permissions.append(
                 AgentPermissionPresentation(
                     key: key,
-                    toolTitle: request.toolCall.title ?? "Agent action",
+                    promptTitle: request.presentationText?.title ?? request.toolCall.title,
+                    promptDescription: request.presentationText?.description,
                     options: request.options,
                     isResolving: false))
         case .unknown(let discriminator, let summary):

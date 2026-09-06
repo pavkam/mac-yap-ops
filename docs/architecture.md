@@ -153,6 +153,13 @@ actor; Quick Look previews only existing local files. Explicit open and reveal
 actions cross a generation-checked workspace boundary, and private materialized
 files follow run deletion and application shutdown.
 
+Permission decoding retains exact wire identity separately from display text.
+It accepts only bounded `_meta.permission` version-1 title and description
+fields, then discards the metadata object and every raw tool payload. The panel
+falls back to the standard tool title and exact ordered option labels; its
+neutral `Agent action` label is visual chrome and never enters speech or the
+JSON-RPC response.
+
 The app-owned Markdown boundary uses MarkdownUI's `cmark-gfm` parser with
 semantic panel styling, bounded credential-free HTTPS image loading, and an
 `http`/`https` link allowlist; no WebKit surface or raw HTML execution enters the
@@ -160,11 +167,14 @@ panel. Image bytes are capped before off-main Image I/O downsampling and remain
 in a bounded memory-only cache.
 `AgentConversationAudioPresenter` maps the same typed lifecycle into narration
 and activity cues without making the presentation model own audio playback. It
-narrates only a complete admitted spoken unit or the compatible legacy reply
-path. Display responses, tools, plans, thoughts, permissions, diagnostics, raw
-ACP data, and restored history never become speech. Reply-reading settings still
-gate narration; when ElevenLabs is selected, only the admitted spoken text leaves
-the Mac for synthesis.
+narrates complete admitted agent responses and identity-keyed permission
+presentations. Each confirmation is one atomic batch of exact title,
+description, and option-label utterances. Resolving one run/turn/request stops
+queued speech and requeues only the remaining prompts; cancellation invalidates
+all of them before stopping playback. Tool completion, display responses, raw
+tool payloads, plans, thoughts, diagnostics, ACP frames, and restored history
+never become result speech. Reply-reading settings gate both replies and
+confirmations; when ElevenLabs is selected, only admitted text leaves the Mac.
 
 See [ACP agent harness](agent-harness.md) for the wire contract and
 [Agent conversations](agent-conversations.md) for the user-visible model.

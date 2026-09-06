@@ -393,10 +393,11 @@ delivered unit remains visible but silent. Legacy text retains the existing
 Markdown-to-speech formatter. Profile reply-speech policy and the saved inherited
 reply-reading setting gate both paths.
 
-The chosen text-to-speech backend receives only admitted response text. The
-macOS backend uses the local system synthesizer; selecting ElevenLabs sends that
-spoken text to ElevenLabs. Raw tools, plans, thoughts, permissions, diagnostics,
-ACP payloads, code contents, and display-only text never enter synthesis.
+The chosen text-to-speech backend receives only admitted response text and the
+bounded permission presentation described below. The macOS backend uses the
+local system synthesizer; selecting ElevenLabs sends only that admitted text.
+Raw tool input or output, tool content, locations, plans, thoughts, diagnostics,
+ACP frames, code contents, and display-only text never enter synthesis.
 
 ## Deliver generated results
 
@@ -436,8 +437,33 @@ permission keeps:
 
 - the exact wire request identifier;
 - the active connection and opaque turn token;
-- the tool identity and bounded description; and
+- the tool identity and optional standard human-readable title;
+- an optional bounded provider presentation title and description; and
 - only the provider-supplied option identifiers, labels, and semantic kinds.
+
+ACP v1 does not define a separate confirmation sentence. The portable spoken
+fallback is the nonempty standard `toolCall.title`, followed by every exact
+`PermissionOption.name` in wire order. Providers may instead supply this legal
+request-level extension:
+
+```json
+{
+  "_meta": {
+    "permission": {
+      "version": 1,
+      "title": "Move 43 old downloads to Trash?",
+      "description": "They remain recoverable."
+    }
+  }
+}
+```
+
+Only integer `version: 1`, a nonblank NUL-free title of at most 4 KiB UTF-8,
+and an optional NUL-free description of at most 8 KiB UTF-8 are retained. The
+accepted strings remain exact. Missing, unknown, malformed, or oversized
+metadata is ignored without rejecting the valid standard permission. Arbitrary
+metadata and `rawInput`, `rawOutput`, `content`, and `locations` are discarded
+before presentation and audio.
 
 Automatic policies choose only an option the provider supplied. **Ask every
 time** publishes the choices and suspends that request without blocking receipt
@@ -451,13 +477,27 @@ pending permission with a cancelled outcome exactly once.
 
 The client retains at most 32 simultaneous unanswered permissions. Each may
 offer at most 64 options. An excess request is cancelled without admitting its
-untrusted content.
+untrusted content. The panel and audio presenter preserve arrival order under
+the exact run, turn, and request identity. Resolving one request stops queued
+confirmation speech and requeues only the remaining requests in arrival order.
+
+When reply reading is enabled, the app speaks the provider title (or standard
+tool title), optional provider description, and exact option labels as separate
+verbatim utterances. It adds no question, warning, numbering, or result claim.
+An empty or over-20,000-character confirmation is suppressed as a whole; the
+complete card remains actionable. Tool completion itself is never a spoken
+result. Only the following legacy or typed agent-authored message can report the
+outcome.
 
 ## Cancel work
 
 Cancellation stops new event admission and settles permissions before process
 teardown. If the prompt frame has been published and its response has not
 arrived, the client sends `session/cancel` for the active session.
+
+Permission audio identity is cleared before synthesis and playback are stopped.
+Every pending JSON-RPC permission receives one cancelled response, and the app
+does not add a local `Stopped.` sentence or infer result prose.
 
 The runner waits up to two seconds for the provider to finish with
 `stopReason: cancelled`. Another stop reason after cancellation invalidates the
@@ -537,6 +577,8 @@ cache.
 | Advertised authentication methods | 8 | Ignore additional names. |
 | Simultaneous pending permissions | 32 | Cancel the excess request. |
 | Options in one permission | 64 | Cancel the request. |
+| Permission presentation title | 4 KiB UTF-8 | Ignore the extension and use standard fallback. |
+| Permission presentation description | 8 KiB UTF-8 | Ignore the extension and use standard fallback. |
 | Entries in one plan update | 64 | Retain a bounded plan. |
 | One artifact URI | 4 KiB UTF-8 | Reject the artifact. |
 | One artifact MIME type | 256 bytes UTF-8 | Reject the artifact. |
@@ -546,6 +588,7 @@ cache.
 | Pending output delivery | 512 KiB UTF-8 | Discard oldest valid UTF-8 and publish a typed notice. |
 | Response-marker lookahead | Longest exact marker | Fall back to the original legacy bytes on mismatch or boundary. |
 | One exact spoken narration unit | 20,000 characters | Keep it visible and suppress narration atomically. |
+| One complete spoken confirmation | 20,000 characters | Keep the card and suppress every utterance atomically. |
 | Retained visible spoken output | 64 KiB UTF-8 | Keep the newest valid suffix behind one omission marker. |
 | Pending diagnostic delivery | 16 KiB UTF-8 | Discard oldest valid UTF-8 and publish a typed notice. |
 | Pending artifact delivery | 4 MiB | Discard oldest complete artifacts and publish a typed notice. |

@@ -266,6 +266,63 @@ extension AppModelTests {
         #expect(fixture.model.agentRunSnapshot?.permissions.isEmpty == true)
     }
 
+    @MainActor @Test
+    func agentPermission_WhenButtonSelectsOption_ForwardsExactIdentityToAudioAndRunner()
+        async throws
+    {
+        let profile = try makeAgentProfile(displayName: "Codex")
+        let runner = AppModelPermissionAgentRunnerSpy()
+        let audio = AppModelAgentConversationAudioSpy()
+        let fixture = try Fixture(
+            profiles: [profile],
+            agentRunner: runner,
+            agentConversationAudioPlayer: audio)
+        await fixture.model.start()
+        fixture.speech.emit("Codex edit my settings", isFinal: true)
+        await waitUntil { fixture.model.agentRunSnapshot?.permissions.count == 1 }
+        let snapshot = try #require(fixture.model.agentRunSnapshot)
+        let permission = try #require(snapshot.permissions.first)
+        let stopCount = audio.stopSpeakingCount
+
+        fixture.model.resolveAgentPermission(
+            runID: snapshot.runID,
+            key: permission.key,
+            optionID: "allow-once")
+        await waitUntil { await runner.recordedResolutions().count == 1 }
+
+        let resolution = try #require(await runner.recordedResolutions().first)
+        #expect(resolution.turnToken == runner.turnToken)
+        #expect(resolution.requestID == runner.requestID)
+        #expect(resolution.optionID == "allow-once")
+        #expect(audio.stopSpeakingCount == stopCount + 1)
+    }
+
+    @MainActor @Test
+    func agentPermission_WhenDenyHasNoOfferedReject_LeavesPermissionUnresolved()
+        async throws
+    {
+        let profile = try makeAgentProfile(displayName: "Codex")
+        let runner = AppModelPermissionAgentRunnerSpy(options: [
+            AgentPermissionOption(id: "allow", label: "Allow", kind: .allowOnce),
+        ])
+        let audio = AppModelAgentConversationAudioSpy()
+        let fixture = try Fixture(
+            profiles: [profile],
+            agentRunner: runner,
+            agentConversationAudioPlayer: audio)
+        await fixture.model.start()
+        fixture.speech.emit("Codex edit my settings", isFinal: true)
+        await waitUntil { fixture.model.agentRunSnapshot?.permissions.count == 1 }
+        let stopCount = audio.stopSpeakingCount
+
+        let handled = fixture.model.handleAgentVoiceUtterance("deny")
+
+        #expect(!handled)
+        #expect(await runner.recordedResolutions().isEmpty)
+        #expect(audio.stopSpeakingCount == stopCount)
+        #expect(fixture.model.agentRunSnapshot?.permissions.count == 1)
+    }
+
     @MainActor @Test func saveSettings_WhenElevenLabsKeyIsEmpty_PreservesSavedSpeechSettings()
         async throws
     {

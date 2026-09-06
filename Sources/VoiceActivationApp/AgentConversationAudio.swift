@@ -21,6 +21,8 @@ protocol AgentConversationAudioPlaying: AnyObject {
         localeID: String,
         inputFormat: AgentSpeechInputFormat,
         admissionPolicy: AgentSpeechAdmissionPolicy)
+    @discardableResult
+    func speakVerbatim(_ texts: [String], localeID: String) -> Bool
     func stopSpeaking()
     func stopAll()
 }
@@ -175,6 +177,48 @@ final class AgentConversationAudioOrchestrator: AgentConversationAudioPlaying {
             ])
     }
 
+    @discardableResult
+    func speakVerbatim(_ texts: [String], localeID: String) -> Bool {
+        guard !texts.isEmpty, texts.allSatisfy({ !$0.isEmpty }) else {
+            diagnostics.record(
+                category: .audio,
+                event: "conversation_audio.speech_ignored",
+                fields: ["reason": "empty_batch"])
+            return false
+        }
+        guard let configuration = activeSpeechConfiguration else {
+            diagnostics.record(
+                category: .audio,
+                event: "conversation_audio.speech_ignored",
+                fields: ["reason": "speech_disabled"])
+            return false
+        }
+        let requests = texts.map {
+            AgentSpeechRequest(
+                text: $0,
+                localeID: localeID,
+                configuration: configuration,
+                inputFormat: .agentAuthoredPlainText,
+                admissionPolicy: .agentAuthoredVerbatim)
+        }
+        guard speechQueue.enqueueVerbatimBatch(requests) else {
+            diagnostics.record(
+                category: .audio,
+                event: "conversation_audio.speech_ignored",
+                fields: ["reason": "queue_rejected"])
+            return false
+        }
+        diagnostics.record(
+            category: .audio,
+            event: "conversation_audio.speech_batch_enqueued",
+            fields: [
+                "utterance_count": String(texts.count),
+                "character_count": String(texts.reduce(0) { $0 + $1.count }),
+                "backend": configuration.selection.backendID.rawValue,
+            ])
+        return true
+    }
+
     func stopSpeaking() {
         diagnostics.record(category: .audio, event: "conversation_audio.speech_stop_requested")
         speechQueue.stop()
@@ -211,17 +255,18 @@ final class AgentConversationAudioOrchestrator: AgentConversationAudioPlaying {
 
 @MainActor
 final class AgentConversationAudioPresenter {
-    private let player: any AgentConversationAudioPlaying
+    let player: any AgentConversationAudioPlaying
     private let readsReplies: () -> Bool
     private let playsWorkingSound: () -> Bool
-    private let localeID: () -> String
+    let localeID: () -> String
     private let narration: AgentNarrationSegmenter
-    private let diagnostics: any VoiceActivationDiagnosticRecording
-    private var runID: UUID?
-    private var readsActiveReplies = false
+    let diagnostics: any VoiceActivationDiagnosticRecording
+    var runID: UUID?
+    var readsActiveReplies = false
     private var activityIsWorking = false
-    private var rejectsAgentSpeechUntilNextTurn = false
+    var rejectsAgentSpeechUntilNextTurn = false
     private var toolSoundPhases: [String: ToolSoundPhase] = [:]
+    var pendingPermissionNarrations: [PendingPermissionNarration] = []
 
     init(
         player: any AgentConversationAudioPlaying,
@@ -261,6 +306,7 @@ final class AgentConversationAudioPresenter {
         case .started(let runID, let profile, _):
             self.runID = runID
             rejectsAgentSpeechUntilNextTurn = false
+            pendingPermissionNarrations.removeAll(keepingCapacity: true)
             narration.reset()
             readsActiveReplies = player.beginConversation(
                 profile: profile,
@@ -270,6 +316,7 @@ final class AgentConversationAudioPresenter {
             updateWorking(true)
         case .followUpSubmitted(let runID, _, _, _):
             guard self.runID == runID else { return }
+            pendingPermissionNarrations.removeAll(keepingCapacity: true)
             narration.reset()
             toolSoundPhases.removeAll(keepingCapacity: true)
             player.stopSpeaking()
@@ -281,12 +328,14 @@ final class AgentConversationAudioPresenter {
         case .turnStarted(let runID):
             guard self.runID == runID else { return }
             rejectsAgentSpeechUntilNextTurn = false
+            pendingPermissionNarrations.removeAll(keepingCapacity: true)
             narration.reset()
             toolSoundPhases.removeAll(keepingCapacity: true)
             updateWorking(true)
         case .turnCancellationStarted(let runID):
             guard self.runID == runID else { return }
             rejectsAgentSpeechUntilNextTurn = true
+            pendingPermissionNarrations.removeAll(keepingCapacity: true)
             narration.reset()
             player.stopSpeaking()
             updateWorking(false)
@@ -298,6 +347,7 @@ final class AgentConversationAudioPresenter {
             break
         case .turnCompleted(let runID, let result):
             guard self.runID == runID else { return }
+            pendingPermissionNarrations.removeAll(keepingCapacity: true)
             if result.stopReason == .cancelled {
                 rejectsAgentSpeechUntilNextTurn = true
                 narration.reset()
@@ -311,34 +361,29 @@ final class AgentConversationAudioPresenter {
         case .turnFailed(let runID, _):
             guard self.runID == runID else { return }
             rejectsAgentSpeechUntilNextTurn = true
+            pendingPermissionNarrations.removeAll(keepingCapacity: true)
             if readsActiveReplies {
                 narration.finish()
             } else {
                 narration.reset()
             }
             updateWorking(false)
-        case .completed(let runID, let result):
+        case .completed(let runID, _):
             guard self.runID == runID else { return }
-            let speaksStopped = result.stopReason == .cancelled && readsActiveReplies
             self.runID = nil
             rejectsAgentSpeechUntilNextTurn = true
+            pendingPermissionNarrations.removeAll(keepingCapacity: true)
             narration.reset()
             activityIsWorking = false
             player.stopAll()
             toolSoundPhases.removeAll(keepingCapacity: true)
-            if speaksStopped {
-                player.speak(
-                    "Stopped.",
-                    localeID: localeID(),
-                    inputFormat: .legacyMarkdown,
-                    admissionPolicy: .legacyNormalized)
-            }
             readsActiveReplies = false
             player.endConversation()
         case .failed(let runID, _):
             guard self.runID == runID else { return }
             self.runID = nil
             rejectsAgentSpeechUntilNextTurn = true
+            pendingPermissionNarrations.removeAll(keepingCapacity: true)
             narration.reset()
             activityIsWorking = false
             player.stopAll()
@@ -352,6 +397,7 @@ final class AgentConversationAudioPresenter {
         diagnostics.record(category: .audio, event: "conversation_audio.shutdown")
         runID = nil
         rejectsAgentSpeechUntilNextTurn = true
+        pendingPermissionNarrations.removeAll(keepingCapacity: true)
         narration.reset()
         activityIsWorking = false
         player.stopAll()
@@ -369,21 +415,6 @@ final class AgentConversationAudioPresenter {
                 "plays_working_sound": String(playsWorkingSound()),
             ])
         player.setWorking(activityIsWorking && playsWorkingSound())
-    }
-
-    func resumeAfterPermission(runID: UUID) {
-        guard self.runID == runID else {
-            diagnostics.record(
-                category: .audio,
-                event: "conversation_audio.permission_resume_ignored",
-                fields: ["run_id": runID.uuidString])
-            return
-        }
-        diagnostics.record(
-            category: .audio,
-            event: "conversation_audio.permission_resumed",
-            fields: ["run_id": runID.uuidString])
-        updateWorking(true)
     }
 
     private func handle(_ event: AgentRunEvent) {
@@ -413,9 +444,9 @@ final class AgentConversationAudioPresenter {
                 admissionPolicy: .agentAuthoredVerbatim)
         case .agentSpokenNarrationSuppressed:
             break
-        case .permissionRequested:
+        case .permissionRequested(let request):
             narration.markSemanticBoundary()
-            updateWorking(false)
+            handlePermissionRequest(request)
         case .toolCall(let tool):
             narration.markSemanticBoundary()
             handleToolSound(id: tool.id, status: tool.status)
@@ -456,7 +487,7 @@ final class AgentConversationAudioPresenter {
         player.playActivitySound(phase.sound)
     }
 
-    private func updateWorking(_ working: Bool) {
+    func updateWorking(_ working: Bool) {
         activityIsWorking = working
         diagnostics.record(
             category: .audio,

@@ -264,6 +264,32 @@ public struct AgentPermissionOption: Equatable, Sendable {
     }
 }
 
+/// Provider- or adapter-supplied presentation text for one blocking permission request.
+///
+/// The text is preserved exactly after ACP wire validation. It describes only what the
+/// provider chose to present; it is never derived from raw tool input or output.
+public struct AgentPermissionPresentationText: Equatable, Sendable {
+    /// The maximum accepted UTF-8 size of a provider permission-prompt title.
+    public static let maximumPermissionPromptTitleBytes = 4 * 1_024
+    /// The maximum accepted UTF-8 size of a provider permission-prompt description.
+    public static let maximumPermissionPromptDescriptionBytes = 8 * 1_024
+
+    /// The nonblank title supplied for the permission prompt.
+    public let title: String
+    /// Optional provider-supplied detail shown after the title.
+    public let description: String?
+
+    /// Creates validated-on-receipt presentation text.
+    ///
+    /// - Parameters:
+    ///   - title: The exact provider-supplied prompt title.
+    ///   - description: Optional exact provider-supplied prompt detail.
+    public init(title: String, description: String?) {
+        self.title = title
+        self.description = description
+    }
+}
+
 /// A permission decision requested by the harness during an active turn.
 public struct AgentPermissionRequest: Equatable, Sendable {
     /// The local turn identity that prevents stale responses crossing turns.
@@ -274,6 +300,8 @@ public struct AgentPermissionRequest: Equatable, Sendable {
     public let toolCall: AgentToolCallUpdate
     /// The nonempty choices accepted by the harness.
     public let options: [AgentPermissionOption]
+    /// Optional bounded provider presentation decoded from request metadata.
+    public let presentationText: AgentPermissionPresentationText?
 
     /// Creates a permission request bound to one local turn.
     ///
@@ -282,16 +310,19 @@ public struct AgentPermissionRequest: Equatable, Sendable {
     ///   - requestID: The JSON-RPC request identifier.
     ///   - toolCall: The operation awaiting permission.
     ///   - options: The choices accepted by the harness.
+    ///   - presentationText: Optional exact provider-supplied title and detail.
     public init(
         turnToken: AgentTurnToken,
         requestID: ACPRequestID,
         toolCall: AgentToolCallUpdate,
-        options: [AgentPermissionOption])
+        options: [AgentPermissionOption],
+        presentationText: AgentPermissionPresentationText? = nil)
     {
         self.turnToken = turnToken
         self.requestID = requestID
         self.toolCall = toolCall
         self.options = options
+        self.presentationText = presentationText
     }
 }
 

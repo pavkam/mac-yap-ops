@@ -23,6 +23,8 @@ final class AgentConversationAudioSpy: AgentConversationAudioPlaying {
     private(set) var spoken: [(text: String, localeID: String)] = []
     private(set) var spokenFormats: [AgentSpeechInputFormat] = []
     private(set) var spokenPolicies: [AgentSpeechAdmissionPolicy] = []
+    private(set) var verbatimBatches: [[String]] = []
+    var acceptsVerbatimBatches = true
     private(set) var events: [Event] = []
     private(set) var stopSpeakingCount = 0
     private(set) var stopAllCount = 0
@@ -66,6 +68,20 @@ final class AgentConversationAudioSpy: AgentConversationAudioPlaying {
         onSpeak?()
     }
 
+    @discardableResult
+    func speakVerbatim(_ texts: [String], localeID: String) -> Bool {
+        verbatimBatches.append(texts)
+        guard acceptsVerbatimBatches else { return false }
+        for text in texts {
+            speak(
+                text,
+                localeID: localeID,
+                inputFormat: .agentAuthoredPlainText,
+                admissionPolicy: .agentAuthoredVerbatim)
+        }
+        return true
+    }
+
     func stopSpeaking() {
         stopSpeakingCount += 1
     }
@@ -84,6 +100,12 @@ final class AgentSpeechQueueSpy: AgentSpeechQueueing {
     @discardableResult
     func enqueue(_ request: AgentSpeechRequest) -> Bool {
         requests.append(request)
+        return true
+    }
+
+    @discardableResult
+    func enqueueVerbatimBatch(_ requests: [AgentSpeechRequest]) -> Bool {
+        self.requests.append(contentsOf: requests)
         return true
     }
 

@@ -79,6 +79,44 @@ struct AgentSpeechQueueVerbatimTests {
     }
 
     @MainActor @Test
+    func verbatimBatch_WhenCombinedTextIsOversized_RejectsEveryUtterance() async throws {
+        let player = VerbatimSystemSpeechPlayer()
+        let diagnostics = VerbatimDiagnosticRecorder()
+        let queue = AgentSpeechQueue(
+            systemSpeechPlayer: player,
+            diagnostics: diagnostics)
+
+        let admitted = queue.enqueueVerbatimBatch([
+            request(String(repeating: "a", count: 10_001), policy: .agentAuthoredVerbatim),
+            request(String(repeating: "b", count: 10_000), policy: .agentAuthoredVerbatim),
+        ])
+        try await Task.sleep(for: .milliseconds(25))
+
+        #expect(!admitted)
+        #expect(player.texts.isEmpty)
+        #expect(diagnostics.contains(event: "speech.queue_rejected", reason: "oversized"))
+        queue.stop()
+    }
+
+    @MainActor @Test
+    func verbatimBatch_WhenQueueIsFull_RejectsTheWholeBatch() {
+        let diagnostics = VerbatimDiagnosticRecorder()
+        let queue = AgentSpeechQueue(diagnostics: diagnostics)
+        for index in 0..<64 {
+            queue.enqueue(request("Legacy \(index)."))
+        }
+
+        let admitted = queue.enqueueVerbatimBatch([
+            request("First exact option", policy: .agentAuthoredVerbatim),
+            request("Second exact option", policy: .agentAuthoredVerbatim),
+        ])
+
+        #expect(!admitted)
+        #expect(diagnostics.contains(event: "speech.queue_rejected", reason: "queue_full"))
+        queue.stop()
+    }
+
+    @MainActor @Test
     func verbatim_WhenOversized_RejectsWithoutPrefixing() async throws {
         let player = VerbatimSystemSpeechPlayer()
         let diagnostics = VerbatimDiagnosticRecorder()

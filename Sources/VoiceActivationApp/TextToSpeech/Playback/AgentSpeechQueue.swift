@@ -77,6 +77,8 @@ protocol AgentSpeechQueueing: AnyObject {
 
     @discardableResult
     func enqueue(_ request: AgentSpeechRequest) -> Bool
+    @discardableResult
+    func enqueueVerbatimBatch(_ requests: [AgentSpeechRequest]) -> Bool
     func stop()
 }
 
@@ -179,6 +181,53 @@ final class AgentSpeechQueue: AgentSpeechQueueing {
                 "admission_policy": admittedRequest.admissionPolicy.diagnosticName,
                 "generation": String(generation),
             ])
+        startPrefetching()
+        advance()
+        return true
+    }
+
+    @discardableResult
+    func enqueueVerbatimBatch(_ requests: [AgentSpeechRequest]) -> Bool {
+        guard !requests.isEmpty,
+            requests.allSatisfy({
+                !$0.text.isEmpty
+                    && $0.inputFormat == .agentAuthoredPlainText
+                    && $0.admissionPolicy == .agentAuthoredVerbatim
+            })
+        else {
+            reject(reason: "empty", policy: .agentAuthoredVerbatim)
+            return false
+        }
+        let characterCount = requests.reduce(0) { count, request in
+            let (value, overflow) = count.addingReportingOverflow(request.text.count)
+            return overflow ? Int.max : value
+        }
+        guard characterCount <= Self.maximumCoalescedCharacters else {
+            reject(reason: "oversized", policy: .agentAuthoredVerbatim)
+            return false
+        }
+        guard requests.count <= Self.maximumPendingRequests - pending.count else {
+            reject(reason: "queue_full", policy: .agentAuthoredVerbatim)
+            return false
+        }
+
+        for request in requests {
+            let pendingRequest = makePendingRequest(request)
+            pending.append(pendingRequest)
+            diagnostics.record(
+                category: .audio,
+                event: "speech.queue_enqueued",
+                fields: [
+                    "request_id": String(pendingRequest.id),
+                    "backend": request.configuration.selection.backendID.rawValue,
+                    "character_count": String(request.text.count),
+                    "pending_count": String(pending.count),
+                    "coalesced": "false",
+                    "input_format": request.inputFormat.diagnosticName,
+                    "admission_policy": request.admissionPolicy.diagnosticName,
+                    "generation": String(generation),
+                ])
+        }
         startPrefetching()
         advance()
         return true

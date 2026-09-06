@@ -106,7 +106,10 @@ extension AppModel {
                 fields: ["run_id": runID.uuidString])
             return
         }
-        agentConversationAudioPresenter.resumeAfterPermission(runID: runID)
+        agentConversationAudioPresenter.permissionResolutionBegan(
+            runID: runID,
+            turnToken: key.turnToken,
+            requestID: key.requestID)
         coordinator.resolveAgentPermission(
             runID: runID,
             turnToken: key.turnToken,
