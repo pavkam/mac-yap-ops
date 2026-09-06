@@ -86,6 +86,7 @@ extension AppModel {
         }
         started = true
         diagnostics.record(category: .app, event: "app_model.start_started")
+        refreshMacContextAccessStatus()
         startCredentialLoad()
         coordinator.onStateChange = { [weak self] in
             guard let self else { return }

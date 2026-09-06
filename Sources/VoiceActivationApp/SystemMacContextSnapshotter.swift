@@ -96,6 +96,39 @@ final class SerialMacContextExecutor: MacContextExecuting, @unchecked Sendable {
 }
 
 @MainActor
+final class ConfigurableMacContextCapturer: MacContextCapturing {
+    private let capturer: any MacContextCapturing
+    private var enabled: Bool
+
+    init(capturer: any MacContextCapturing, enabled: Bool) {
+        self.capturer = capturer
+        self.enabled = enabled
+    }
+
+    func setEnabled(_ enabled: Bool) {
+        self.enabled = enabled
+    }
+
+    func currentTarget() -> MacContextTarget? {
+        guard enabled else { return nil }
+        return capturer.currentTarget()
+    }
+
+    func capture(_ target: MacContextTarget) async -> MacContextSnapshot {
+        guard enabled else {
+            return MacContextSnapshot.normalized(
+                state: .targetUnavailable,
+                target: target,
+                windowTitle: nil,
+                documentURL: nil,
+                selectedText: nil,
+                resources: [])
+        }
+        return await capturer.capture(target)
+    }
+}
+
+@MainActor
 final class SystemMacContextSnapshotter: MacContextCapturing {
     private static let captureDeadline = Duration.milliseconds(500)
 

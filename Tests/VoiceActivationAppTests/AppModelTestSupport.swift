@@ -30,6 +30,8 @@ extension AppModelTests {
         let shortcut = ShortcutSpy()
         let speech = AppModelSpeechSessionSpy()
         let agentRunPanel: AppModelAgentPanelSpy
+        let macContextAccess: MacContextAccessSpy
+        let macContextCapturer: MacContextCapturerSpy
         let model: AppModel
 
         init(
@@ -45,6 +47,8 @@ extension AppModelTests {
             elevenLabsVoicePreview: any ElevenLabsVoicePreviewing =
                 AppModelElevenLabsVoicePreviewSpy(),
             textToSpeechBackendRegistry: TextToSpeechBackendRegistry? = nil,
+            macContextAccess: MacContextAccessSpy = MacContextAccessSpy(),
+            macContextCapturer: MacContextCapturerSpy = MacContextCapturerSpy(),
             isExecutableFile: @escaping @MainActor (String) -> Bool = { path in
                 FileManager.default.isExecutableFile(atPath: path)
             },
@@ -59,6 +63,8 @@ extension AppModelTests {
             defaults.removePersistentDomain(forName: suite)
             preferences = AppPreferences(defaults: defaults)
             self.agentRunPanel = agentRunPanel
+            self.macContextAccess = macContextAccess
+            self.macContextCapturer = macContextCapturer
             if let profiles {
                 preferences.wakeProfiles = profiles
             }
@@ -76,6 +82,8 @@ extension AppModelTests {
                 elevenLabsVoiceCatalog: elevenLabsVoiceCatalog,
                 elevenLabsVoicePreview: elevenLabsVoicePreview,
                 textToSpeechBackendRegistry: textToSpeechBackendRegistry,
+                macContextAccess: macContextAccess,
+                macContextCapturer: macContextCapturer,
                 isExecutableFile: isExecutableFile,
                 isDirectory: isDirectory,
                 startsAutomatically: false)
@@ -102,5 +110,78 @@ extension AppModelTests {
             action: .agent(configuration),
             accent: .purple,
             pushToTalkHotKey: pushToTalkHotKey)
+    }
+}
+
+@MainActor
+final class MacContextAccessSpy: MacContextAccessControlling {
+    var status: MacContextAccessStatus
+    var statusChecks = 0
+    var promptingChecks = 0
+    var statusAfterPrompt: MacContextAccessStatus?
+
+    init(status: MacContextAccessStatus = .notAuthorized) {
+        self.status = status
+    }
+
+    func currentStatus() -> MacContextAccessStatus {
+        statusChecks += 1
+        return status
+    }
+
+    func requestMacContextAccess() {
+        promptingChecks += 1
+        if let statusAfterPrompt {
+            status = statusAfterPrompt
+        }
+    }
+}
+
+@MainActor
+final class MacContextCapturerSpy: MacContextCapturing {
+    var target: MacContextTarget?
+    var snapshot: MacContextSnapshot?
+    var currentTargetCount = 0
+    var captureCount = 0
+
+    init(target: MacContextTarget? = nil, snapshot: MacContextSnapshot? = nil) {
+        self.target = target
+        self.snapshot = snapshot
+    }
+
+    func currentTarget() -> MacContextTarget? {
+        currentTargetCount += 1
+        return target
+    }
+
+    func capture(_ target: MacContextTarget) async -> MacContextSnapshot {
+        captureCount += 1
+        return snapshot ?? MacContextSnapshot.normalized(
+            state: .targetUnavailable,
+            target: target,
+            windowTitle: nil,
+            documentURL: nil,
+            selectedText: nil,
+            resources: [])
+    }
+}
+
+@MainActor
+final class MacContextAccessNativeSpy: MacContextAccessNativeChecking {
+    var isTrusted: Bool
+    var statusChecks = 0
+    var promptingChecks = 0
+
+    init(isTrusted: Bool) {
+        self.isTrusted = isTrusted
+    }
+
+    func isProcessTrusted() -> Bool {
+        statusChecks += 1
+        return isTrusted
+    }
+
+    func requestProcessTrust() {
+        promptingChecks += 1
     }
 }
