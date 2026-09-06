@@ -13,9 +13,11 @@ usage() {
     cat <<'USAGE'
 Usage: probe-local-clients.sh [all|cursor|codex|claude] [--online]
 
-Runs initialize-only ACP probes. It never creates a session, prompts a model,
-authenticates, or changes provider state. Adapter probes use the npm cache by
-default; --online additionally reads current registry metadata.
+The default probe sends no credentials and calls only ACP initialize. It never
+calls authenticate, session/new, session/load, session/resume, session/prompt,
+or a permission method. Providers still inherit their normal ambient
+configuration. Adapter probes use the npm cache by default; --online also reads
+current registry metadata.
 USAGE
 }
 
@@ -50,17 +52,6 @@ require_command() {
     fi
 }
 
-print_version() {
-    local label="$1"
-    shift
-    local output
-    if output="$("$@" --version 2>/dev/null)"; then
-        printf '%s CLI: %s\n' "$label" "$(printf '%s\n' "$output" | head -n 1)"
-    else
-        printf '%s CLI: version unavailable\n' "$label"
-    fi
-}
-
 probe_initialize() {
     local label="$1"
     shift
@@ -70,24 +61,17 @@ probe_initialize() {
 
 if has_target cursor; then
     require_command cursor-agent Cursor
-    print_version Cursor cursor-agent
     probe_initialize Cursor cursor-agent acp
 fi
 
 if has_target codex; then
     require_command npx Codex
-    if command -v codex >/dev/null 2>&1; then
-        print_version Codex codex
-    fi
     probe_initialize Codex \
         npx --offline -y @agentclientprotocol/codex-acp@1.8.0
 fi
 
 if has_target claude; then
     require_command npx Claude
-    if command -v claude >/dev/null 2>&1; then
-        print_version Claude claude
-    fi
     probe_initialize Claude \
         npx --offline -y @agentclientprotocol/claude-agent-acp@0.73.0
 fi

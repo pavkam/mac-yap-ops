@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT
 
 # Validated ACP compatibility baseline
 
-Snapshot date: 2026-09-05. This is evidence, not an evergreen claim. Live
+Snapshot date: 2026-09-06. This is evidence, not an evergreen claim. Live
 project code and pins are authoritative; rerun the probe before relying on a
 drift-prone local or registry version.
 
@@ -24,19 +24,21 @@ Activation correctly used the pinned npm adapters instead.
 
 ## Initialize-only probes
 
-The exact project launch commands were run locally. Each process received only
-ACP `initialize` with protocol version 1 and empty capabilities. No session was
-created, no model was prompted, no permission was granted, and no login state
-was changed.
+The exact project launch commands were run locally. The probe sent no
+credentials and called only ACP `initialize` with protocol version 1 and empty
+client capabilities. It did not call authenticate, session, prompt, or
+permission methods. Each provider still inherited its normal ambient
+configuration.
 
-- Cursor — `cursor-agent acp`: selected v1 and advertised Cursor Login,
-  session loading, and prompt capabilities.
-- Codex — `npx -y @agentclientprotocol/codex-acp@1.8.0`: selected v1,
-  identified adapter 1.8.0, and advertised auth, session, MCP, prompt, and
-  provider capabilities.
-- Claude — `npx -y @agentclientprotocol/claude-agent-acp@0.73.0`: selected v1,
-  identified adapter 0.73.0, and advertised session, MCP, prompt, provider, and
-  extension capabilities.
+- Cursor — `cursor-agent acp`: protocol 1, `loadSession: false`, resume absent.
+- Codex — `npx -y @agentclientprotocol/codex-acp@1.8.0`: protocol 1,
+  `loadSession: true`, resume object.
+- Claude — `npx -y @agentclientprotocol/claude-agent-acp@0.73.0`: protocol 1,
+  `loadSession: true`, resume object.
+
+Probe output is restricted to `protocolVersion`, `loadSession`, and `resume`
+shape summaries. It never prints raw capability values, identifiers, provider
+metadata, environment variables, stderr, credentials, or response payloads.
 
 Exact pinned packages were available in the local npm cache. Package metadata
 showed Codex adapter 1.8.0 using ACP SDK `^1.4.0` and bundled Codex `^0.152.0`;

@@ -447,16 +447,19 @@ the agent harness configuration and therefore outside the fingerprint.
 ## Dated local capability evidence
 
 The safe initialize-only probe was run on 2026-09-06. All configured adapters
-were available; none were skipped. It created no session and sent no prompt.
+were available; none were skipped. It sent no credentials and called no
+authenticate, session, prompt, or permission method. Provider processes still
+inherited their normal ambient configuration.
 
 | Adapter | Version observed | Protocol | `loadSession` | `resume` | Current visible-history result |
 | --- | --- | ---: | --- | --- | --- |
 | Cursor | CLI `2026.01.23-916f423` | 1 | false | absent | Fresh `session/new` |
-| Codex | adapter `1.8.0` | 1 | true | `{}` | `session/load` |
-| Claude | adapter `0.73.0` | 1 | true | `{}` | `session/load` |
+| Codex | adapter `1.8.0` | 1 | true | object | `session/load` |
+| Claude | adapter `0.73.0` | 1 | true | object | `session/load` |
 
 This is environment-dated evidence, not a production allowlist. Every process's
-current `initialize` result remains authoritative.
+current `initialize` result remains authoritative. The probe reports only these
+three bounded shapes; it does not print raw capabilities or provider metadata.
 
 ## Protocol references
 

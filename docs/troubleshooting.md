@@ -163,12 +163,13 @@ Run the safe probe from the repository root:
 .agents/skills/acp-integration/scripts/probe-local-clients.sh all
 ```
 
-It sends `initialize` only. It does not authenticate, create or restore a
-session, prompt a model, request permission, or access provider secrets. The
-2026-09-06 local run found protocol 1 on every configured adapter: Cursor
-`2026.01.23-916f423` returned `loadSession: false` with no resume capability,
-while Codex adapter `1.8.0` and Claude adapter `0.73.0` returned
-`loadSession: true` and `resume: {}`. Those are dated local results, not an
+It sends no credentials and calls only `initialize`; it does not call
+authenticate, `session/new`, `session/load`, `session/resume`, `session/prompt`,
+or a permission method. The provider process still inherits its normal ambient
+configuration. The 2026-09-06 local run found protocol 1 on every configured
+adapter: Cursor `2026.01.23-916f423` returned `loadSession: false` with no resume
+capability, while Codex adapter `1.8.0` and Claude adapter `0.73.0` returned
+`loadSession: true` and `resume: object`. Those are dated local results, not an
 allowlist; inspect the current run.
 
 For visible history, load is preferred and resume preserves context without
@@ -185,12 +186,14 @@ activity sounds, or Mac-context settings does not.
 
 ## A turn is marked interrupted after relaunch
 
-The marker means Voice Activation wrote the prompt boundary but did not observe
-a terminal result before its process ended. It does not mean the ordinary ACP
-work is still running. The app converts active markers to interrupted during
-launch, then reports ordinary interruption metadata once on the next
-successfully published prompt for that profile. A failed frame or durable
-acknowledgement keeps the marker for a later attempt.
+The marker means active state was persisted immediately before Voice Activation
+attempted to publish the prompt and was never successfully cleared. The frame
+may or may not have reached the provider, so the app conservatively calls the
+work interrupted and never replays it automatically. It does not mean the
+ordinary ACP work is still running. The app converts active markers to
+interrupted during launch, then reports ordinary interruption metadata once on
+the next successfully published prompt for that profile. A failed frame or
+durable acknowledgement keeps the marker for a later attempt.
 
 Restored history is bounded and silent. It cannot recreate permission choices,
 active historical controls, tool execution, narration, sounds, or
