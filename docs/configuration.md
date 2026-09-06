@@ -91,6 +91,10 @@ not a continuous observer and it does not re-read a later selection while a
 turn is queued. Turning it off prevents target lookup and native context capture;
 the provider receives the normal instruction and request blocks only.
 
+An initial request starts only after an explicit matched wake phrase or a
+profile's push-to-talk release. An active ACP conversation may accept its own
+follow-ups; Voice Activation does not continuously observe the foreground app.
+
 The Settings status check and lifecycle refresh only ask macOS whether
 Accessibility is already authorized; neither can show a privacy prompt.
 **Enable Accessibility…** is the sole Settings action that asks macOS to show
@@ -101,9 +105,10 @@ application name and bundle identifier with
 The snapshot can contain the application, focused window title, document URL,
 selected text, and selected resource links. It does not include screenshots,
 clipboard data, file contents, a full Accessibility tree, or background updates.
-Voice Activation neither persists nor logs snapshot values. The selected ACP
-provider receives the prompt blocks and may retain or replay them under its own
-session policy; Voice Activation does not restore an old snapshot after restart.
+Voice Activation neither persists nor logs snapshot values or content; it may
+record safe capture metadata. The selected ACP provider receives the prompt
+blocks and may retain or replay them under its own session policy; Voice
+Activation does not restore an old snapshot after restart.
 See [ACP agent harness](agent-harness.md) for the exact schema and bounds.
 
 ## Validation summary
@@ -128,8 +133,8 @@ prompts are stored in the app's `UserDefaults` domain. Provider authentication
 stays in each provider CLI. The optional ElevenLabs API key is stored only as a
 generic password in macOS Keychain.
 
-Voice Activation does not persist conversation prompts, Mac-context snapshots,
-agent output, raw tool payloads, or audio. See
+Voice Activation does not persist conversation prompts, Mac-context snapshot
+values or content, agent output, raw tool payloads, or audio. See
 [Privacy and security](privacy-and-security.md) for the complete data and
 retention boundary.
 

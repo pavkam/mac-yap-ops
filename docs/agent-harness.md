@@ -45,11 +45,10 @@ The prompt content order is deterministic:
 5. the untouched recognized request (`request`).
 
 Every outbound block carries advisory
-`_meta.ciobanu.org.voiceActivation.promptBlockRole` role metadata. It is used
-when the provider preserves it during session replay; restored user chunks are
-shown only when tagged `request`. If the provider drops the metadata, Voice
-Activation suppresses that restored user content rather than risk rendering an
-instruction or snapshot as the user's request.
+`_meta.ciobanu.org.voiceActivation.promptBlockRole` provenance metadata. ACP
+providers may preserve or discard it; it does not establish an ACP role. This
+release does not filter inbound restored user chunks by that metadata; durable
+continuity owns that future behavior.
 
 The context text starts exactly with:
 
@@ -80,8 +79,9 @@ Its following line is one sorted-key JSON object with this shape:
 `captureState` is `complete`, `accessibility_not_authorized`,
 `target_unavailable`, `timed_out`, or `accessibility_failed`. It is input for
 the ACP agent, not a locally interpreted failure. Unsupported Accessibility
-attributes are absent. A failed capture with useful fields retains those fields;
-otherwise the snapshot contains only the frozen application identity.
+attributes are absent. If normalization retains at least one useful
+Accessibility value, the capture state is `complete`; an unusable partial
+failure is app-only `accessibility_failed`.
 
 The bounds are intentional: application name and bundle identifier are 256
 UTF-8 bytes each; window title and resource name 512 and 256 bytes; document
@@ -103,8 +103,8 @@ Voice Activation supplies data only. It does not resolve pronouns, decide which
 context is relevant, inspect resource contents, plan actions, restore old
 context, or continuously observe the Mac. The ACP agent owns those semantics
 and any action through its own capabilities. Voice Activation does not persist
-or log snapshot values, although the selected provider may retain submitted
-blocks under its own session policy.
+or log snapshot values or content, although the selected provider may retain or
+replay submitted blocks under its own session policy.
 
 Examples of the resulting contract:
 

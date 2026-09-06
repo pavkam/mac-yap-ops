@@ -68,6 +68,16 @@ struct ContinuousMacContextClock: MacContextClock {
     }
 }
 
+protocol MacContextNow: Sendable {
+    func uptimeMilliseconds() -> UInt64
+}
+
+struct ContinuousMacContextNow: MacContextNow {
+    func uptimeMilliseconds() -> UInt64 {
+        DispatchTime.now().uptimeNanoseconds / 1_000_000
+    }
+}
+
 protocol MacContextExecuting: Sendable {
     func execute(_ operation: @escaping @Sendable () -> Void)
 }
@@ -136,17 +146,23 @@ final class SystemMacContextSnapshotter: MacContextCapturing {
     private nonisolated let accessibility: any AccessibilityContextReading
     private nonisolated let executor: any MacContextExecuting
     private nonisolated let clock: any MacContextClock
+    private nonisolated let diagnostics: any VoiceActivationDiagnosticRecording
+    private nonisolated let now: any MacContextNow
 
     init(
         workspace: any WorkspaceContextReading = SystemWorkspaceContextReader(),
         accessibility: any AccessibilityContextReading = SystemAccessibilityContextReader(),
         executor: any MacContextExecuting = SerialMacContextExecutor(),
-        clock: any MacContextClock = ContinuousMacContextClock()
+        clock: any MacContextClock = ContinuousMacContextClock(),
+        diagnostics: any VoiceActivationDiagnosticRecording = VoiceActivationDiagnostics.shared,
+        now: any MacContextNow = ContinuousMacContextNow()
     ) {
         self.workspace = workspace
         self.accessibility = accessibility
         self.executor = executor
         self.clock = clock
+        self.diagnostics = diagnostics
+        self.now = now
     }
 
     func currentTarget() -> MacContextTarget? {
@@ -155,13 +171,28 @@ final class SystemMacContextSnapshotter: MacContextCapturing {
 
     func capture(_ target: MacContextTarget) async -> MacContextSnapshot {
         let captureID = UUID()
+        let startedAt = now.uptimeMilliseconds()
+        diagnostics.record(category: .app, event: "mac_context.capture_started")
         let timeoutSnapshot = Self.snapshot(
             target: target,
             result: .init(status: .failed),
             overridingState: .timedOut)
+        let diagnostics = diagnostics
+        let now = now
         let settlement = MacContextCaptureSettlement(
             captureID: captureID,
-            cancellationSnapshot: timeoutSnapshot)
+            cancellationSnapshot: timeoutSnapshot,
+            onSettled: { snapshot, terminalState in
+                let finishedAt = now.uptimeMilliseconds()
+                diagnostics.record(
+                    category: .app,
+                    event: "mac_context.capture_finished",
+                    fields: Self.diagnosticFields(
+                        for: snapshot,
+                        terminalState: terminalState,
+                        startedAt: startedAt,
+                        finishedAt: finishedAt))
+            })
         let accessibility = accessibility
         let executor = executor
         let clock = clock
@@ -172,7 +203,10 @@ final class SystemMacContextSnapshotter: MacContextCapturing {
 
                 let deadlineTask = Task {
                     await clock.sleep(for: Self.captureDeadline)
-                    settlement.settle(captureID: captureID, snapshot: timeoutSnapshot)
+                    settlement.settle(
+                        captureID: captureID,
+                        snapshot: timeoutSnapshot,
+                        terminalState: .timedOut)
                 }
                 settlement.attachDeadlineTask(deadlineTask)
 
@@ -183,7 +217,10 @@ final class SystemMacContextSnapshotter: MacContextCapturing {
                     let result = accessibility.readContext(
                         processIdentifier: target.processIdentifier)
                     let snapshot = Self.snapshot(target: target, result: result)
-                    settlement.settle(captureID: captureID, snapshot: snapshot)
+                    settlement.settle(
+                        captureID: captureID,
+                        snapshot: snapshot,
+                        terminalState: snapshot.captureState == .complete ? .completed : .fallback)
                 }
             }
         } onCancel: {
@@ -251,6 +288,31 @@ final class SystemMacContextSnapshotter: MacContextCapturing {
             || snapshot.selectedText?.isEmpty == false
             || !snapshot.resources.isEmpty
     }
+
+    nonisolated private static func diagnosticFields(
+        for snapshot: MacContextSnapshot,
+        terminalState: MacContextCaptureTerminalState,
+        startedAt: UInt64,
+        finishedAt: UInt64
+    ) -> [String: String] {
+        [
+            "capture_state": snapshot.captureState.rawValue,
+            "terminal_state": terminalState.rawValue,
+            "duration_ms": String(finishedAt >= startedAt ? finishedAt - startedAt : 0),
+            "has_window_title": String(snapshot.windowTitle != nil),
+            "has_document_url": String(snapshot.documentURL != nil),
+            "has_selection": String(snapshot.selectedText != nil),
+            "selection_byte_count": String(snapshot.selectedText?.utf8.count ?? 0),
+            "resource_count": String(snapshot.resources.count),
+        ]
+    }
+}
+
+private enum MacContextCaptureTerminalState: String, Sendable {
+    case completed
+    case fallback
+    case timedOut = "timed_out"
+    case cancelled
 }
 
 // Safety: every mutable field is protected by `lock`; continuations and task cancellation are
@@ -258,14 +320,20 @@ final class SystemMacContextSnapshotter: MacContextCapturing {
 private final class MacContextCaptureSettlement: @unchecked Sendable {
     private let lock = NSLock()
     private let cancellationSnapshot: MacContextSnapshot
+    private let onSettled: @Sendable (MacContextSnapshot, MacContextCaptureTerminalState) -> Void
     private var activeCaptureID: UUID
     private var continuation: CheckedContinuation<MacContextSnapshot, Never>?
     private var pendingSnapshot: MacContextSnapshot?
     private var deadlineTask: Task<Void, Never>?
 
-    init(captureID: UUID, cancellationSnapshot: MacContextSnapshot) {
+    init(
+        captureID: UUID,
+        cancellationSnapshot: MacContextSnapshot,
+        onSettled: @escaping @Sendable (MacContextSnapshot, MacContextCaptureTerminalState) -> Void
+    ) {
         activeCaptureID = captureID
         self.cancellationSnapshot = cancellationSnapshot
+        self.onSettled = onSettled
     }
 
     func install(_ continuation: CheckedContinuation<MacContextSnapshot, Never>) {
@@ -299,16 +367,25 @@ private final class MacContextCaptureSettlement: @unchecked Sendable {
         lock.withLock { activeCaptureID == captureID }
     }
 
-    func settle(captureID: UUID, snapshot: MacContextSnapshot) {
+    func settle(
+        captureID: UUID,
+        snapshot: MacContextSnapshot,
+        terminalState: MacContextCaptureTerminalState
+    ) {
         let settled = lock.withLock {
             settlement(captureID: captureID, snapshot: snapshot)
         }
+        guard settled.didWin else { return }
         settled.deadlineTask?.cancel()
         settled.continuation?.resume(returning: snapshot)
+        onSettled(snapshot, terminalState)
     }
 
     func cancel(captureID: UUID) {
-        settle(captureID: captureID, snapshot: cancellationSnapshot)
+        settle(
+            captureID: captureID,
+            snapshot: cancellationSnapshot,
+            terminalState: .cancelled)
     }
 
     private func settlement(
@@ -316,10 +393,11 @@ private final class MacContextCaptureSettlement: @unchecked Sendable {
         snapshot: MacContextSnapshot
     ) -> (
         continuation: CheckedContinuation<MacContextSnapshot, Never>?,
-        deadlineTask: Task<Void, Never>?
+        deadlineTask: Task<Void, Never>?,
+        didWin: Bool
     ) {
         guard activeCaptureID == captureID else {
-            return (nil, nil)
+            return (nil, nil, false)
         }
         activeCaptureID = UUID()
         let continuation = continuation
@@ -329,7 +407,7 @@ private final class MacContextCaptureSettlement: @unchecked Sendable {
         }
         let deadlineTask = deadlineTask
         self.deadlineTask = nil
-        return (continuation, deadlineTask)
+        return (continuation, deadlineTask, true)
     }
 }
 

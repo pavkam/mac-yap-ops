@@ -16,7 +16,7 @@ services or processes needed for the action the user selected.
 | Passive wake listening | Microphone audio | Apple Speech, forced to on-device recognition |
 | Command, conversation, or push-to-talk capture | Microphone audio | Apple Speech; these modes allow the recognizer's normal macOS policy and are not guaranteed to remain on-device |
 | Direct command | Recognized command text | The configured executable, as one or more explicit arguments |
-| Agent request | Recognized request and saved profile instructions | The configured local ACP process |
+| Agent request | Recognized request and saved profile instructions; when enabled, one bounded Mac app/window/document/selection block and one resource-link block per selected resource | The configured local ACP process |
 | ElevenLabs reply speech | Formatted user-facing agent reply text | `api.elevenlabs.io` over HTTPS |
 
 The local ACP process may read files, modify the working folder, or contact its
@@ -61,17 +61,32 @@ working-folder path.
 
 Live transcripts, queued follow-ups, agent output, reasoning exposed by the
 provider, tool state, permission requests, narration text, synthesized audio,
-and reusable ACP processes are held only for the active application process.
-Voice Activation does not maintain a durable conversation-history database or
-write captured audio to disk.
+reusable ACP processes, and Mac-context snapshot values are held only for the
+active application process. Voice Activation does not maintain a durable
+conversation-history database or write captured audio to disk.
+
+Focused Mac context is on by default for admitted ACP requests and can be
+disabled in Settings; direct commands never receive it. The normal status check
+does not prompt for Accessibility. Only **Enable Accessibility…** can request
+that grant. Until then, a request can carry frozen app identity but not protected
+window, document, selection, or resource values. Voice Activation does not
+persist or log those snapshot values or content, though it records safe capture
+metadata. A provider may independently retain or replay submitted context blocks
+as part of its session or account history; use the provider's controls when that
+matters.
+
+An initial request begins only after an explicit matched wake phrase or a
+profile's push-to-talk release. An active ACP conversation may accept its own
+follow-ups; Voice Activation does not continuously observe the Mac.
 
 Closing a completed panel hides its retained presentation. Deleting it releases
 that presentation; starting another conversation replaces it. **Copy output**
 writes the bounded request, response, and diagnostics to the system clipboard,
 after which clipboard retention is owned by macOS and any clipboard manager.
 
-An ACP provider may independently retain sessions, files, or account history.
-Use that provider's controls when its retention matters.
+An ACP provider may independently retain sessions, files, submitted prompt
+blocks, or account history. Use that provider's controls when its retention
+matters.
 
 ## Retention bounds
 
@@ -100,7 +115,9 @@ The app records local operational metadata such as categories, event names,
 timestamps, identifiers, counts, durations, provider kinds, configured
 executable and working-folder paths, and error types. It must not record prompts,
 transcripts, credentials, authorization values, raw provider content, response
-text, or audio.
+text, audio, or Mac-context snapshot values or content (including app names,
+bundle identifiers, window titles, document URLs, selections, and resource
+names).
 
 Fields whose names suggest sensitive content are replaced with `<redacted>` at
 the file boundary. That is defense in depth, not a content filter: paths and

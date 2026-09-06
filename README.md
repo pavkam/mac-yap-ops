@@ -71,17 +71,20 @@ services. Provider authentication stays with its CLI. The optional ElevenLabs
 key stays in macOS Keychain.
 
 The app does not maintain a conversation-history database or audio archive.
-Diagnostics exclude prompts, transcripts, credentials, provider content, and
-audio. See [Privacy and security](docs/privacy-and-security.md) for the complete
-data, persistence, and retention boundaries.
+Diagnostics exclude prompts, transcripts, credentials, provider content, audio,
+and Mac-context snapshot values or content. See
+[Privacy and security](docs/privacy-and-security.md) for the complete data,
+persistence, and retention boundaries.
 
 When focused Mac context is enabled, Voice Activation can send the selected ACP
 provider a one-shot description of the focused app, window or document,
 selection, and selected resource references. Accessibility is checked without
 prompting during normal use; the system prompt appears only after choosing
 **Enable Accessibility…** in Settings. Voice Activation does not persist or log
-these snapshots. The provider may retain submitted prompt blocks under its own
-session policy. See [Configuration](docs/configuration.md),
+snapshot values or content; it records safe capture metadata only. The provider
+may retain or replay submitted prompt blocks under its own session policy. See
+[Privacy and security](docs/privacy-and-security.md) for the complete authority,
+then [Configuration](docs/configuration.md),
 [ACP agent harness](docs/agent-harness.md), and
 [Troubleshooting](docs/troubleshooting.md).
 

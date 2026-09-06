@@ -136,9 +136,10 @@ session. If a provider forgot an idle session before any observable work, Voice
 Activation retries once and shows a context-loss notice; it never replays a
 request after output, a permission prompt, or tool activity.
 
-Voice Activation does not persist or log focused Mac snapshots. A provider may
-retain submitted blocks in its own session, so use that provider's retention
-controls when they apply.
+Voice Activation does not persist or log focused Mac snapshot values or content;
+it may record safe capture metadata. A provider may retain or replay submitted
+blocks in its own session, so use that provider's retention controls when they
+apply.
 
 See [Agent conversations](agent-conversations.md) for panel controls, recovery,
 and retention.

@@ -230,6 +230,15 @@ struct SystemMacContextSnapshotterTests {
         #expect(current.selectedText == "current browser selection")
     }
 
+    @Test(.timeLimit(.minutes(1))) func deadlineClock_WhenFiredBeforeSleep_ResumesNextSleep()
+        async
+    {
+        let clock = SwitchableMacContextClock()
+
+        await clock.fireDeadline()
+        await clock.sleep(for: .milliseconds(500))
+    }
+
     @MainActor @Test func capture_WhenCancelledBeforeWorkerStarts_NeverReadsAccessibility()
         async
     {
@@ -462,6 +471,7 @@ private struct ImmediateMacContextClock: MacContextClock {
 
 private actor SwitchableMacContextClock: MacContextClock {
     private var deadlineContinuation: CheckedContinuation<Void, Never>?
+    private var hasFiredDeadline = false
     private var shouldWait = true
 
     func sleep(for duration: Duration) async {
@@ -469,13 +479,23 @@ private actor SwitchableMacContextClock: MacContextClock {
             try? await ContinuousClock().sleep(for: duration)
             return
         }
-        await withCheckedContinuation { deadlineContinuation = $0 }
+        await withCheckedContinuation { continuation in
+            if hasFiredDeadline {
+                hasFiredDeadline = false
+                continuation.resume()
+            } else {
+                deadlineContinuation = continuation
+            }
+        }
     }
 
     func fireDeadline() {
-        let continuation = deadlineContinuation
-        deadlineContinuation = nil
-        continuation?.resume()
+        if let continuation = deadlineContinuation {
+            deadlineContinuation = nil
+            continuation.resume()
+        } else {
+            hasFiredDeadline = true
+        }
     }
 
     func disableDeadline() {
