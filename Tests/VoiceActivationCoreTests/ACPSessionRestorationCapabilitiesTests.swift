@@ -117,7 +117,8 @@ import Testing
     func decode_WhenLoadSessionIsNotBoolean_ThrowsMalformedResponse(
         value: ACPJSONValue
     ) {
-        #expect(throws: ACPClientError.self) {
+        #expect(throws: ACPClientError.malformedResponse(
+            "Invalid agentCapabilities.loadSession.")) {
             try ACPSessionRestorationCapabilities.decode(from: .object(["loadSession": value]))
         }
     }
@@ -130,7 +131,8 @@ import Testing
     func decode_WhenSessionCapabilitiesIsNotAnObject_ThrowsMalformedResponse(
         value: ACPJSONValue
     ) {
-        #expect(throws: ACPClientError.self) {
+        #expect(throws: ACPClientError.malformedResponse(
+            "Invalid agentCapabilities.sessionCapabilities.")) {
             try ACPSessionRestorationCapabilities.decode(from: .object([
                 "sessionCapabilities": value,
             ]))
@@ -163,7 +165,8 @@ import Testing
         .array([]),
     ])
     func decode_WhenResumeIsNotAnObject_ThrowsMalformedResponse(value: ACPJSONValue) {
-        #expect(throws: ACPClientError.self) {
+        #expect(throws: ACPClientError.malformedResponse(
+            "Invalid agentCapabilities.sessionCapabilities.resume.")) {
             try ACPSessionRestorationCapabilities.decode(from: .object([
                 "sessionCapabilities": .object(["resume": value]),
             ]))

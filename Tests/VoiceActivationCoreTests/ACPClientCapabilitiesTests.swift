@@ -136,37 +136,49 @@ struct CapabilityConflictCase: Sendable {
         }
     }
 
-    @Test func compose_WhenManyConflictsUseUntrustedKeys_ReturnsOneFixedPrivateError() {
-        let untrustedKey = "authorization\\nplaceholder-token"
+    @Test func compose_WhenOneUntrustedKeyCollides_ReturnsOneFixedPrivateError() {
+        let untrustedKey = "authorization\nplaceholder-token"
         let fragments: [ACPJSONValue] = [
             .object([
-                "alpha": .bool(true),
                 untrustedKey: .string("placeholder-secret"),
             ]),
             .object([
-                "alpha": .object(["nested": .object([:])]),
-                untrustedKey: .string("different-placeholder-secret"),
+                untrustedKey: .object(["nested": .object([:])]),
             ]),
         ]
-        var descriptions: [String] = []
+        var publicDescriptions: [String] = []
 
         for _ in 0..<8 {
             do {
                 _ = try ACPClientCapabilities.compose(fragments)
                 Issue.record("Expected conflicting capability contributions")
             } catch let error as ACPClientCapabilitiesError {
-                descriptions.append(error.errorDescription ?? "")
+                let rendered = [
+                    error.errorDescription ?? "",
+                    error.localizedDescription,
+                    String(describing: error),
+                    String(reflecting: error),
+                ]
+                publicDescriptions.append(rendered.joined(separator: "\u{1F}"))
                 #expect(String(describing: error) == "conflictingValues")
+                for output in rendered {
+                    #expect(!output.contains("authorization"))
+                    #expect(!output.contains("placeholder-token"))
+                    #expect(!output.contains("placeholder-secret"))
+                }
             } catch {
                 Issue.record("Expected ACPClientCapabilitiesError")
             }
         }
 
-        #expect(descriptions == Array(
-            repeating: "ACP client capability contributions conflict.",
+        #expect(publicDescriptions == Array(
+            repeating: [
+                "ACP client capability contributions conflict.",
+                "ACP client capability contributions conflict.",
+                "conflictingValues",
+                "VoiceActivationCore.ACPClientCapabilitiesError.conflictingValues",
+            ].joined(separator: "\u{1F}"),
             count: 8))
-        #expect(!descriptions.joined().contains("authorization"))
-        #expect(!descriptions.joined().contains("placeholder"))
     }
 
     @Test func compose_WhenAContributionIsNotAnObject_ThrowsConflict() {
