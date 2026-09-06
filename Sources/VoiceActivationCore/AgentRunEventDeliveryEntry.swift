@@ -190,6 +190,12 @@ struct AgentRunEventDeliveryEntry {
                 count = saturatingAdd(count, option.id.utf8.count)
                 count = saturatingAdd(count, option.label.utf8.count)
             }
+            if let presentationText = request.presentationText {
+                count = saturatingAdd(count, presentationText.title.utf8.count)
+                count = saturatingAdd(
+                    count,
+                    presentationText.description?.utf8.count ?? 0)
+            }
             return count
         case let .unknown(discriminator, summary):
             return discriminator.utf8.count + summary.utf8.count

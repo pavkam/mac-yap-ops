@@ -132,6 +132,7 @@ struct DecodedPermissionRequest {
     let sessionID: String
     let toolCall: AgentToolCallUpdate
     let options: [AgentPermissionOption]
+    let presentationText: AgentPermissionPresentationText?
 }
 
 func resume(
@@ -288,6 +289,12 @@ func permissionRetainedByteCount(_ request: AgentPermissionRequest) -> Int {
     for option in request.options {
         count = saturatingByteCount(count, option.id.utf8.count)
         count = saturatingByteCount(count, option.label.utf8.count)
+    }
+    if let presentationText = request.presentationText {
+        count = saturatingByteCount(count, presentationText.title.utf8.count)
+        count = saturatingByteCount(
+            count,
+            presentationText.description?.utf8.count ?? 0)
     }
     return count
 }

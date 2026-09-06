@@ -373,7 +373,8 @@ extension ACPClientConnection {
             turnToken: turnToken,
             requestID: id,
             toolCall: decoded.toolCall,
-            options: decoded.options)
+            options: decoded.options,
+            presentationText: decoded.presentationText)
         diagnostics.record(
             category: .acp,
             event: "acp_client.permission_received",
@@ -496,15 +497,23 @@ extension ACPClientConnection {
                 label: try requiredString(option["name"], named: "permission name"),
                 kind: try requiredRawValue(option["kind"], named: "permission kind"))
         }
+        let presentationText = decodePermissionPresentationText(parameters["_meta"])
 
-        let retainedBytes =
-            toolCall.id.utf8.count
-            + (toolCall.title?.utf8.count ?? 0)
-            + options.reduce(0) { partial, option in
-                saturatingByteCount(
-                    saturatingByteCount(partial, option.id.utf8.count),
-                    option.label.utf8.count)
-            }
+        var retainedBytes = saturatingByteCount(
+            toolCall.id.utf8.count,
+            toolCall.title?.utf8.count ?? 0)
+        for option in options {
+            retainedBytes = saturatingByteCount(retainedBytes, option.id.utf8.count)
+            retainedBytes = saturatingByteCount(retainedBytes, option.label.utf8.count)
+        }
+        if let presentationText {
+            retainedBytes = saturatingByteCount(
+                retainedBytes,
+                presentationText.title.utf8.count)
+            retainedBytes = saturatingByteCount(
+                retainedBytes,
+                presentationText.description?.utf8.count ?? 0)
+        }
         guard retainedBytes <= AgentRunEventDelivery.maximumPendingControlBytes else {
             throw PermissionRequestError.oversized
         }
@@ -512,7 +521,39 @@ extension ACPClientConnection {
         return DecodedPermissionRequest(
             sessionID: permissionSessionID,
             toolCall: toolCall,
-            options: options)
+            options: options,
+            presentationText: presentationText)
+    }
+
+    func decodePermissionPresentationText(
+        _ metadataValue: ACPJSONValue?
+    ) -> AgentPermissionPresentationText? {
+        guard case let .object(metadata) = metadataValue,
+              case let .object(permission) = metadata["permission"],
+              permission["version"] == .integer(1),
+              case let .string(title) = permission["title"],
+              !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !title.contains("\0"),
+              title.utf8.count
+                <= AgentPermissionPresentationText.maximumPermissionPromptTitleBytes
+        else {
+            return nil
+        }
+
+        let description: String?
+        if let descriptionValue = permission["description"] {
+            guard case let .string(value) = descriptionValue,
+                  !value.contains("\0"),
+                  value.utf8.count
+                    <= AgentPermissionPresentationText.maximumPermissionPromptDescriptionBytes
+            else {
+                return nil
+            }
+            description = value
+        } else {
+            description = nil
+        }
+        return AgentPermissionPresentationText(title: title, description: description)
     }
 
     func cancelPendingPermissions() async {

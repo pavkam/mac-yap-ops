@@ -164,7 +164,8 @@ enum AgentRunEventNormalizer {
                     kind: request.toolCall.kind,
                     status: request.toolCall.status,
                     content: normalizedContent.text),
-                options: request.options)
+                options: request.options,
+                presentationText: request.presentationText)
             guard AgentRunEventDeliveryEntry.controlByteCount(for: .permissionRequested(normalized))
                     <= AgentRunEventDelivery.maximumPendingControlBytes
             else {
@@ -337,6 +338,19 @@ enum AgentRunEventNormalizer {
         }
         for option in request.options {
             try validate(identifier: option.id)
+        }
+        if let presentationText = request.presentationText {
+            guard !presentationText.title
+                    .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  !presentationText.title.contains("\0"),
+                  presentationText.title.utf8.count
+                    <= AgentPermissionPresentationText.maximumPermissionPromptTitleBytes,
+                  presentationText.description?.contains("\0") != true,
+                  presentationText.description?.utf8.count ?? 0
+                    <= AgentPermissionPresentationText.maximumPermissionPromptDescriptionBytes
+            else {
+                throw AgentRunEventNormalizationError.oversizedPermission
+            }
         }
     }
 
