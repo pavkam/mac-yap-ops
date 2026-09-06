@@ -6,8 +6,9 @@ import Foundation
 extension ACPClientConnection {
     func start(
         restoration: AgentSessionRestorationRequest?,
-        onRestoredEvent: @escaping @Sendable (AgentRunEvent) async -> Void,
-        clientCapabilityFragments: [ACPJSONValue]
+        onRestoredEvent: @escaping @Sendable (AgentRestorationToken, AgentRunEvent) async -> Void,
+        clientCapabilityFragments: [ACPJSONValue],
+        afterRestorationResponseValidation: @escaping @Sendable () async -> Void
     ) async throws -> AgentSessionActivation {
         let startedAtUptime = DispatchTime.now().uptimeNanoseconds
         diagnostics.record(
@@ -51,14 +52,18 @@ extension ACPClientConnection {
                     activation = try await loadSession(
                         restoration,
                         deliversReplay: true,
-                        onRestoredEvent: onRestoredEvent)
+                        onRestoredEvent: onRestoredEvent,
+                        afterResponseValidation: afterRestorationResponseValidation)
                 case .loadDiscardingReplay:
                     activation = try await loadSession(
                         restoration,
                         deliversReplay: false,
-                        onRestoredEvent: onRestoredEvent)
+                        onRestoredEvent: onRestoredEvent,
+                        afterResponseValidation: afterRestorationResponseValidation)
                 case .resume:
-                    activation = try await resumeSession(restoration)
+                    activation = try await resumeSession(
+                        restoration,
+                        afterResponseValidation: afterRestorationResponseValidation)
                 case .new:
                     activation = try await newSession(
                         restorationWasUnsupported: true)
@@ -168,17 +173,17 @@ extension ACPClientConnection {
     func loadSession(
         _ restoration: AgentSessionRestorationRequest,
         deliversReplay: Bool,
-        onRestoredEvent: @escaping @Sendable (AgentRunEvent) async -> Void
+        onRestoredEvent: @escaping @Sendable (AgentRestorationToken, AgentRunEvent) async -> Void,
+        afterResponseValidation: @escaping @Sendable () async -> Void
     ) async throws -> AgentSessionActivation {
-        let sink = ACPRestoredEventSink(handler: onRestoredEvent)
-        let delivery = AgentRunEventDelivery { event in
-            await sink.consume(event)
+        let token = AgentRestorationToken()
+        let delivery = AgentRunEventDelivery(mode: .staged) { event in
+            await onRestoredEvent(token, event)
         }
         let state = ACPClientRestorationState(
-            token: AgentRestorationToken(),
+            token: token,
             sessionID: restoration.sessionID,
             mode: .load(deliversReplay: deliversReplay),
-            sink: sink,
             delivery: delivery)
         sessionID = restoration.sessionID
         activeRestoration = state
@@ -189,22 +194,24 @@ extension ACPClientConnection {
                 params: restorationParameters(sessionID: restoration.sessionID),
                 state: state)
             _ = try requiredObject(result, named: "session/load result")
+            await afterResponseValidation()
+            try ensureOpen()
             try Task.checkCancellation()
             guard activeRestoration === state, state.responseWasReceived else {
                 throw terminalError ?? ACPClientError.connectionClosed
             }
 
             if deliversReplay {
-                await sink.commit()
+                delivery.startConsuming()
                 await delivery.finish(.drain)
             } else {
-                await sink.discard()
                 await delivery.finish(.discard)
             }
             try Task.checkCancellation()
             guard activeRestoration === state else {
                 throw terminalError ?? ACPClientError.connectionClosed
             }
+            try ensureOpen()
             activeRestoration = nil
             return .loaded(sessionID: restoration.sessionID)
         } catch {
@@ -215,7 +222,8 @@ extension ACPClientConnection {
     }
 
     func resumeSession(
-        _ restoration: AgentSessionRestorationRequest
+        _ restoration: AgentSessionRestorationRequest,
+        afterResponseValidation: @escaping @Sendable () async -> Void
     ) async throws -> AgentSessionActivation {
         let state = ACPClientRestorationState(
             token: AgentRestorationToken(),
@@ -230,10 +238,13 @@ extension ACPClientConnection {
                 params: restorationParameters(sessionID: restoration.sessionID),
                 state: state)
             _ = try requiredObject(result, named: "session/resume result")
+            await afterResponseValidation()
+            try ensureOpen()
             try Task.checkCancellation()
             guard activeRestoration === state, state.responseWasReceived else {
                 throw terminalError ?? ACPClientError.connectionClosed
             }
+            try ensureOpen()
             activeRestoration = nil
             return .resumed(sessionID: restoration.sessionID)
         } catch {
@@ -319,7 +330,6 @@ extension ACPClientConnection {
         guard let state else {
             return
         }
-        await state.sink?.discard()
         await state.delivery?.finish(.discard)
     }
 

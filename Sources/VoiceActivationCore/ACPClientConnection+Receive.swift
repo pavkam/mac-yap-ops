@@ -53,6 +53,9 @@ extension ACPClientConnection {
                 ])
         }
 
+        let restoration = detachRestoration()
+        await discardRestoration(restoration)
+
         guard terminalError == nil else {
             return
         }
@@ -88,12 +91,16 @@ extension ACPClientConnection {
                 isPromptResponse: isRestorationResponse || id == activePromptRequestID,
                 promptHadActivity: isRestorationResponse ? false : promptHadActivity)
             let clientError: ACPClientError
-            if isRestorationResponse,
-               case let .sessionUnavailable(code, _) = classifiedError
-            {
-                clientError = .sessionUnavailable(
-                    code: code,
-                    message: "Saved agent session is unavailable.")
+            if isRestorationResponse {
+                if case let .sessionUnavailable(code, _) = classifiedError {
+                    clientError = .sessionUnavailable(
+                        code: code,
+                        message: "Saved agent session is unavailable.")
+                } else {
+                    clientError = .remoteError(
+                        code: error.code,
+                        message: "Agent session restoration failed.")
+                }
             } else {
                 clientError = classifiedError
             }

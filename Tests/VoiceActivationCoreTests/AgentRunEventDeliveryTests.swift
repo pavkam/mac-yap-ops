@@ -114,6 +114,82 @@ private final class DeliveryRetentionBox: @unchecked Sendable {
 
 @Suite(.serialized)
 struct AgentRunEventDeliveryTests {
+    @Test func send_WhenConsumerStartsPaused_AdmitsExactlyTheEntryLimit() async {
+        let recorder = DeliveryEventRecorder()
+        let delivery = AgentRunEventDelivery(
+            mode: .staged,
+            handler: { event in await recorder.record(event) })
+
+        for index in 0..<AgentRunEventDelivery.maximumPendingEntries {
+            #expect(delivery.send(.metadata(kind: "control", summary: "\(index)")) == .accepted)
+        }
+        let beforeOverflow = delivery.snapshotForTesting
+        #expect(beforeOverflow.pendingEntryCount == 256)
+        #expect(await recorder.recordedEvents().isEmpty)
+
+        #expect(delivery.send(.metadata(kind: "control", summary: "overflow")) == .capacityExceeded)
+        let afterOverflow = delivery.snapshotForTesting
+        #expect(afterOverflow.state == .draining)
+        #expect(afterOverflow.pendingOutputBytes == beforeOverflow.pendingOutputBytes)
+        #expect(afterOverflow.pendingDiagnosticBytes == beforeOverflow.pendingDiagnosticBytes)
+        #expect(afterOverflow.pendingControlBytes == beforeOverflow.pendingControlBytes)
+        #expect(afterOverflow.pendingEntryCount == beforeOverflow.pendingEntryCount)
+        #expect(afterOverflow.discardedOutputBytes == beforeOverflow.discardedOutputBytes)
+        #expect(afterOverflow.discardedOutputEntries == beforeOverflow.discardedOutputEntries)
+        #expect(afterOverflow.discardedDiagnosticBytes == beforeOverflow.discardedDiagnosticBytes)
+        await delivery.finish(.discard)
+    }
+
+    @Test func send_WhenConsumerStartsPaused_AdmitsExactlyTheControlByteLimit() async {
+        let delivery = AgentRunEventDelivery(mode: .staged) { _ in }
+        let chunk = String(repeating: "c", count: 64 * 1_024)
+
+        for _ in 0..<8 {
+            #expect(delivery.send(.metadata(kind: "", summary: chunk)) == .accepted)
+        }
+        let beforeOverflow = delivery.snapshotForTesting
+        #expect(beforeOverflow.pendingControlBytes == 512 * 1_024)
+        #expect(beforeOverflow.pendingEntryCount == 8)
+
+        #expect(delivery.send(.metadata(kind: "", summary: "x")) == .capacityExceeded)
+        let afterOverflow = delivery.snapshotForTesting
+        #expect(afterOverflow.pendingControlBytes == beforeOverflow.pendingControlBytes)
+        #expect(afterOverflow.pendingEntryCount == beforeOverflow.pendingEntryCount)
+        await delivery.finish(.discard)
+    }
+
+    @Test func send_WhenConsumerStartsPaused_HoldsExactOutputBoundUntilActivated() async {
+        let recorder = DeliveryEventRecorder()
+        let delivery = AgentRunEventDelivery(
+            mode: .staged,
+            handler: { event in await recorder.record(event) })
+        let output = String(repeating: "x", count: 512 * 1_024)
+
+        #expect(delivery.send(.agentMessageDelta(messageID: "message", text: output)) == .accepted)
+        #expect(delivery.snapshotForTesting.pendingOutputBytes == 512 * 1_024)
+        #expect(delivery.snapshotForTesting.pendingEntryCount == 1)
+        #expect(await recorder.recordedEvents().isEmpty)
+
+        let beforeOverflow = delivery.snapshotForTesting
+        #expect(delivery.send(.agentMessageDelta(messageID: "message", text: "x")) == .capacityExceeded)
+        let afterOverflow = delivery.snapshotForTesting
+        #expect(afterOverflow.state == .draining)
+        #expect(afterOverflow.pendingOutputBytes == beforeOverflow.pendingOutputBytes)
+        #expect(afterOverflow.pendingDiagnosticBytes == beforeOverflow.pendingDiagnosticBytes)
+        #expect(afterOverflow.pendingControlBytes == beforeOverflow.pendingControlBytes)
+        #expect(afterOverflow.pendingEntryCount == beforeOverflow.pendingEntryCount)
+        #expect(afterOverflow.discardedOutputBytes == beforeOverflow.discardedOutputBytes)
+        #expect(afterOverflow.discardedOutputEntries == beforeOverflow.discardedOutputEntries)
+        #expect(afterOverflow.discardedDiagnosticBytes == beforeOverflow.discardedDiagnosticBytes)
+        #expect(await recorder.recordedEvents().isEmpty)
+
+        delivery.startConsuming()
+        await delivery.finish(.drain)
+        #expect(await recorder.recordedEvents() == [
+            .agentMessageDelta(messageID: "message", text: output),
+        ])
+    }
+
     @Test func send_WhenCreatedFromBackgroundCallback_DeliversAtUserInitiatedPriority() async {
         let recorder = DeliveryPriorityRecorder()
         let retention = DeliveryRetentionBox()

@@ -8,14 +8,16 @@ extension ACPClientConnectionTests {
     func restorationConnection(
         transport: FakeACPTransport,
         need: AgentSessionRestorationNeed,
-        recorder: AgentEventRecorder = AgentEventRecorder()
+        recorder: AgentEventRecorder = AgentEventRecorder(),
+        diagnostics: any VoiceActivationDiagnosticRecording = VoiceActivationDiagnostics.shared
     ) -> Task<ACPConnectionResult, any Error> {
         Task {
             try await ACPClientConnection.connect(
                 transport: transport,
                 configuration: try makeConfiguration(),
                 restoration: try .init(sessionID: "saved", need: need),
-                onRestoredEvent: { event in await recorder.record(event) })
+                onRestoredEvent: { _, event in await recorder.record(event) },
+                diagnostics: diagnostics)
         }
     }
 

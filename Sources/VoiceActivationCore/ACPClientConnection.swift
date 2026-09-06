@@ -119,7 +119,6 @@ final class ACPClientRestorationState {
     let token: AgentRestorationToken
     let sessionID: String
     let mode: ACPClientRestorationMode
-    let sink: ACPRestoredEventSink?
     let delivery: AgentRunEventDelivery?
     var requestID: ACPRequestID?
     var responseWasReceived = false
@@ -128,75 +127,12 @@ final class ACPClientRestorationState {
         token: AgentRestorationToken,
         sessionID: String,
         mode: ACPClientRestorationMode,
-        sink: ACPRestoredEventSink? = nil,
         delivery: AgentRunEventDelivery? = nil
     ) {
         self.token = token
         self.sessionID = sessionID
         self.mode = mode
-        self.sink = sink
         self.delivery = delivery
-    }
-}
-
-actor ACPRestoredEventSink {
-    private enum State: Equatable {
-        case staged
-        case committed
-        case discarded
-    }
-
-    private let handler: @Sendable (AgentRunEvent) async -> Void
-    private var state = State.staged
-    private var waiters: [CheckedContinuation<Bool, Never>] = []
-
-    init(handler: @escaping @Sendable (AgentRunEvent) async -> Void) {
-        self.handler = handler
-    }
-
-    func consume(_ event: AgentRunEvent) async {
-        let shouldForward = await forwardingDecision()
-        guard shouldForward, !Task.isCancelled else {
-            return
-        }
-        await handler(event)
-    }
-
-    func commit() {
-        guard state == .staged else {
-            return
-        }
-        state = .committed
-        resumeWaiters(with: true)
-    }
-
-    func discard() {
-        guard state != .discarded else {
-            return
-        }
-        state = .discarded
-        resumeWaiters(with: false)
-    }
-
-    private func forwardingDecision() async -> Bool {
-        switch state {
-        case .committed:
-            return true
-        case .discarded:
-            return false
-        case .staged:
-            return await withCheckedContinuation { continuation in
-                waiters.append(continuation)
-            }
-        }
-    }
-
-    private func resumeWaiters(with decision: Bool) {
-        let pending = waiters
-        waiters.removeAll()
-        for waiter in pending {
-            waiter.resume(returning: decision)
-        }
     }
 }
 
@@ -279,7 +215,8 @@ public actor ACPClientConnection {
     ///   - transport: The already-started framed transport.
     ///   - configuration: The agent identity, permissions, and working context.
     ///   - restoration: A validated saved session request, or `nil` for a new session.
-    ///   - onRestoredEvent: Receives bounded ordered history only after load succeeds.
+    ///   - onRestoredEvent: Receives the restoration identity and bounded ordered history.
+    ///     Validate the token after every suspension before mutating consumer state.
     ///   - diagnostics: The privacy-safe lifecycle recorder.
     /// - Returns: The connection, exact activation path, and negotiated capabilities.
     /// - Throws: ``ACPClientError`` or a transport error when initialization fails.
@@ -287,7 +224,9 @@ public actor ACPClientConnection {
         transport: any ACPTransport,
         configuration: AgentHarnessConfiguration,
         restoration: AgentSessionRestorationRequest? = nil,
-        onRestoredEvent: @escaping @Sendable (AgentRunEvent) async -> Void = { _ in },
+        onRestoredEvent: @escaping @Sendable (AgentRestorationToken, AgentRunEvent) async -> Void = {
+            _, _ in
+        },
         diagnostics: any VoiceActivationDiagnosticRecording = VoiceActivationDiagnostics.shared
     )
         async throws -> ACPConnectionResult
@@ -305,8 +244,9 @@ public actor ACPClientConnection {
         transport: any ACPTransport,
         configuration: AgentHarnessConfiguration,
         restoration: AgentSessionRestorationRequest?,
-        onRestoredEvent: @escaping @Sendable (AgentRunEvent) async -> Void,
+        onRestoredEvent: @escaping @Sendable (AgentRestorationToken, AgentRunEvent) async -> Void,
         clientCapabilityFragments: [ACPJSONValue],
+        afterRestorationResponseValidation: @escaping @Sendable () async -> Void = {},
         diagnostics: any VoiceActivationDiagnosticRecording
     ) async throws -> ACPConnectionResult {
         let connection = ACPClientConnection(
@@ -319,7 +259,8 @@ public actor ACPClientConnection {
                 return try await connection.start(
                     restoration: restoration,
                     onRestoredEvent: onRestoredEvent,
-                    clientCapabilityFragments: clientCapabilityFragments)
+                    clientCapabilityFragments: clientCapabilityFragments,
+                    afterRestorationResponseValidation: afterRestorationResponseValidation)
             } onCancel: {
                 Task {
                     await connection.cancelStartup()

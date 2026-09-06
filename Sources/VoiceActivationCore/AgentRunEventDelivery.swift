@@ -22,6 +22,11 @@ enum AgentRunEventDeliveryLifecycleState: Equatable, Sendable {
     case discarded
 }
 
+enum AgentRunEventDeliveryMode: Equatable, Sendable {
+    case live
+    case staged
+}
+
 struct AgentRunEventDeliverySnapshot: Equatable, Sendable {
     let state: AgentRunEventDeliveryLifecycleState
     let pendingOutputBytes: Int
@@ -44,18 +49,26 @@ final class AgentRunEventDelivery: @unchecked Sendable {
 
     private let state: AgentRunEventDeliveryQueue
     private let completion: AgentRunEventDeliveryCompletion
+    private let startGate: AgentRunEventDeliveryStartGate?
     private var consumerTask: Task<Void, Never>!
 
     var snapshotForTesting: AgentRunEventDeliverySnapshot {
         state.snapshot
     }
 
-    init(handler: @escaping @Sendable (AgentRunEvent) async -> Void) {
-        let state = AgentRunEventDeliveryQueue()
+    init(
+        mode: AgentRunEventDeliveryMode = .live,
+        handler: @escaping @Sendable (AgentRunEvent) async -> Void
+    ) {
+        let startsPaused = mode == .staged
+        let state = AgentRunEventDeliveryQueue(isLossless: startsPaused)
         let completion = AgentRunEventDeliveryCompletion()
+        let startGate = startsPaused ? AgentRunEventDeliveryStartGate() : nil
         self.state = state
         self.completion = completion
+        self.startGate = startGate
         consumerTask = Task.detached(priority: .userInitiated) {
+            await startGate?.wait()
             while let event = await state.next() {
                 await handler(event)
             }
@@ -65,6 +78,7 @@ final class AgentRunEventDelivery: @unchecked Sendable {
 
     deinit {
         state.discard()
+        startGate?.open()
         consumerTask.cancel()
         completion.resolve()
     }
@@ -78,13 +92,19 @@ final class AgentRunEventDelivery: @unchecked Sendable {
         state.startDraining()
     }
 
+    func startConsuming() {
+        startGate?.open()
+    }
+
     func finish(_ mode: AgentRunEventDeliveryFinishMode) async {
         switch mode {
         case .drain:
             state.startDraining()
+            startGate?.open()
             await completion.wait()
         case .discard:
             state.discard()
+            startGate?.open()
             consumerTask.cancel()
             completion.resolve()
         }
@@ -92,6 +112,43 @@ final class AgentRunEventDelivery: @unchecked Sendable {
 
     func waitForConsumerTerminationForTesting() async {
         _ = await consumerTask.result
+    }
+}
+
+private final class AgentRunEventDeliveryStartGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var isOpen = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func open() {
+        var continuations: [CheckedContinuation<Void, Never>] = []
+        lock.withLock {
+            guard !isOpen else {
+                return
+            }
+            isOpen = true
+            continuations = waiters
+            waiters.removeAll()
+        }
+        for continuation in continuations {
+            continuation.resume()
+        }
+    }
+
+    func wait() async {
+        await withCheckedContinuation { continuation in
+            var shouldResume = false
+            lock.withLock {
+                if isOpen {
+                    shouldResume = true
+                } else {
+                    waiters.append(continuation)
+                }
+            }
+            if shouldResume {
+                continuation.resume()
+            }
+        }
     }
 }
 

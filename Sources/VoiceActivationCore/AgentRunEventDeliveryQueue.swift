@@ -5,10 +5,11 @@ import Foundation
 
 /// A lock-protected, single-consumer queue with independent text and control bounds.
 ///
-/// Output and diagnostics may be coalesced or summarized under pressure. Required
-/// control events instead report overflow so callers can terminate an unsafe turn.
+/// Live output and diagnostics may be coalesced or summarized under pressure.
+/// Lossless staged delivery reports overflow without mutating the admitted prefix.
 final class AgentRunEventDeliveryQueue: @unchecked Sendable {
     private let lock = NSLock()
+    private let isLossless: Bool
     private var lifecycle = AgentRunEventDeliveryLifecycleState.open
     private var entries = AgentRunEventDeque()
     private var waiter: CheckedContinuation<AgentRunEvent?, Never>?
@@ -18,6 +19,10 @@ final class AgentRunEventDeliveryQueue: @unchecked Sendable {
     private var discardedOutputBytes: UInt64 = 0
     private var discardedOutputEntries: UInt64 = 0
     private var discardedDiagnosticBytes: UInt64 = 0
+
+    init(isLossless: Bool = false) {
+        self.isLossless = isLossless
+    }
 
     var snapshot: AgentRunEventDeliverySnapshot {
         lock.withLock {
@@ -54,10 +59,32 @@ final class AgentRunEventDeliveryQueue: @unchecked Sendable {
             guard !normalized.entries.isEmpty else {
                 return .ignored
             }
+            if isLossless,
+               normalized.entries.contains(where: { $0.noticeKind != nil })
+            {
+                lifecycle = .draining
+                prepareFinishedWaiter(
+                    continuation: &continuation,
+                    immediateEvent: &immediateEvent)
+                return .capacityExceeded
+            }
 
             if normalized.entries.count == 1,
                entries.lastCanCoalesce(with: normalized.entries[0])
             {
+                let appended = normalized.entries[0]
+                if isLossless,
+                   (saturatingAdd(pendingOutputBytes, appended.outputBytes)
+                        > AgentRunEventDelivery.maximumPendingOutputBytes
+                    || saturatingAdd(pendingDiagnosticBytes, appended.diagnosticBytes)
+                        > AgentRunEventDelivery.maximumPendingDiagnosticBytes)
+                {
+                    lifecycle = .draining
+                    prepareFinishedWaiter(
+                        continuation: &continuation,
+                        immediateEvent: &immediateEvent)
+                    return .capacityExceeded
+                }
                 let change = entries.coalesceLast(with: normalized.entries[0])
                 pendingOutputBytes += change.outputByteDelta
                 pendingDiagnosticBytes += change.diagnosticByteDelta
@@ -88,7 +115,8 @@ final class AgentRunEventDeliveryQueue: @unchecked Sendable {
             for entry in normalized.entries {
                 append(entry)
             }
-            guard enforceBounds() else {
+            let isWithinCapacity = isLossless ? isWithinBounds() : enforceBounds()
+            guard isWithinCapacity else {
                 entries = savedEntries
                 pendingOutputBytes = savedOutputBytes
                 pendingDiagnosticBytes = savedDiagnosticBytes
@@ -213,6 +241,13 @@ final class AgentRunEventDeliveryQueue: @unchecked Sendable {
             discardWholeEntry(at: index, noticeKind: kind)
         }
         return true
+    }
+
+    private func isWithinBounds() -> Bool {
+        pendingOutputBytes <= AgentRunEventDelivery.maximumPendingOutputBytes
+            && pendingDiagnosticBytes <= AgentRunEventDelivery.maximumPendingDiagnosticBytes
+            && pendingControlBytes <= AgentRunEventDelivery.maximumPendingControlBytes
+            && entries.count <= AgentRunEventDelivery.maximumPendingEntries
     }
 
     private func trimPayload(

@@ -198,12 +198,13 @@ extension ACPClientConnectionTests {
         try await transport.feed(restorationInitializeResponse(load: true, resume: false))
         _ = await transport.nextSentMessage()
 
-        for index in 0...(AgentRunEventDelivery.maximumPendingEntries + 1) {
+        for index in 0...AgentRunEventDelivery.maximumPendingEntries {
             try await transport.feed(sessionUpdate(.object([
                 "sessionUpdate": .string("current_mode_update"),
                 "currentModeId": .string("mode-\(index)"),
             ]), sessionID: "saved"))
         }
+        try await transport.feed(.response(id: .integer(2), result: .object([:])))
 
         await #expect(throws: ACPClientError.eventDeliveryOverflow) {
             try await task.value
@@ -301,7 +302,7 @@ extension ACPClientConnectionTests {
                 transport: transport,
                 configuration: try makeConfiguration(),
                 restoration: try .init(sessionID: "saved", need: .visibleHistory),
-                onRestoredEvent: { _ in },
+                onRestoredEvent: { _, _ in },
                 clientCapabilityFragments: [
                     .object(["response": .object(["version": .integer(1)])]),
                     .object(["background": .object(["enabled": .bool(true)])]),
@@ -333,7 +334,7 @@ extension ACPClientConnectionTests {
                 transport: transport,
                 configuration: try makeConfiguration(),
                 restoration: try .init(sessionID: "saved", need: .visibleHistory),
-                onRestoredEvent: { _ in },
+                onRestoredEvent: { _, _ in },
                 clientCapabilityFragments: [
                     .object([adversarial: .bool(true)]),
                     .object([adversarial: .bool(false)]),
@@ -482,7 +483,7 @@ extension ACPClientConnectionTests {
                 transport: transport,
                 configuration: try makeConfiguration(),
                 restoration: try .init(sessionID: "saved", need: .visibleHistory),
-                onRestoredEvent: { event in
+                onRestoredEvent: { _, event in
                     if case .agentMessageDelta = event {
                         await gate.pause()
                     }
@@ -547,7 +548,7 @@ extension ACPClientConnectionTests {
                 transport: transport,
                 configuration: try makeConfiguration(),
                 restoration: try .init(sessionID: "saved", need: .visibleHistory),
-                onRestoredEvent: { event in
+                onRestoredEvent: { _, event in
                     if case .agentMessageDelta = event {
                         await gate.pause()
                     }
