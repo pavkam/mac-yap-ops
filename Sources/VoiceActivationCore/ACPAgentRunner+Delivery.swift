@@ -4,6 +4,82 @@
 import Foundation
 
 extension ACPAgentRunner {
+    /// Offers opaque input only to the exact cached connection owning the active turn.
+    ///
+    /// Idle, cancelling, mismatched, and stale records retain no input and require a
+    /// normal prompt. Ambiguous delivery evicts only the captured record identity.
+    public func offerMidTurnInput(
+        profileID: UUID,
+        prompt: AgentPrompt
+    ) async throws -> AgentMidTurnInputResult {
+        guard let turn = activeTurn,
+              turn.profileID == profileID,
+              !turn.isCancelling,
+              let recordID = turn.recordID,
+              let connection = turn.connection,
+              let record = records[profileID],
+              record.id == recordID,
+              record.connection === connection,
+              record.exitStatus == nil
+        else {
+            return .promptRequired
+        }
+        let turnToken = turn.token
+
+        do {
+            let result = try await connection.offerMidTurnInput(prompt)
+            await testingHooks.beforeMidTurnOfferIdentityValidation()
+            let stillOwnsConnection = activeTurn?.token == turnToken
+                && activeTurn?.profileID == profileID
+                && activeTurn?.recordID == recordID
+                && activeTurn?.connection === connection
+                && activeTurn?.isCancelling == false
+                && records[profileID]?.id == recordID
+                && records[profileID]?.connection === connection
+                && records[profileID]?.exitStatus == nil
+            guard stillOwnsConnection else {
+                guard result == .injected else {
+                    return .promptRequired
+                }
+                await evictAmbiguousMidTurnInputRecord(
+                    profileID: profileID,
+                    recordID: recordID,
+                    connection: connection)
+                throw ACPClientError.ambiguousMidTurnInput
+            }
+            return result
+        } catch let error as ACPClientError where error == .ambiguousMidTurnInput {
+            await evictAmbiguousMidTurnInputRecord(
+                profileID: profileID,
+                recordID: recordID,
+                connection: connection)
+            throw error
+        }
+    }
+
+    private func evictAmbiguousMidTurnInputRecord(
+        profileID: UUID,
+        recordID: UUID,
+        connection: ACPClientConnection
+    ) async {
+        guard let record = records[profileID],
+              record.id == recordID,
+              record.connection === connection
+        else {
+            return
+        }
+        records.removeValue(forKey: profileID)
+        diagnostics.record(
+            category: .agent,
+            event: "acp_runner.mid_turn_input_record_evicted",
+            level: .warning,
+            fields: [
+                "profile_id": profileID.uuidString,
+                "record_id": recordID.uuidString,
+            ])
+        await dispose(record)
+    }
+
     func continuityContext(
         activation: AgentSessionActivation?,
         previousTurnInterrupted: Bool

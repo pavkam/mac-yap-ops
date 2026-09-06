@@ -58,15 +58,18 @@ struct ACPAgentRunnerTestingHooks: Sendable {
     let beforeCancelledExitWaitReturns: @Sendable () async -> Void
     let afterPromptResponseBeforeDeliveryDrain: @Sendable () async -> Void
     let beforeSuccessIsPublished: @Sendable () async -> Void
+    let beforeMidTurnOfferIdentityValidation: @Sendable () async -> Void
 
     init(
         beforeCancelledExitWaitReturns: @escaping @Sendable () async -> Void = {},
         afterPromptResponseBeforeDeliveryDrain: @escaping @Sendable () async -> Void = {},
-        beforeSuccessIsPublished: @escaping @Sendable () async -> Void = {}
+        beforeSuccessIsPublished: @escaping @Sendable () async -> Void = {},
+        beforeMidTurnOfferIdentityValidation: @escaping @Sendable () async -> Void = {}
     ) {
         self.beforeCancelledExitWaitReturns = beforeCancelledExitWaitReturns
         self.afterPromptResponseBeforeDeliveryDrain = afterPromptResponseBeforeDeliveryDrain
         self.beforeSuccessIsPublished = beforeSuccessIsPublished
+        self.beforeMidTurnOfferIdentityValidation = beforeMidTurnOfferIdentityValidation
     }
 }
 

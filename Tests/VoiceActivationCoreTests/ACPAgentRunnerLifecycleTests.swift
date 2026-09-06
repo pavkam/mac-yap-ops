@@ -7,6 +7,197 @@ import Testing
 
 
 extension ACPAgentRunnerTests {
+    @Test func offerMidTurnInput_WhenProfileOwnsActiveTurn_ForwardsToItsConnection()
+        async throws
+    {
+        let transport = FakeACPTransport()
+        let runner = ACPAgentRunner(
+            transportFactory: RunnerTransportFactory(transports: [transport]))
+        let profileID = UUID()
+        let configuration = try makeConfiguration(preset: .claude)
+        let activeRun = run(runner, profileID: profileID, configuration: configuration)
+        try await establishSteeringConnection(transport, workingDirectory: "/tmp/project")
+        _ = await transport.nextSentMessage()
+
+        let offer = Task {
+            try await runner.offerMidTurnInput(
+                profileID: profileID,
+                prompt: AgentPrompt(request: "also add tests", context: nil))
+        }
+        let sent = await waitUntil {
+            await transport.allSentMessages().contains(
+                self.steeringRequest(id: 4, text: "also add tests"))
+        }
+        #expect(sent)
+        if sent {
+            try await transport.feed(.response(
+                id: .integer(4),
+                result: .object(["outcome": .string("injected")])))
+        }
+        #expect(try await offer.value == .injected)
+
+        try await transport.feed(promptResponse(id: 3, stopReason: "end_turn"))
+        _ = try await activeRun.value
+        await runner.shutdown()
+    }
+
+    @Test func offerMidTurnInput_WhenProfileDoesNotOwnActiveTurnOrIsIdle_DoesNotWrite()
+        async throws
+    {
+        let transport = FakeACPTransport()
+        let factory = RunnerTransportFactory(transports: [transport])
+        let runner = ACPAgentRunner(transportFactory: factory)
+        let profileID = UUID()
+        let configuration = try makeConfiguration(preset: .claude)
+        let activeRun = run(runner, profileID: profileID, configuration: configuration)
+        try await establishSteeringConnection(transport, workingDirectory: "/tmp/project")
+        _ = await transport.nextSentMessage()
+
+        #expect(try await runner.offerMidTurnInput(
+            profileID: UUID(),
+            prompt: AgentPrompt(request: "wrong profile", context: nil)) == .promptRequired)
+        #expect(await transport.allSentMessages().count == 3)
+
+        try await transport.feed(promptResponse(id: 3, stopReason: "end_turn"))
+        _ = try await activeRun.value
+        #expect(try await runner.offerMidTurnInput(
+            profileID: profileID,
+            prompt: AgentPrompt(request: "idle", context: nil)) == .promptRequired)
+        #expect(await transport.allSentMessages().count == 3)
+        #expect(await factory.createdConfigurations().count == 1)
+        await runner.shutdown()
+    }
+
+    @Test func offerMidTurnInput_WhenDeliveryIsAmbiguous_DiscardsOnlyOwningRecord()
+        async throws
+    {
+        let retainedTransport = FakeACPTransport()
+        let ambiguousTransport = FakeACPTransport()
+        let factory = RunnerTransportFactory(
+            transports: [retainedTransport, ambiguousTransport])
+        let runner = ACPAgentRunner(transportFactory: factory)
+        let retainedProfileID = UUID()
+        let ambiguousProfileID = UUID()
+        let retainedConfiguration = try makeConfiguration(
+            workingDirectory: "/tmp/retained",
+            preset: .claude)
+        let ambiguousConfiguration = try makeConfiguration(
+            workingDirectory: "/tmp/ambiguous",
+            preset: .claude)
+
+        let warmup = run(
+            runner,
+            profileID: retainedProfileID,
+            configuration: retainedConfiguration)
+        try await establishSteeringConnection(
+            retainedTransport,
+            workingDirectory: "/tmp/retained")
+        _ = await retainedTransport.nextSentMessage()
+        try await retainedTransport.feed(promptResponse(id: 3, stopReason: "end_turn"))
+        _ = try await warmup.value
+
+        let activeRun = run(
+            runner,
+            profileID: ambiguousProfileID,
+            configuration: ambiguousConfiguration)
+        try await establishSteeringConnection(
+            ambiguousTransport,
+            workingDirectory: "/tmp/ambiguous")
+        _ = await ambiguousTransport.nextSentMessage()
+        let offer = Task {
+            try await runner.offerMidTurnInput(
+                profileID: ambiguousProfileID,
+                prompt: AgentPrompt(request: "also add tests", context: nil))
+        }
+        let sent = await waitUntil {
+            await ambiguousTransport.allSentMessages().contains(
+                self.steeringRequest(id: 4, text: "also add tests"))
+        }
+        #expect(sent)
+        guard sent else {
+            try await ambiguousTransport.feed(promptResponse(id: 3, stopReason: "end_turn"))
+            _ = try await activeRun.value
+            await runner.shutdown()
+            return
+        }
+        try await ambiguousTransport.feed(.response(
+            id: .integer(4),
+            result: .object(["outcome": .string("startedNewTurn")])))
+
+        await #expect(throws: ACPClientError.ambiguousMidTurnInput) {
+            try await offer.value
+        }
+        await #expect(throws: ACPClientError.connectionClosed) {
+            try await activeRun.value
+        }
+        #expect(await ambiguousTransport.observedTerminationCount() == 1)
+
+        let reused = run(
+            runner,
+            profileID: retainedProfileID,
+            configuration: retainedConfiguration,
+            prompt: "Still cached")
+        #expect(await retainedTransport.nextSentMessage()
+            == promptRequest(id: 4, text: "Still cached"))
+        try await retainedTransport.feed(promptResponse(id: 4, stopReason: "end_turn"))
+        _ = try await reused.value
+        #expect(await retainedTransport.observedTerminationCount() == 0)
+        await runner.shutdown()
+    }
+
+    @Test func offerMidTurnInput_WhenRecordIsReplacedDuringResponse_DoesNotEvictReplacement()
+        async throws
+    {
+        let oldTransport = FakeACPTransport()
+        let replacementTransport = FakeACPTransport()
+        let gate = RunnerEventGate()
+        let runner = ACPAgentRunner(
+            transportFactory: RunnerTransportFactory(
+                transports: [oldTransport, replacementTransport]),
+            testingHooks: ACPAgentRunnerTestingHooks(
+                beforeMidTurnOfferIdentityValidation: { await gate.wait() }))
+        let profileID = UUID()
+        let configuration = try makeConfiguration(preset: .claude)
+        let oldRun = run(runner, profileID: profileID, configuration: configuration)
+        try await establishSteeringConnection(oldTransport, workingDirectory: "/tmp/project")
+        _ = await oldTransport.nextSentMessage()
+
+        let offer = Task {
+            try await runner.offerMidTurnInput(
+                profileID: profileID,
+                prompt: AgentPrompt(request: "also add tests", context: nil))
+        }
+        #expect(await oldTransport.nextSentMessage()
+            == steeringRequest(id: 4, text: "also add tests"))
+        try await oldTransport.feed(.response(
+            id: .integer(4),
+            result: .object(["outcome": .string("injected")])))
+        await gate.waitUntilEntered()
+
+        await runner.reset(profileIDs: [profileID])
+        await #expect(throws: ACPClientError.connectionClosed) {
+            try await oldRun.value
+        }
+        let replacementRun = run(
+            runner,
+            profileID: profileID,
+            configuration: configuration,
+            prompt: "Replacement")
+        try await establishSteeringConnection(
+            replacementTransport,
+            workingDirectory: "/tmp/project")
+        _ = await replacementTransport.nextSentMessage()
+
+        await gate.open()
+        await #expect(throws: ACPClientError.ambiguousMidTurnInput) {
+            try await offer.value
+        }
+        #expect(await replacementTransport.observedTerminationCount() == 0)
+        try await replacementTransport.feed(promptResponse(id: 3, stopReason: "end_turn"))
+        _ = try await replacementRun.value
+        await runner.shutdown()
+    }
+
     @Test func run_WhenProfileConfigurationChanges_ReplacesConnection() async throws {
         let firstTransport = FakeACPTransport()
         let secondTransport = FakeACPTransport()
