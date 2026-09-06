@@ -209,7 +209,7 @@ extension VoiceActivationCoordinatorTests {
     }
 
     @MainActor
-    @Test func pushToTalk_WhenAgentInterruptionIsBlocked_QueuesFollowUpInSameConversation() async throws {
+    @Test func pushToTalk_WhenAgentTurnIsActive_QueuesFollowUpWithoutCancellation() async throws {
         let profile = try makeAgentProfile()
         let fixture = try Fixture(profiles: [profile])
         var lifecycleEvents: [AgentRunLifecycleEvent] = []
@@ -219,30 +219,22 @@ extension VoiceActivationCoordinatorTests {
         await waitUntil {
             await fixture.agentRunner.recordedInvocations().count == 1
         }
-        await fixture.agentRunner.delayCancellation()
-
         fixture.coordinator.pushToTalkPressed(profileID: profile.id)
         fixture.speech.emit("second")
         fixture.coordinator.pushToTalkReleased()
-        await waitUntil { await fixture.agentRunner.cancelCount == 1 }
-        try await Task.sleep(for: .milliseconds(30))
+        await waitUntil { await fixture.agentRunner.recordedMidTurnOffers().count == 1 }
 
+        #expect(await fixture.agentRunner.cancelCount == 0)
         #expect(await fixture.agentRunner.recordedInvocations().count == 1)
-        #expect(lifecycleEvents.count == 3)
-
-        await fixture.agentRunner.releaseCancellation()
-        await waitUntil(timeout: .milliseconds(500)) {
-            await fixture.agentRunner.recordedInvocations().count == 2
-                && lifecycleEvents.count == 4
-        }
+        await fixture.agentRunner.complete(runIndex: 0)
+        await waitUntil { await fixture.agentRunner.recordedInvocations().count == 2 }
 
         guard
             case let .started(firstRunID, _, firstPrompt) = lifecycleEvents[0],
-            case let .followUpSubmitted(followUpRunID, secondPrompt) = lifecycleEvents[1],
-            case let .turnCancellationStarted(cancellationRunID) = lifecycleEvents[2],
-            case let .turnStarted(secondRunID) = lifecycleEvents[3]
+            case let .followUpSubmitted(
+                followUpRunID, inputID, secondPrompt, _) = lifecycleEvents[1]
         else {
-            Issue.record("Expected start, queued follow-up, cancellation, then the next turn")
+            Issue.record("Expected start, queued follow-up, then the next turn")
             let invocationCount = await fixture.agentRunner.recordedInvocations().count
             for runIndex in 0..<invocationCount {
                 await fixture.agentRunner.complete(runIndex: runIndex)
@@ -251,11 +243,13 @@ extension VoiceActivationCoordinatorTests {
         }
         #expect(firstPrompt == "first")
         #expect(followUpRunID == firstRunID)
-        #expect(cancellationRunID == firstRunID)
-        #expect(secondRunID == firstRunID)
         #expect(secondPrompt == "second")
+        #expect(lifecycleEvents.contains(.followUpDispositionChanged(
+            runID: firstRunID,
+            inputID: inputID,
+            disposition: .queued)))
+        #expect(lifecycleEvents.contains(.turnStarted(runID: firstRunID)))
 
-        await fixture.agentRunner.complete(runIndex: 0)
         await fixture.agentRunner.complete(runIndex: 1)
     }
 
@@ -287,7 +281,7 @@ extension VoiceActivationCoordinatorTests {
         }
 
         let submittedPrompts = lifecycleEvents.compactMap { event -> String? in
-            guard case let .followUpSubmitted(_, prompt) = event else { return nil }
+            guard case let .followUpSubmitted(_, _, prompt, _) = event else { return nil }
             return prompt
         }
         let notices = lifecycleEvents.compactMap { event -> String? in
@@ -308,7 +302,7 @@ extension VoiceActivationCoordinatorTests {
         await fixture.agentRunner.releaseCancellation()
     }
 
-    @MainActor @Test func pushToTalk_WhenAgentIsAlreadyExecuting_CancelsItBeforeStartingNextAgent() async throws {
+    @MainActor @Test func pushToTalk_WhenAgentIsAlreadyExecuting_QueuesWithoutCancelling() async throws {
         let profile = try makeAgentProfile()
         let fixture = try Fixture(profiles: [profile])
         fixture.coordinator.setPassiveEnabled(true)
@@ -320,16 +314,16 @@ extension VoiceActivationCoordinatorTests {
         fixture.coordinator.pushToTalkPressed(profileID: profile.id)
         fixture.speech.emit("second")
         fixture.coordinator.pushToTalkReleased()
-        await waitUntil {
-            await fixture.agentRunner.recordedInvocations().count == 2
-        }
+        await waitUntil { await fixture.agentRunner.recordedMidTurnOffers().count == 1 }
 
-        #expect(await fixture.agentRunner.cancelCount == 1)
+        #expect(await fixture.agentRunner.cancelCount == 0)
+        #expect(await fixture.agentRunner.recordedInvocations().count == 1)
+        await fixture.agentRunner.complete(runIndex: 0)
+        await waitUntil { await fixture.agentRunner.recordedInvocations().count == 2 }
         #expect(await fixture.agentRunner.recordedInvocations().map(\.prompt) == [
             AgentPrompt(request: "first", context: nil),
             AgentPrompt(request: "second", context: nil),
         ])
-        await fixture.agentRunner.complete(runIndex: 0)
         await fixture.agentRunner.complete(runIndex: 1)
     }
 

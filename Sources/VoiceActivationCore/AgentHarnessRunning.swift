@@ -114,6 +114,20 @@ public enum AgentMidTurnInputResult: Equatable, Sendable {
     case promptRequired
 }
 
+/// The transport lifecycle state of one conversation input.
+public enum AgentConversationInputDisposition: Equatable, Sendable {
+    /// Capability routing or a steering request is in progress.
+    case routing
+    /// The provider accepted the input into the active turn.
+    case injected
+    /// The app retained the input for the next ordinary prompt.
+    case queued
+    /// The retained input began its ordinary prompt turn.
+    case prompted
+    /// Delivery became ambiguous and the input will not be replayed.
+    case failed
+}
+
 /// Runs ACP turns and manages their cached conversation sessions.
 public protocol AgentHarnessRunning: Sendable {
     /// Runs one prompt in the profile's reusable conversation session.

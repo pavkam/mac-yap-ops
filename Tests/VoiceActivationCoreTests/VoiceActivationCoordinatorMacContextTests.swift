@@ -75,13 +75,9 @@ extension VoiceActivationCoordinatorTests {
         fixture.coordinator.setPassiveEnabled(true)
         fixture.speech.emit("agent inspect this", isFinal: true)
         await waitUntil { await fixture.agentRunner.recordedInvocations().count == 1 }
-        await fixture.agentRunner.delayCancellation()
         context.suspendsCaptures = true
         fixture.speech.emit("also inspect this", isFinal: true)
-        await waitUntil {
-            let cancelCount = await fixture.agentRunner.cancelCount
-            return context.capturedTargets.count == 2 && cancelCount == 1
-        }
+        await waitUntil { context.capturedTargets.count == 2 }
         let generation = fixture.coordinator.executionGeneration
 
         fixture.coordinator.endAgentConversation()
@@ -93,7 +89,6 @@ extension VoiceActivationCoordinatorTests {
                 hasActiveInput: false,
                 pendingInputCount: 0,
                 executionGeneration: generation + 1)))
-        await fixture.agentRunner.releaseCancellation()
         await fixture.agentRunner.complete(runIndex: 0)
     }
 
@@ -169,21 +164,19 @@ extension VoiceActivationCoordinatorTests {
         fixture.coordinator.setPassiveEnabled(true)
         fixture.speech.emit("agent first", isFinal: true)
         await waitUntil { await fixture.agentRunner.recordedInvocations().count == 1 }
-        await fixture.agentRunner.delayCancellation()
-
         context.target = finder
         context.nextSnapshot = makeMacContextSnapshot(target: finder, selectedText: "second")
         fixture.speech.emit("second", isFinal: true)
         await waitUntil {
-            let cancelCount = await fixture.agentRunner.cancelCount
-            return context.capturedTargets.count == 2 && cancelCount == 1
+            let offerCount = await fixture.agentRunner.recordedMidTurnOffers().count
+            return context.capturedTargets.count == 2 && offerCount == 1
         }
         context.target = notes
         context.nextSnapshot = makeMacContextSnapshot(target: notes, selectedText: "third")
         fixture.speech.emit("third", isFinal: true)
         await waitUntil { context.capturedTargets.count == 3 }
 
-        await fixture.agentRunner.releaseCancellation()
+        await fixture.agentRunner.complete(runIndex: 0)
         await waitUntil { await fixture.agentRunner.recordedInvocations().count == 2 }
         await fixture.agentRunner.complete(runIndex: 1)
         await waitUntil { await fixture.agentRunner.recordedInvocations().count == 3 }
@@ -194,7 +187,6 @@ extension VoiceActivationCoordinatorTests {
         #expect(prompts.map { $0.context?.selectedText } == ["initial", "second", "third"])
         #expect(context.currentTargetCallCount == 3)
         #expect(context.capturedTargets == [safari, finder, notes])
-        await fixture.agentRunner.complete(runIndex: 0)
         await fixture.agentRunner.complete(runIndex: 2)
     }
 }

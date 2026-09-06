@@ -7,8 +7,17 @@ import Foundation
 public enum AgentRunLifecycleEvent: Equatable, Sendable {
     /// A new conversation was created from a captured command.
     case started(runID: UUID, profile: WakeProfile, prompt: String)
-    /// A spoken or push-to-talk follow-up entered the current conversation queue.
-    case followUpSubmitted(runID: UUID, prompt: String)
+    /// A spoken or push-to-talk follow-up entered transport routing.
+    case followUpSubmitted(
+        runID: UUID,
+        inputID: UUID,
+        prompt: String,
+        disposition: AgentConversationInputDisposition)
+    /// A routed input changed transport state without changing its identity.
+    case followUpDispositionChanged(
+        runID: UUID,
+        inputID: UUID,
+        disposition: AgentConversationInputDisposition)
     /// The coordinator produced a concise recoverable lifecycle notice.
     case notice(runID: UUID, message: String)
     /// A queued prompt began one harness turn.
@@ -132,6 +141,7 @@ public final class VoiceActivationCoordinator {
     var activeAgentRunID: UUID? {
         didSet {
             guard oldValue != nil, activeAgentRunID != oldValue else { return }
+            invalidateAgentInputRouting()
             activeAgentRestorationToken = nil
             activeAgentInput?.invalidateAdmission()
         }
@@ -142,6 +152,7 @@ public final class VoiceActivationCoordinator {
     var executionGeneration = 0 {
         didSet {
             guard executionGeneration != oldValue else { return }
+            invalidateAgentInputRouting()
             activeAgentRestorationToken = nil
             activeAgentInput?.invalidateAdmission()
         }
@@ -154,6 +165,9 @@ public final class VoiceActivationCoordinator {
     var executionTask: Task<Void, Never>?
     var agentCancellationTask: Task<Void, Never>?
     var agentCancellationToken: UUID?
+    var agentInputRoutingTask: Task<Void, Never>?
+    var agentInputRoutingToken: UUID?
+    var steeringBlockedGeneration: Int?
     var activeAgentInput: PendingAgentInput? {
         willSet {
             guard activeAgentInput?.id != newValue?.id else { return }

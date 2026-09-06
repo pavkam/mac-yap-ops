@@ -58,7 +58,11 @@ extension AgentConversationAudioPresenterTests {
         let profile = try agentProfile()
 
         presenter.handle(.started(runID: runID, profile: profile, prompt: "First"))
-        presenter.handle(.followUpSubmitted(runID: runID, prompt: "Again"))
+        presenter.handle(.followUpSubmitted(
+            runID: runID,
+            inputID: UUID(),
+            prompt: "Again",
+            disposition: .routing))
 
         #expect(player.begunProfiles == [profile])
     }

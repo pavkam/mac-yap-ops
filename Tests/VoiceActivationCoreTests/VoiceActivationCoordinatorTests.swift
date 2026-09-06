@@ -131,6 +131,11 @@ actor ControlledCommandRunner: CommandRunning {
 }
 
 actor ControlledAgentRunner: AgentHarnessRunning {
+    enum MidTurnOutcome: Sendable {
+        case result(AgentMidTurnInputResult)
+        case failure
+    }
+
     struct Invocation: Equatable, Sendable {
         let profileID: UUID
         let configuration: AgentHarnessConfiguration
@@ -145,11 +150,20 @@ actor ControlledAgentRunner: AgentHarnessRunning {
         let optionID: String?
     }
 
+    struct MidTurnOffer: Equatable, Sendable {
+        let profileID: UUID
+        let prompt: AgentPrompt
+    }
+
     private(set) var cancelCount = 0
     private(set) var shutdownCount = 0
     private var runAttempts = 0
     private var invocations: [Invocation] = []
     private var permissionResolutions: [PermissionResolution] = []
+    private var midTurnOffers: [MidTurnOffer] = []
+    private var midTurnOutcomes: [MidTurnOutcome] = []
+    private var delaysMidTurnOffers = false
+    private var midTurnOfferWaiters: [CheckedContinuation<Void, Never>] = []
     private var eventHandlers: [@Sendable (AgentRunStreamEvent) async -> Void] = []
     private var completions: [CheckedContinuation<AgentRunResult, any Error>?] = []
     private var invocationWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
@@ -213,6 +227,25 @@ actor ControlledAgentRunner: AgentHarnessRunning {
             optionID: optionID))
     }
 
+    func offerMidTurnInput(
+        profileID: UUID,
+        prompt: AgentPrompt
+    ) async throws -> AgentMidTurnInputResult {
+        midTurnOffers.append(MidTurnOffer(profileID: profileID, prompt: prompt))
+        if delaysMidTurnOffers {
+            await withCheckedContinuation { continuation in
+                midTurnOfferWaiters.append(continuation)
+            }
+        }
+        guard !midTurnOutcomes.isEmpty else { return .promptRequired }
+        switch midTurnOutcomes.removeFirst() {
+        case .result(let result):
+            return result
+        case .failure:
+            throw ControlledAgentRunnerError.midTurnDeliveryFailed
+        }
+    }
+
     func cancel() async {
         cancelCount += 1
         if delaysCancellation {
@@ -247,6 +280,31 @@ actor ControlledAgentRunner: AgentHarnessRunning {
 
     func recordedPermissionResolutions() -> [PermissionResolution] {
         permissionResolutions
+    }
+
+    func recordedMidTurnOffers() -> [MidTurnOffer] {
+        midTurnOffers
+    }
+
+    func enqueueMidTurnResults(_ results: [AgentMidTurnInputResult]) {
+        midTurnOutcomes.append(contentsOf: results.map(MidTurnOutcome.result))
+    }
+
+    func enqueueMidTurnOutcomes(_ outcomes: [MidTurnOutcome]) {
+        midTurnOutcomes.append(contentsOf: outcomes)
+    }
+
+    func delayMidTurnOffers() {
+        delaysMidTurnOffers = true
+    }
+
+    func releaseMidTurnOffers() {
+        delaysMidTurnOffers = false
+        let waiters = midTurnOfferWaiters
+        midTurnOfferWaiters.removeAll()
+        for waiter in waiters {
+            waiter.resume()
+        }
     }
 
     func delayCancellation() {
@@ -319,6 +377,7 @@ actor ControlledAgentRunner: AgentHarnessRunning {
 enum ControlledAgentRunnerError: Error, LocalizedError {
     case turnAlreadyActive
     case runFailed
+    case midTurnDeliveryFailed
 
     var errorDescription: String? {
         switch self {
@@ -326,6 +385,8 @@ enum ControlledAgentRunnerError: Error, LocalizedError {
             "Another fake agent turn is already active."
         case .runFailed:
             "The fake agent run failed."
+        case .midTurnDeliveryFailed:
+            "The fake mid-turn delivery failed."
         }
     }
 }

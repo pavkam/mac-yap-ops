@@ -77,7 +77,7 @@ extension VoiceActivationCoordinatorTests {
         await fixture.agentRunner.complete(runIndex: 1)
     }
 
-    @MainActor @Test func agentCompletion_WhenNewerAgentIsRunning_DoesNotCleanUpNewExecution() async throws {
+    @MainActor @Test func agentCompletion_WhenFollowUpIsQueued_StartsOneNextTurn() async throws {
         let profile = try makeAgentProfile()
         let fixture = try Fixture(profiles: [profile])
         var lifecycleEvents: [AgentRunLifecycleEvent] = []
@@ -90,9 +90,7 @@ extension VoiceActivationCoordinatorTests {
         fixture.coordinator.pushToTalkPressed(profileID: profile.id)
         fixture.speech.emit("second")
         fixture.coordinator.pushToTalkReleased()
-        await waitUntil {
-            await fixture.agentRunner.recordedInvocations().count == 2
-        }
+        await waitUntil { await fixture.agentRunner.recordedMidTurnOffers().count == 1 }
 
         let conversationRunIDs = lifecycleEvents.compactMap { event -> UUID? in
             guard case let .started(runID, _, _) = event else { return nil }
@@ -103,13 +101,19 @@ extension VoiceActivationCoordinatorTests {
             Issue.record("Expected one conversation run identifier")
             return
         }
-        #expect(lifecycleEvents.contains(.followUpSubmitted(
-            runID: conversationRunID,
-            prompt: "second")))
-        #expect(lifecycleEvents.contains(.turnStarted(runID: conversationRunID)))
+        #expect(lifecycleEvents.contains { event in
+            guard case let .followUpSubmitted(
+                runID, _, prompt, disposition) = event
+            else { return false }
+            return runID == conversationRunID
+                && prompt == "second"
+                && disposition == .routing
+        })
+        #expect(!lifecycleEvents.contains(.turnStarted(runID: conversationRunID)))
 
         await fixture.agentRunner.complete(runIndex: 0)
-        try await Task.sleep(for: .milliseconds(30))
+        await waitUntil { await fixture.agentRunner.recordedInvocations().count == 2 }
+        #expect(lifecycleEvents.contains(.turnStarted(runID: conversationRunID)))
 
         #expect(fixture.coordinator.state == .executing)
         #expect(fixture.speech.startCount == 4)

@@ -142,60 +142,11 @@ extension VoiceActivationCoordinator {
         }
     }
 
-    func submitAgentFollowUp(_ prompt: String) {
-        guard case .agent = executingAction, let runID = activeAgentRunID else {
-            diagnostics.record(
-                category: .agent,
-                event: "coordinator.follow_up_ignored",
-                fields: ["reason": "no_active_conversation"])
-            return
-        }
-        guard pendingAgentPrompts.count < Self.maximumPendingAgentPrompts else {
-            diagnostics.record(
-                category: .agent,
-                event: "coordinator.follow_up_rejected",
-                level: .warning,
-                fields: [
-                    "run_id": runID.uuidString,
-                    "reason": "queue_full",
-                    "pending_count": String(pendingAgentPrompts.count),
-                ])
-            onAgentRunEvent?(
-                .notice(
-                    runID: runID,
-                    message: "Follow-up queue is full. Wait for the agent before speaking again."))
-            return
-        }
-        let input = makePendingAgentInput(text: prompt)
-        pendingAgentPrompts.append(input)
-        diagnostics.record(
-            category: .agent,
-            event: "coordinator.follow_up_queued",
-            fields: [
-                "run_id": runID.uuidString,
-                "character_count": String(prompt.count),
-                "pending_count": String(pendingAgentPrompts.count),
-                "turn_active": String(executionTask != nil),
-            ])
-        onAgentRunEvent?(.followUpSubmitted(runID: runID, prompt: prompt))
-
-        guard agentCancellationTask == nil else { return }
-        guard executionTask == nil else {
-            onAgentRunEvent?(.turnCancellationStarted(runID: runID))
-            executionGeneration &+= 1
-            cancelActiveAgentInput()
-            executionTask?.cancel()
-            executionTask = nil
-            beginAgentCancellation(runID: runID)
-            return
-        }
-        startNextAgentPrompt()
-    }
-
     func startNextAgentPrompt() {
         guard
             agentCancellationTask == nil,
             executionTask == nil,
+            agentInputRoutingTask == nil,
             !pendingAgentPrompts.isEmpty,
             case .agent(let configuration) = executingAction,
             let profile = activeProfile,
@@ -207,6 +158,11 @@ extension VoiceActivationCoordinator {
         let generation = executionGeneration
         cancelActiveAgentInput()
         activeAgentInput = input
+        onAgentRunEvent?(
+            .followUpDispositionChanged(
+                runID: runID,
+                inputID: input.id,
+                disposition: .prompted))
         onAgentRunEvent?(.turnStarted(runID: runID))
         state = .executing
         diagnostics.record(
@@ -430,6 +386,7 @@ extension VoiceActivationCoordinator {
         onAgentRunEvent?(.turnCompleted(runID: runID, result: result))
         executionTask = nil
         activeAgentInput = nil
+        steeringBlockedGeneration = nil
         if pendingAgentPrompts.isEmpty {
             state = .executing
         } else {

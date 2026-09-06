@@ -384,7 +384,11 @@ extension AgentConversationAudioPresenterTests {
             event: .agentMessageDelta(messageID: "answer", text: "Useful remainder")))
 
         presenter.handle(.turnFailed(runID: runID, message: "Connection closed"))
-        presenter.handle(.followUpSubmitted(runID: runID, prompt: "Continue"))
+        presenter.handle(.followUpSubmitted(
+            runID: runID,
+            inputID: UUID(),
+            prompt: "Continue",
+            disposition: .routing))
 
         #expect(player.spoken.map(\.text) == ["Useful remainder"])
         #expect(player.stopAllCount == 0)
@@ -405,7 +409,11 @@ extension AgentConversationAudioPresenterTests {
             prompt: "First"))
         let previousStopCount = player.stopSpeakingCount
 
-        presenter.handle(.followUpSubmitted(runID: runID, prompt: "Second"))
+        presenter.handle(.followUpSubmitted(
+            runID: runID,
+            inputID: UUID(),
+            prompt: "Second",
+            disposition: .routing))
 
         #expect(player.stopSpeakingCount == previousStopCount + 1)
         #expect(player.workingStates.last == true)

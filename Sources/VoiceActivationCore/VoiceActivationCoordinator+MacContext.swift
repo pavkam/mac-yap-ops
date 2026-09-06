@@ -70,6 +70,7 @@ extension VoiceActivationCoordinator {
     }
 
     func cancelPendingAgentInputs() {
+        invalidateAgentInputRouting()
         let inputs = pendingAgentPrompts
         pendingAgentPrompts.removeAll()
         for input in inputs {
@@ -79,6 +80,7 @@ extension VoiceActivationCoordinator {
     }
 
     func cancelAllAgentInputs() {
+        invalidateAgentInputRouting()
         let activeInput = activeAgentInput
         let pendingInputs = pendingAgentPrompts
         activeAgentInput = nil
