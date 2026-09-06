@@ -47,7 +47,10 @@ extension ACPAgentRunnerTests {
             method: "initialize",
             params: .object([
                 "protocolVersion": .integer(1),
-                "clientCapabilities": ACPClientCapabilities.voiceResponseChannelsV1,
+                "clientCapabilities": try ACPClientCapabilities.compose([
+                    ACPClientCapabilities.voiceResponseChannelsV1,
+                    ACPClientCapabilities.jetBrainsAIRAsyncTasksV1,
+                ]),
                 "clientInfo": .object([
                     "name": .string("voice-activation"),
                     "title": .string("Voice Activation"),

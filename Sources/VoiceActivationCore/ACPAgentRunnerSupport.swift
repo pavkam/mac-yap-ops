@@ -52,6 +52,11 @@ final class ACPAgentConnectionRecord {
     var exitStatus: Int32?
     var suppressesExitDiagnostic = false
     var accessOrdinal: UInt64
+    var activeBackgroundTaskIDs: Set<AgentBackgroundTaskID> = []
+    var stoppableBackgroundTaskIDs: Set<AgentBackgroundTaskID> = []
+    var pendingBackgroundTaskStopIDs: Set<AgentBackgroundTaskID> = []
+    var pendingBackgroundTaskMarkerIDs: Set<AgentBackgroundTaskID> = []
+    var backgroundTaskWorkKeys: [AgentBackgroundTaskID: AgentInterruptedWorkKey] = [:]
     let exitObservation: ACPAgentProcessExitLatch
 
     init(

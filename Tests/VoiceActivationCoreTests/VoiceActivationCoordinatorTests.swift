@@ -173,6 +173,14 @@ actor ControlledAgentRunner: AgentHarnessRunning {
     private var cancellationWaiters: [CheckedContinuation<Void, Never>] = []
     private var preClaimGate: AgentRunnerPreClaimGate?
     private var postClaimBarrier: AgentRunnerActorBarrier?
+    private var sessionEventHandler:
+        (@Sendable (AgentSessionEventEnvelope) async -> Void)?
+
+    func setSessionEventHandler(
+        _ handler: (@Sendable (AgentSessionEventEnvelope) async -> Void)?
+    ) {
+        sessionEventHandler = handler
+    }
 
     func run(
         admission: AgentRunAdmission,
@@ -225,6 +233,14 @@ actor ControlledAgentRunner: AgentHarnessRunning {
             turnToken: turnToken,
             requestID: requestID,
             optionID: optionID))
+    }
+
+    func stopBackgroundTask(
+        profileID _: UUID,
+        sessionID _: String,
+        taskID _: AgentBackgroundTaskID
+    ) async throws -> Bool {
+        false
     }
 
     func offerMidTurnInput(

@@ -15,6 +15,10 @@ public enum ACPAgentRunnerError: Error, Equatable, LocalizedError, Sendable {
     case eventDeliveryOverflow
     /// ACP initialization did not complete before the startup deadline.
     case startupTimedOut
+    /// All cached sessions are pinned by active provider-owned tasks.
+    case sessionCapacityReached
+    /// The requested provider-owned task is stale, stopped, or not stoppable.
+    case backgroundTaskUnavailable
 
     /// A user-presentable explanation of the runner failure.
     public var errorDescription: String? {
@@ -29,6 +33,10 @@ public enum ACPAgentRunnerError: Error, Equatable, LocalizedError, Sendable {
             "The agent produced more control events than can be delivered safely."
         case .startupTimedOut:
             "The agent did not finish starting within 12 seconds."
+        case .sessionCapacityReached:
+            "Four agent sessions already have active background tasks."
+        case .backgroundTaskUnavailable:
+            "The background task is no longer available to stop."
         }
     }
 }
@@ -107,6 +115,8 @@ public actor ACPAgentRunner: AgentHarnessRunning {
     var isShutDown = false
     var latestAccessOrdinal: UInt64 = 0
     var evictedProfileIDs: [UUID] = []
+    var sessionEventHandler:
+        (@Sendable (AgentSessionEventEnvelope) async -> Void)?
 
     /// Creates an ACP runner with replaceable transport, timing, and diagnostics boundaries.
     ///
@@ -658,6 +668,7 @@ public actor ACPAgentRunner: AgentHarnessRunning {
             event: "acp_runner.shutdown_started",
             fields: ["cached_session_count": String(records.count)])
         isShutDown = true
+        sessionEventHandler = nil
 
         if let turn = activeTurn {
             activeTurn = nil
