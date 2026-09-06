@@ -356,6 +356,7 @@ import Testing
             #expect(Set(entry.fields.keys).isSubset(of: [
                 "failure_category", "bookmark_count", "work_marker_count",
             ]))
+            #expect(entry.fields["failure_category"] == "invalid_fingerprint")
             let rendered = String(describing: entry.fields)
             #expect(!rendered.contains("private-session"))
             #expect(!rendered.contains(String(repeating: "F", count: 64)))

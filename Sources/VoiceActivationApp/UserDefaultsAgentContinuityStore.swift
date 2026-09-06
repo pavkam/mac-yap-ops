@@ -6,24 +6,15 @@ import VoiceActivationCore
 
 actor UserDefaultsAgentContinuityStore: AgentContinuityStoring {
     static let key = "voiceActivation.agentContinuity.v1"
-    static let maximumRecords = 64
     static let maximumEncodedBytes = 512 * 1_024
 
     private enum StoreError: Error {
-        case invalidIdentifier
-        case invalidFingerprint
-        case recordLimit
         case encodedSize
-        case invalidSchema
         case malformedData
 
         var category: String {
             switch self {
-            case .invalidIdentifier: "invalid_identifier"
-            case .invalidFingerprint: "invalid_fingerprint"
-            case .recordLimit: "record_limit"
             case .encodedSize: "encoded_size"
-            case .invalidSchema: "invalid_schema"
             case .malformedData: "malformed_data"
             }
         }
@@ -48,36 +39,24 @@ actor UserDefaultsAgentContinuityStore: AgentContinuityStoring {
 
     func bookmark(for profileID: UUID) async throws -> AgentSessionBookmark? {
         var envelope = loadEnvelope()
-        guard let index = envelope.bookmarks.firstIndex(where: { $0.profileID == profileID }) else {
-            return nil
+        do {
+            let bookmark = try AgentContinuityStorePolicy.bookmark(
+                for: profileID,
+                in: &envelope)
+            if bookmark != nil {
+                try replace(envelope)
+            }
+            return bookmark
+        } catch {
+            recordSaveFailure(error, envelope: envelope)
+            throw error
         }
-        let ordinal = nextAccessOrdinal(bookmarks: &envelope.bookmarks)
-        let existing = envelope.bookmarks[index]
-        let accessed = AgentSessionBookmark(
-            profileID: existing.profileID,
-            sessionID: existing.sessionID,
-            providerFingerprint: existing.providerFingerprint,
-            lastAccessOrdinal: ordinal)
-        envelope.bookmarks[index] = accessed
-        try replaceReportingFailure(envelope)
-        return accessed
     }
 
     func save(bookmark: AgentSessionBookmark) async throws {
         var envelope = loadEnvelope()
         do {
-            try validate(bookmark)
-            let ordinal = nextAccessOrdinal(bookmarks: &envelope.bookmarks)
-            let replacement = AgentSessionBookmark(
-                profileID: bookmark.profileID,
-                sessionID: bookmark.sessionID,
-                providerFingerprint: bookmark.providerFingerprint,
-                lastAccessOrdinal: ordinal)
-            envelope.bookmarks.removeAll { $0.profileID == bookmark.profileID }
-            envelope.bookmarks.append(replacement)
-            if envelope.bookmarks.count > Self.maximumRecords {
-                envelope.bookmarks.remove(at: leastRecentlyUsedIndex(in: envelope.bookmarks))
-            }
+            try AgentContinuityStorePolicy.save(bookmark, in: &envelope)
             try replace(envelope)
         } catch {
             recordSaveFailure(error, envelope: envelope)
@@ -87,31 +66,23 @@ actor UserDefaultsAgentContinuityStore: AgentContinuityStoring {
 
     func remove(profileIDs: Set<UUID>) async throws {
         var envelope = loadEnvelope()
-        let oldBookmarkCount = envelope.bookmarks.count
-        let oldWorkCount = envelope.interruptedWork.count
-        envelope.bookmarks.removeAll { profileIDs.contains($0.profileID) }
-        envelope.interruptedWork.removeAll { profileIDs.contains($0.key.profileID) }
-        if isQuarantined || oldBookmarkCount != envelope.bookmarks.count
-            || oldWorkCount != envelope.interruptedWork.count
-        {
-            try replaceReportingFailure(envelope)
+        do {
+            let changed = try AgentContinuityStorePolicy.remove(
+                profileIDs: profileIDs,
+                in: &envelope)
+            if isQuarantined || changed {
+                try replace(envelope)
+            }
+        } catch {
+            recordSaveFailure(error, envelope: envelope)
+            throw error
         }
     }
 
     func markWorkActive(_ marker: AgentInterruptedWorkMarker) async throws {
         var envelope = loadEnvelope()
         do {
-            try validate(marker)
-            let active = AgentInterruptedWorkMarker(
-                key: marker.key,
-                turnID: marker.turnID,
-                providerTaskID: marker.providerTaskID,
-                state: .active)
-            envelope.interruptedWork.removeAll { $0.key == marker.key }
-            envelope.interruptedWork.append(active)
-            guard envelope.interruptedWork.count <= Self.maximumRecords else {
-                throw StoreError.recordLimit
-            }
+            try AgentContinuityStorePolicy.markWorkActive(marker, in: &envelope)
             try replace(envelope)
         } catch {
             recordSaveFailure(error, envelope: envelope)
@@ -121,39 +92,45 @@ actor UserDefaultsAgentContinuityStore: AgentContinuityStoring {
 
     func clearWork(_ key: AgentInterruptedWorkKey) async throws {
         var envelope = loadEnvelope()
-        let oldCount = envelope.interruptedWork.count
-        envelope.interruptedWork.removeAll { $0.key == key }
-        if isQuarantined || oldCount != envelope.interruptedWork.count {
-            try replaceReportingFailure(envelope)
+        do {
+            let changed = try AgentContinuityStorePolicy.clearWork(key, in: &envelope)
+            if isQuarantined || changed {
+                try replace(envelope)
+            }
+        } catch {
+            recordSaveFailure(error, envelope: envelope)
+            throw error
         }
     }
 
     func reconcileInterruptedWork() async throws -> [AgentInterruptedWorkMarker] {
         var envelope = loadEnvelope()
-        var changed = false
-        envelope.interruptedWork = envelope.interruptedWork.map { marker in
-            guard marker.state == .active else { return marker }
-            changed = true
-            return AgentInterruptedWorkMarker(
-                key: marker.key,
-                turnID: marker.turnID,
-                providerTaskID: marker.providerTaskID,
-                state: .interruptedByProcessExit)
+        let original = envelope
+        do {
+            let interrupted = try AgentContinuityStorePolicy.reconcileInterruptedWork(
+                in: &envelope)
+            if envelope != original {
+                try replace(envelope)
+            }
+            return interrupted
+        } catch {
+            recordSaveFailure(error, envelope: envelope)
+            throw error
         }
-        if changed {
-            try replaceReportingFailure(envelope)
-        }
-        return envelope.interruptedWork.filter { $0.state == .interruptedByProcessExit }
     }
 
     func acknowledgeInterruptedWork(_ keys: Set<AgentInterruptedWorkKey>) async throws {
         var envelope = loadEnvelope()
-        let oldCount = envelope.interruptedWork.count
-        envelope.interruptedWork.removeAll {
-            $0.state == .interruptedByProcessExit && keys.contains($0.key)
-        }
-        if isQuarantined || oldCount != envelope.interruptedWork.count {
-            try replaceReportingFailure(envelope)
+        do {
+            let changed = try AgentContinuityStorePolicy.acknowledgeInterruptedWork(
+                keys,
+                in: &envelope)
+            if isQuarantined || changed {
+                try replace(envelope)
+            }
+        } catch {
+            recordSaveFailure(error, envelope: envelope)
+            throw error
         }
     }
 
@@ -170,8 +147,13 @@ actor UserDefaultsAgentContinuityStore: AgentContinuityStoring {
         do {
             guard data.count <= Self.maximumEncodedBytes else { throw StoreError.encodedSize }
             try validateSchemaShape(data)
-            let envelope = try JSONDecoder().decode(AgentContinuityEnvelope.self, from: data)
-            try validate(envelope)
+            let envelope: AgentContinuityEnvelope
+            do {
+                envelope = try JSONDecoder().decode(AgentContinuityEnvelope.self, from: data)
+            } catch {
+                throw StoreError.malformedData
+            }
+            try AgentContinuityStorePolicy.validate(envelope)
             cachedEnvelope = envelope
             return envelope
         } catch {
@@ -192,37 +174,16 @@ actor UserDefaultsAgentContinuityStore: AgentContinuityStoring {
     }
 
     private func emptyEnvelope() -> AgentContinuityEnvelope {
-        AgentContinuityEnvelope(schemaVersion: 1, bookmarks: [], interruptedWork: [])
-    }
-
-    private func replaceReportingFailure(_ envelope: AgentContinuityEnvelope) throws {
-        do {
-            try replace(envelope)
-        } catch {
-            recordSaveFailure(error, envelope: envelope)
-            throw error
-        }
+        AgentContinuityStorePolicy.emptyEnvelope()
     }
 
     private func replace(_ envelope: AgentContinuityEnvelope) throws {
-        try validate(envelope)
+        try AgentContinuityStorePolicy.validate(envelope)
         let data = try encoder.encode(envelope)
         guard data.count <= Self.maximumEncodedBytes else { throw StoreError.encodedSize }
         defaults.set(data, forKey: Self.key)
         cachedEnvelope = envelope
         isQuarantined = false
-    }
-
-    private func validate(_ envelope: AgentContinuityEnvelope) throws {
-        guard envelope.schemaVersion == 1 else { throw StoreError.invalidSchema }
-        guard envelope.bookmarks.count <= Self.maximumRecords,
-            envelope.interruptedWork.count <= Self.maximumRecords
-        else { throw StoreError.recordLimit }
-        guard Set(envelope.bookmarks.map(\.profileID)).count == envelope.bookmarks.count,
-            Set(envelope.interruptedWork.map(\.key)).count == envelope.interruptedWork.count
-        else { throw StoreError.malformedData }
-        for bookmark in envelope.bookmarks { try validate(bookmark) }
-        for marker in envelope.interruptedWork { try validate(marker) }
     }
 
     private func validateSchemaShape(_ data: Data) throws {
@@ -254,60 +215,6 @@ actor UserDefaultsAgentContinuityStore: AgentContinuityStoring {
         }
     }
 
-    private func validate(_ bookmark: AgentSessionBookmark) throws {
-        try validateIdentifier(bookmark.sessionID)
-        guard bookmark.providerFingerprint.utf8.count == 64,
-            bookmark.providerFingerprint.utf8.allSatisfy({
-                (48...57).contains($0) || (97...102).contains($0)
-            })
-        else { throw StoreError.invalidFingerprint }
-    }
-
-    private func validate(_ marker: AgentInterruptedWorkMarker) throws {
-        try validateIdentifier(marker.key.sessionID)
-        if let turnID = marker.turnID { try validateIdentifier(turnID) }
-        if let providerTaskID = marker.providerTaskID { try validateIdentifier(providerTaskID) }
-    }
-
-    private func validateIdentifier(_ identifier: String) throws {
-        guard !identifier.isEmpty,
-            identifier.utf8.count <= ACPEventDecoder.maximumOpaqueIdentifierBytes
-        else { throw StoreError.invalidIdentifier }
-    }
-
-    private func nextAccessOrdinal(bookmarks: inout [AgentSessionBookmark]) -> UInt64 {
-        let maximum = bookmarks.map(\.lastAccessOrdinal).max() ?? 0
-        guard maximum == .max else { return maximum + 1 }
-        let order = bookmarks.indices.sorted {
-            let lhs = bookmarks[$0]
-            let rhs = bookmarks[$1]
-            if lhs.lastAccessOrdinal != rhs.lastAccessOrdinal {
-                return lhs.lastAccessOrdinal < rhs.lastAccessOrdinal
-            }
-            return lhs.profileID.uuidString < rhs.profileID.uuidString
-        }
-        for (offset, index) in order.enumerated() {
-            let bookmark = bookmarks[index]
-            bookmarks[index] = AgentSessionBookmark(
-                profileID: bookmark.profileID,
-                sessionID: bookmark.sessionID,
-                providerFingerprint: bookmark.providerFingerprint,
-                lastAccessOrdinal: UInt64(offset + 1))
-        }
-        return UInt64(bookmarks.count + 1)
-    }
-
-    private func leastRecentlyUsedIndex(in bookmarks: [AgentSessionBookmark]) -> Int {
-        bookmarks.indices.min {
-            let lhs = bookmarks[$0]
-            let rhs = bookmarks[$1]
-            if lhs.lastAccessOrdinal != rhs.lastAccessOrdinal {
-                return lhs.lastAccessOrdinal < rhs.lastAccessOrdinal
-            }
-            return lhs.profileID.uuidString < rhs.profileID.uuidString
-        } ?? 0
-    }
-
     private func recordSaveFailure(_ error: Error, envelope: AgentContinuityEnvelope) {
         diagnostics.record(
             category: .settings,
@@ -321,6 +228,21 @@ actor UserDefaultsAgentContinuityStore: AgentContinuityStoring {
     }
 
     private func failureCategory(_ error: Error) -> String {
-        (error as? StoreError)?.category ?? "encoding_failure"
+        if let error = error as? StoreError { return error.category }
+        guard let error = error as? AgentContinuityStoreError else {
+            return "encoding_failure"
+        }
+        switch error {
+        case .invalidSchema:
+            return "invalid_schema"
+        case .recordLimitExceeded:
+            return "record_limit"
+        case .duplicateRecord:
+            return "malformed_data"
+        case .invalidIdentifier:
+            return "invalid_identifier"
+        case .invalidFingerprint:
+            return "invalid_fingerprint"
+        }
     }
 }
