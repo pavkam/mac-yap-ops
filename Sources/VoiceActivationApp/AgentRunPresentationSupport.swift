@@ -115,7 +115,7 @@ extension AgentRunTimelineItem {
                 guard case .thought(let message) = detail else { return false }
                 return !message.text.isEmpty
             }
-        case .omitted:
+        case .historyBoundary, .omitted:
             false
         }
     }
@@ -131,7 +131,7 @@ extension AgentRunTimelineItem {
                 guard case .thought(let message) = detail else { return }
                 text.append(message.text)
             }
-        case .omitted:
+        case .historyBoundary, .omitted:
             ""
         }
     }
@@ -170,7 +170,7 @@ extension AgentRunTimelineItem {
             }
             thinking.details = retainedDetails
             return .thinking(thinking)
-        case .omitted:
+        case .historyBoundary, .omitted:
             return self
         }
     }

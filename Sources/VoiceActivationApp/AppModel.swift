@@ -571,6 +571,21 @@ extension AgentRunLifecycleEvent {
                 "kind": "event", "run_id": runID.uuidString,
                 "event_kind": AppModel.eventKind(event),
             ]
+        case .historyRestorationStarted(let runID, _, _):
+            ["kind": "history_restoration_started", "run_id": runID.uuidString]
+        case .historyEvent(let runID, _, let event):
+            [
+                "kind": "history_event", "run_id": runID.uuidString,
+                "event_kind": AppModel.eventKind(event),
+            ]
+        case .historyRestorationCompleted(let runID, _, let activation):
+            [
+                "kind": "history_restoration_completed",
+                "run_id": runID.uuidString,
+                "activation": activation.appModelDiagnosticName,
+            ]
+        case .historyRestorationAborted(let runID, _):
+            ["kind": "history_restoration_aborted", "run_id": runID.uuidString]
         case .turnCompleted(let runID, let result):
             [
                 "kind": "turn_completed", "run_id": runID.uuidString,
@@ -585,6 +600,18 @@ extension AgentRunLifecycleEvent {
             ]
         case .failed(let runID, _):
             ["kind": "failed", "run_id": runID.uuidString]
+        }
+    }
+}
+
+extension AgentSessionActivation {
+    fileprivate var appModelDiagnosticName: String {
+        switch self {
+        case .new: "new"
+        case .loaded: "loaded"
+        case .resumed: "resumed"
+        case .freshAfterUnavailableBookmark: "fresh_after_unavailable_bookmark"
+        case .freshBecauseRestorationUnsupported: "fresh_restoration_unsupported"
         }
     }
 }

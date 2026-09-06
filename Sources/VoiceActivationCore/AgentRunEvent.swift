@@ -37,6 +37,8 @@ public enum AgentToolCallStatus: String, Codable, Equatable, Sendable {
     case completed
     /// The call finished unsuccessfully.
     case failed
+    /// Voice Activation restored the call without evidence that it reached a terminal state.
+    case interrupted
 }
 
 /// The initial description of an ACP tool call.
@@ -119,6 +121,8 @@ public enum AgentPlanStatus: String, Codable, Equatable, Sendable {
     case inProgress = "in_progress"
     /// The plan item finished.
     case completed
+    /// Voice Activation restored the item without evidence that its active work completed.
+    case interrupted
 }
 
 /// One user-presentable entry in the agent's current plan.

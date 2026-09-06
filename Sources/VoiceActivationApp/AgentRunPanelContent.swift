@@ -38,6 +38,11 @@ extension AgentRunPanelView {
                         .font(.system(size: 10, weight: .medium, design: .rounded))
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                case .historyBoundary:
+                    Label("Previous provider history", systemImage: "clock.arrow.circlepath")
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 case let .message(message):
                     messageBlock(message)
                 case let .userMessage(message):

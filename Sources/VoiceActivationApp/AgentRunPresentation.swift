@@ -81,6 +81,7 @@ final class AgentRunPresentation {
     var trailingPublicationGeneration: UInt64 = 0
     var elapsedTask: Task<Void, Never>?
     var elapsedTaskGeneration: UInt64 = 0
+    var restorationState: AgentRunPresentationRestorationState?
 
     /// Creates the reducer with optional wall-clock updates for deterministic tests.
     ///
@@ -133,6 +134,7 @@ final class AgentRunPresentation {
         elapsedSeconds = 0
         evictedToolCount = 0
         ignoredToolUpdateCount = 0
+        restorationState = nil
         startedAt = clock.now
         lastPublicationAt = nil
         publicationIsPending = false
@@ -398,6 +400,7 @@ final class AgentRunPresentation {
         elapsedSeconds = 0
         evictedToolCount = 0
         ignoredToolUpdateCount = 0
+        restorationState = nil
         diagnosticsRecorder.record(
             category: .ui,
             event: "agent_presentation.cleared",

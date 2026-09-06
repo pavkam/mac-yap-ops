@@ -152,6 +152,7 @@ actor ControlledAgentRunner: AgentHarnessRunning {
     private var permissionResolutions: [PermissionResolution] = []
     private var eventHandlers: [@Sendable (AgentRunStreamEvent) async -> Void] = []
     private var completions: [CheckedContinuation<AgentRunResult, any Error>?] = []
+    private var invocationWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
     private var activeRunIndex: Int?
     private var delaysCancellation = false
     private var completesImmediately = false
@@ -189,6 +190,7 @@ actor ControlledAgentRunner: AgentHarnessRunning {
             prompt: prompt,
             restorationNeed: restorationNeed,
             runContinuity: runContinuity))
+        resumeInvocationWaiters()
         eventHandlers.append(onEvent)
         activeRunIndex = runIndex
         if completesImmediately {
@@ -232,6 +234,13 @@ actor ControlledAgentRunner: AgentHarnessRunning {
         invocations
     }
 
+    func waitForInvocationCount(_ count: Int) async {
+        guard invocations.count < count else { return }
+        await withCheckedContinuation { continuation in
+            invocationWaiters.append((count, continuation))
+        }
+    }
+
     func recordedRunAttemptCount() -> Int {
         runAttempts
     }
@@ -267,6 +276,22 @@ actor ControlledAgentRunner: AgentHarnessRunning {
 
     func emit(_ event: AgentRunEvent, from runIndex: Int) async {
         await eventHandlers[runIndex](.live(event))
+    }
+
+    func emitStream(_ event: AgentRunStreamEvent, from runIndex: Int) async {
+        await eventHandlers[runIndex](event)
+    }
+
+    private func resumeInvocationWaiters() {
+        var remaining: [(Int, CheckedContinuation<Void, Never>)] = []
+        for (count, continuation) in invocationWaiters {
+            if invocations.count >= count {
+                continuation.resume()
+            } else {
+                remaining.append((count, continuation))
+            }
+        }
+        invocationWaiters = remaining
     }
 
     func complete(

@@ -64,7 +64,7 @@ struct AgentToolPresentation: Equatable, Identifiable, Sendable {
     }
 
     var isFinished: Bool {
-        isSettled || status == .completed || status == .failed
+        isSettled || status == .completed || status == .failed || status == .interrupted
     }
 }
 
@@ -121,12 +121,20 @@ struct AgentMessagePresentation: Equatable, Identifiable, Sendable {
 /// One submitted user utterance retained in conversation order.
 struct AgentUserMessagePresentation: Equatable, Identifiable, Sendable {
     let id: UUID
-    let text: String
+    let messageID: String?
+    var text: String
+
+    init(id: UUID, messageID: String? = nil, text: String) {
+        self.id = id
+        self.messageID = messageID
+        self.text = text
+    }
 }
 
 /// A stable identity for heterogeneous conversation timeline entries.
 enum AgentRunTimelineItemID: Hashable, Sendable {
     case omitted
+    case historyBoundary
     case message(UUID)
     case userMessage(UUID)
     case thinking(UUID)
@@ -135,6 +143,7 @@ enum AgentRunTimelineItemID: Hashable, Sendable {
 /// One response, user message, thinking group, or bounded-omission marker.
 enum AgentRunTimelineItem: Equatable, Identifiable, Sendable {
     case omitted
+    case historyBoundary
     case message(AgentMessagePresentation)
     case userMessage(AgentUserMessagePresentation)
     case thinking(AgentThinkingPresentation)
@@ -142,6 +151,7 @@ enum AgentRunTimelineItem: Equatable, Identifiable, Sendable {
     var id: AgentRunTimelineItemID {
         switch self {
         case .omitted: .omitted
+        case .historyBoundary: .historyBoundary
         case .message(let message): .message(message.id)
         case .userMessage(let message): .userMessage(message.id)
         case .thinking(let thinking): .thinking(thinking.id)

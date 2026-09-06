@@ -311,13 +311,10 @@ extension VoiceActivationCoordinator {
                     restorationNeed: .visibleHistory,
                     runContinuity: AgentRunContinuityRequest(),
                     onEvent: { [weak self] streamEvent in
-                        guard case .live(let event) = streamEvent else {
-                            return
-                        }
                         let receivedAtUptime = DispatchTime.now().uptimeNanoseconds
                         await mainRunLoopScheduler.perform { [weak self] in
-                            self?.publishAgentEvent(
-                                event,
+                            self?.publishAgentStreamEvent(
+                                streamEvent,
                                 runID: runID,
                                 generation: generation,
                                 receivedAtUptime: receivedAtUptime)
