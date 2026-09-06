@@ -64,12 +64,13 @@ extension VoiceActivationCoordinatorTests {
             target: finder,
             selectedText: "Finder selection after admission")
         context.completeCapture(at: 1)
+        await waitUntil { await fixture.agentRunner.recordedMidTurnOffers().count == 1 }
+        await fixture.agentRunner.complete(runIndex: 0)
         await waitUntil { await fixture.agentRunner.recordedInvocations().count == 2 }
 
         let invocations = await fixture.agentRunner.recordedInvocations()
         #expect(invocations[1].prompt.context?.applicationName == "Finder")
         #expect(invocations[1].prompt.context?.selectedText == "Finder selection at admission")
-        await fixture.agentRunner.complete(runIndex: 0)
         await fixture.agentRunner.complete(runIndex: 1)
     }
 
@@ -303,33 +304,38 @@ extension VoiceActivationCoordinatorTests {
             AgentPrompt(request: "inspect the parser", context: nil),
             AgentPrompt(request: "now show me the tests", context: nil),
         ])
-        #expect(lifecycleEvents.contains(.followUpSubmitted(
-            runID: runID,
-            prompt: "now show me the tests")))
+        #expect(lifecycleEvents.contains { event in
+            guard case let .followUpSubmitted(
+                submittedRunID, _, prompt, disposition) = event
+            else { return false }
+            return submittedRunID == runID
+                && prompt == "now show me the tests"
+                && disposition == .routing
+        })
         #expect(lifecycleEvents.contains(.turnStarted(runID: runID)))
         await fixture.agentRunner.complete(runIndex: 1)
     }
 
     @MainActor
-    @Test func agentConversation_WhenFollowUpInterruptsTurn_CancelsBeforeStartingIt() async throws {
-        let fixture = try Fixture(profiles: [try makeAgentProfile()])
+    @Test func agentConversation_WhenActiveTurnAcceptsInput_SteersWithoutCancellation() async throws {
+        let profile = try makeAgentProfile()
+        let fixture = try Fixture(profiles: [profile])
+        await fixture.agentRunner.enqueueMidTurnResults([.injected])
         fixture.coordinator.setPassiveEnabled(true)
         fixture.speech.emit("agent inspect this", isFinal: true)
         await waitUntil { await fixture.agentRunner.recordedInvocations().count == 1 }
 
-        fixture.speech.emit("actually run the tests", isFinal: true)
-        await waitUntil {
-            let cancelCount = await fixture.agentRunner.cancelCount
-            let invocationCount = await fixture.agentRunner.recordedInvocations().count
-            return cancelCount == 1 && invocationCount == 2
-        }
+        fixture.speech.emit("also add tests", isFinal: true)
+        await waitUntil { await fixture.agentRunner.recordedMidTurnOffers().count == 1 }
 
-        #expect(await fixture.agentRunner.recordedInvocations().map(\.prompt) == [
-            AgentPrompt(request: "inspect this", context: nil),
-            AgentPrompt(request: "actually run the tests", context: nil),
+        #expect(await fixture.agentRunner.cancelCount == 0)
+        #expect(await fixture.agentRunner.recordedInvocations().count == 1)
+        #expect(await fixture.agentRunner.recordedMidTurnOffers() == [
+            ControlledAgentRunner.MidTurnOffer(
+                profileID: profile.id,
+                prompt: AgentPrompt(request: "also add tests", context: nil)),
         ])
         await fixture.agentRunner.complete(runIndex: 0)
-        await fixture.agentRunner.complete(runIndex: 1)
     }
 
     @MainActor

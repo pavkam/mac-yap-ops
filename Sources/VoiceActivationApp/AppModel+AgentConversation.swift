@@ -178,8 +178,17 @@ extension AppModel {
         switch event {
         case .started(let runID, let profile, let prompt):
             agentRunPresentation.start(runID: runID, profile: profile, prompt: prompt)
-        case .followUpSubmitted(let runID, let prompt):
-            agentRunPresentation.submitFollowUp(runID: runID, prompt: prompt)
+        case .followUpSubmitted(let runID, let inputID, let prompt, let disposition):
+            agentRunPresentation.submitFollowUp(
+                runID: runID,
+                inputID: inputID,
+                prompt: prompt,
+                disposition: disposition)
+        case .followUpDispositionChanged(let runID, let inputID, let disposition):
+            agentRunPresentation.updateFollowUp(
+                runID: runID,
+                inputID: inputID,
+                disposition: disposition)
         case .notice(let runID, let message):
             agentRunPresentation.receiveNotice(runID: runID, message: message)
         case .turnStarted(let runID):

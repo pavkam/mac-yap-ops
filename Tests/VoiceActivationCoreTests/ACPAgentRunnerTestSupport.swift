@@ -78,11 +78,40 @@ extension ACPAgentRunnerTests {
             result: .object(["sessionId": .string(sessionID)])))
     }
 
+    func establishSteeringConnection(
+        _ transport: FakeACPTransport,
+        workingDirectory: String,
+        sessionID: String = "session-1"
+    ) async throws {
+        _ = await transport.nextSentMessage()
+        try await transport.feed(.response(
+            id: .integer(1),
+            result: .object([
+                "protocolVersion": .integer(1),
+                "agentCapabilities": .object([:]),
+                "agentInfo": .object([
+                    "name": .string("@agentclientprotocol/claude-agent-acp"),
+                    "title": .string("Claude"),
+                    "version": .string("0.73.0"),
+                ]),
+                "_meta": .object([
+                    "steering": .object(["supported": .bool(true)]),
+                ]),
+                "authMethods": .array([]),
+            ])))
+        _ = await transport.nextSentMessage()
+        try await transport.feed(.response(
+            id: .integer(2),
+            result: .object(["sessionId": .string(sessionID)])))
+    }
+
     func makeConfiguration(
-        workingDirectory: String = "/tmp/project") throws -> AgentHarnessConfiguration
+        workingDirectory: String = "/tmp/project",
+        preset: AgentHarnessPreset = .codex
+    ) throws -> AgentHarnessConfiguration
     {
         try AgentHarnessConfiguration(
-            preset: .codex,
+            preset: preset,
             displayName: "Configured Agent",
             executablePath: "/usr/bin/agent",
             arguments: ["acp"],
@@ -125,6 +154,29 @@ extension ACPAgentRunnerTests {
         .response(
             id: .integer(id),
             result: .object(["stopReason": .string(stopReason)]))
+    }
+
+    func steeringRequest(
+        id: Int64,
+        text: String,
+        sessionID: String = "session-1"
+    ) -> ACPMessage {
+        .request(
+            id: .integer(id),
+            method: "_session/steering",
+            params: .object([
+                "sessionId": .string(sessionID),
+                "prompt": .array([
+                    ACPClientConnection.encodedPromptBlock(for: .text(
+                        role: .request,
+                        value: text)),
+                ]),
+                "_meta": .object([
+                    "steering": .object([
+                        "idleBehavior": .string("promptRequired"),
+                    ]),
+                ]),
+            ]))
     }
 
     func permissionRequest(id: ACPRequestID) -> ACPMessage {

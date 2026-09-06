@@ -111,7 +111,17 @@ extension AgentRunPanelView {
     }
 
     func userMessageBlock(_ message: AgentUserMessagePresentation) -> some View {
-        userBubble(message.text, label: "Follow-up")
+        VStack(alignment: .leading, spacing: 4) {
+            userBubble(message.text, label: "Follow-up")
+            if let transport = message.transportPresentation {
+                Text(transport.caption)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 12)
+                    .accessibilityLabel(transport.accessibilityLabel)
+                    .accessibilityValue(transport.accessibilityValue)
+            }
+        }
     }
 
     @ViewBuilder

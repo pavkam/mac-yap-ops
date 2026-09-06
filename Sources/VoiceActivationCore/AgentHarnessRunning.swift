@@ -106,6 +106,28 @@ public struct AgentRunResult: Equatable, Sendable {
     }
 }
 
+/// The safe transport result of offering user input during an active agent turn.
+public enum AgentMidTurnInputResult: Equatable, Sendable {
+    /// The provider accepted the text into the currently running turn.
+    case injected
+    /// The text remains locally owned and must be sent by a normal prompt.
+    case promptRequired
+}
+
+/// The transport lifecycle state of one conversation input.
+public enum AgentConversationInputDisposition: Equatable, Sendable {
+    /// Capability routing or a steering request is in progress.
+    case routing
+    /// The provider accepted the input into the active turn.
+    case injected
+    /// The app retained the input for the next ordinary prompt.
+    case queued
+    /// The retained input began its ordinary prompt turn.
+    case prompted
+    /// Delivery became ambiguous and the input will not be replayed.
+    case failed
+}
+
 /// Runs ACP turns and manages their cached conversation sessions.
 public protocol AgentHarnessRunning: Sendable {
     /// Runs one prompt in the profile's reusable conversation session.
@@ -130,6 +152,17 @@ public protocol AgentHarnessRunning: Sendable {
         onEvent: @escaping @Sendable (AgentRunStreamEvent) async -> Void
     ) async throws -> AgentRunResult
 
+    /// Offers opaque user input to the active provider turn without interpreting it.
+    ///
+    /// - Parameters:
+    ///   - profileID: The wake profile expected to own the active turn.
+    ///   - prompt: The typed user request and its captured context.
+    /// - Returns: Whether the provider consumed the input or a normal prompt is required.
+    func offerMidTurnInput(
+        profileID: UUID,
+        prompt: AgentPrompt
+    ) async throws -> AgentMidTurnInputResult
+
     /// Answers one pending permission request for the active turn.
     ///
     /// - Parameters:
@@ -151,6 +184,14 @@ public protocol AgentHarnessRunning: Sendable {
 }
 
 extension AgentHarnessRunning {
+    /// Keeps runners on the portable next-prompt path until they implement active routing.
+    public func offerMidTurnInput(
+        profileID: UUID,
+        prompt: AgentPrompt
+    ) async throws -> AgentMidTurnInputResult {
+        .promptRequired
+    }
+
     /// Runs one independently admitted prompt outside coordinator ownership.
     ///
     /// This convenience overload creates a fresh single-use admission and is

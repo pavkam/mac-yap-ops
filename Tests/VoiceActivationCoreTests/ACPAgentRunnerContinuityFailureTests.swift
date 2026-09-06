@@ -499,7 +499,10 @@ struct ACPAgentRunnerContinuityFailureTests {
             result: .object([
                 "protocolVersion": .integer(1),
                 "agentCapabilities": .object(["loadSession": .bool(loadSession)]),
-                "agentInfo": .object(["name": .string("test-agent")]),
+                "agentInfo": .object([
+                    "name": .string("test-agent"),
+                    "version": .string("1.0.0"),
+                ]),
                 "authMethods": .array([]),
             ]))
     }
@@ -548,7 +551,10 @@ struct ACPAgentRunnerContinuityFailureTests {
                     result: .object([
                         "protocolVersion": .integer(1),
                         "agentCapabilities": .object(["loadSession": .bool(false)]),
-                        "agentInfo": .object(["name": .string("test-agent")]),
+                        "agentInfo": .object([
+                            "name": .string("test-agent"),
+                            "version": .string("1.0.0"),
+                        ]),
                         "authMethods": .array([]),
                     ]))
             case "session/new":

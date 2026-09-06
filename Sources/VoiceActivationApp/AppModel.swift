@@ -413,11 +413,13 @@ extension AgentRunLifecycleEvent {
                 "kind": "started", "run_id": runID.uuidString,
                 "input_character_count": String(prompt.count),
             ]
-        case .followUpSubmitted(let runID, let prompt):
+        case .followUpSubmitted(let runID, _, let prompt, _):
             [
                 "kind": "follow_up_submitted", "run_id": runID.uuidString,
                 "input_character_count": String(prompt.count),
             ]
+        case .followUpDispositionChanged(let runID, _, _):
+            ["kind": "follow_up_disposition_changed", "run_id": runID.uuidString]
         case .notice(let runID, let message):
             [
                 "kind": "notice", "run_id": runID.uuidString,

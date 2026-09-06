@@ -384,7 +384,11 @@ extension AgentConversationAudioPresenterTests {
             event: .agentMessageDelta(messageID: "answer", text: "Useful remainder")))
 
         presenter.handle(.turnFailed(runID: runID, message: "Connection closed"))
-        presenter.handle(.followUpSubmitted(runID: runID, prompt: "Continue"))
+        presenter.handle(.followUpSubmitted(
+            runID: runID,
+            inputID: UUID(),
+            prompt: "Continue",
+            disposition: .routing))
 
         #expect(player.spoken.map(\.text) == ["Useful remainder"])
         #expect(player.stopAllCount == 0)
@@ -405,10 +409,46 @@ extension AgentConversationAudioPresenterTests {
             prompt: "First"))
         let previousStopCount = player.stopSpeakingCount
 
-        presenter.handle(.followUpSubmitted(runID: runID, prompt: "Second"))
+        presenter.handle(.followUpSubmitted(
+            runID: runID,
+            inputID: UUID(),
+            prompt: "Second",
+            disposition: .routing))
 
         #expect(player.stopSpeakingCount == previousStopCount + 1)
         #expect(player.workingStates.last == true)
+    }
+
+    @MainActor @Test
+    func lifecycle_WhenFollowUpDispositionChanges_DoesNotChangeNarrationOrAudio() throws {
+        let player = AgentConversationAudioSpy()
+        let presenter = AgentConversationAudioPresenter(
+            player: player,
+            readsReplies: { true },
+            playsWorkingSound: { true },
+            localeID: { "en-US" })
+        let runID = UUID()
+        presenter.handle(.started(
+            runID: runID,
+            profile: try agentProfile(),
+            prompt: "First"))
+        presenter.handle(.event(
+            runID: runID,
+            event: .agentMessageDelta(messageID: "reply", text: "Still speaking.")))
+        let originalSpokenText = player.spoken.map(\.text)
+        let originalSpokenLocales = player.spoken.map(\.localeID)
+        let originalStopSpeakingCount = player.stopSpeakingCount
+        let originalWorkingStates = player.workingStates
+
+        presenter.handle(.followUpDispositionChanged(
+            runID: runID,
+            inputID: UUID(),
+            disposition: .queued))
+
+        #expect(player.spoken.map(\.text) == originalSpokenText)
+        #expect(player.spoken.map(\.localeID) == originalSpokenLocales)
+        #expect(player.stopSpeakingCount == originalStopSpeakingCount)
+        #expect(player.workingStates == originalWorkingStates)
     }
 
 }
