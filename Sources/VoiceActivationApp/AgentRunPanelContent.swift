@@ -118,9 +118,8 @@ extension AgentRunPanelView {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .padding(.leading, 12)
-                    .accessibilityLabel(transport.accessibilityValue)
+                    .accessibilityLabel(transport.accessibilityLabel)
                     .accessibilityValue(transport.accessibilityValue)
-                    .accessibilityHint(transport.accessibilityValue)
             }
         }
     }

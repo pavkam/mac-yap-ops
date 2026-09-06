@@ -86,6 +86,7 @@ struct MenuContentViewTests {
         renderer.proposedSize = ProposedViewSize(width: 320, height: nil)
         #expect(renderer.cgImage != nil)
         #expect(message.transportPresentation?.caption == "Queued for next turn")
+        #expect(message.transportPresentation?.accessibilityLabel == "Delivery status")
         #expect(message.transportPresentation?.accessibilityValue == "Queued for next turn")
     }
 

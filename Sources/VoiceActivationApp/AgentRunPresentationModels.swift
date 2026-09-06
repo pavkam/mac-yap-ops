@@ -195,6 +195,7 @@ struct AgentUserMessagePresentation: Equatable, Identifiable, Sendable {
             let label = disposition.presentationLabel
             return AgentUserMessageTransportPresentation(
                 caption: label,
+                accessibilityLabel: "Delivery status",
                 accessibilityValue: label)
         }
     }
@@ -203,6 +204,7 @@ struct AgentUserMessagePresentation: Equatable, Identifiable, Sendable {
 /// Visible and spoken-accessibility copy for one locally submitted user input.
 struct AgentUserMessageTransportPresentation: Equatable, Sendable {
     let caption: String
+    let accessibilityLabel: String
     let accessibilityValue: String
 }
 
