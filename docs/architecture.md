@@ -118,8 +118,10 @@ actions cross a generation-checked workspace boundary, and private materialized
 files follow run deletion and application shutdown.
 
 The app-owned Markdown boundary uses MarkdownUI's `cmark-gfm` parser with
-semantic panel styling, non-networking image providers, and an `http`/`https`
-link allowlist; no WebKit surface or raw HTML execution enters the panel.
+semantic panel styling, bounded credential-free HTTPS image loading, and an
+`http`/`https` link allowlist; no WebKit surface or raw HTML execution enters the
+panel. Image bytes are capped before off-main Image I/O downsampling and remain
+in a bounded memory-only cache.
 `AgentConversationAudioPresenter` maps the same typed lifecycle into narration
 and activity cues without making the presentation model own audio playback.
 

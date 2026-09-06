@@ -43,23 +43,28 @@ enum AgentMarkdownLinkPolicy {
     }
 }
 
-enum AgentMarkdownImageError: Error, Equatable {
-    case disabled
-}
-
 struct AgentMarkdownBlockImageProvider: ImageProvider {
+    let loader: any AgentMarkdownImageLoading
+
+    init(loader: any AgentMarkdownImageLoading = AgentMarkdownImageLoader.shared) {
+        self.loader = loader
+    }
+
     func makeImage(url: URL?) -> some View {
-        Label("Image omitted", systemImage: "photo")
-            .font(.system(size: 10, weight: .medium, design: .rounded))
-            .foregroundStyle(.secondary)
-            .padding(.vertical, 4)
-            .accessibilityLabel("Markdown image omitted")
+        AgentMarkdownImageView(url: url, loader: loader)
     }
 }
 
 struct AgentMarkdownInlineImageProvider: InlineImageProvider {
+    let loader: any AgentMarkdownImageLoading
+
+    init(loader: any AgentMarkdownImageLoading = AgentMarkdownImageLoader.shared) {
+        self.loader = loader
+    }
+
     func image(with url: URL, label: String) async throws -> Image {
-        throw AgentMarkdownImageError.disabled
+        let image = try await loader.image(from: url)
+        return Image(image.cgImage, scale: 1, label: Text(label))
     }
 }
 

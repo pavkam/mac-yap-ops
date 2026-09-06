@@ -69,6 +69,7 @@ accessibility settings. Inject or pass the preference into pure policies.
 | An animation test passes alone but the full suite crashes in AppKit teardown | A real `NSWindow` shared process-global AppKit animation state with parallel tests | Keep pure motion tests in-process; isolate the one intermediate-pixel window test in a child process and propagate sanitizer runtimes. |
 | Menu profile rows disappear despite valid model data | `MenuBarExtra` proposed an unusable height and the view accepted it | Put fallback sizing in a pure layout policy and render-test the zero/unspecified-height proposal. |
 | Streaming output follows until the user scrolls, then either fights them or never resumes | Auto-follow was keyed only to content updates | Track distance from bottom and user scrolling separately; follow growth only while the viewport was already at the bottom. |
+| A picture request renders only “Image omitted” | Both Markdown image providers were deliberately non-networking | Load only HTTPS images through the bounded memory-only loader, reserve a stable picture surface during loading, show an explicit unavailable state, and keep image content out of narration. |
 | A floating panel steals focus, appears behind the current app, or cannot drag | SwiftUI content tried to own AppKit activation/frame behavior | Keep `NSPanel` non-activating, order it explicitly, and route drag/minimize/restore through the controller while preserving the expanded frame. |
 
 ## Manual experience matrix

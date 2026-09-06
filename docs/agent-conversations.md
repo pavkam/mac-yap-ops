@@ -34,9 +34,10 @@ card to inspect its retained details.
 
 Responses render with a native GitHub-flavored Markdown parser, including
 headings, nested and task lists, tables, block quotes, links, inline code, and
-fenced code blocks. Text remains selectable. Agent-provided images are shown as
-omitted and never trigger a network request; only user-clicked `http` and
-`https` links can open externally.
+fenced code blocks. Text remains selectable. HTTPS Markdown images load directly
+from their remote host into a bounded picture surface; failed or unsupported
+images show an unavailable state. Only user-clicked `http` and `https` links can
+open externally.
 
 Voice Activation displays only thought content the provider sends through ACP;
 it does not claim access to private chain-of-thought. Token bursts publish to the
@@ -137,9 +138,10 @@ When narration is active, Voice Activation removes Markdown formatting and
 queues user-facing agent text while it streams. Complete sentences start
 immediately. An unfinished progress message is flushed when work moves to
 thought, tool, plan, or permission activity, with a 350 ms fallback when no
-semantic boundary arrives. ElevenLabs prepares at most two complete segments
-concurrently while preserving playback order. A failed backend request falls
-back to the automatic macOS voice for that segment.
+semantic boundary arrives. Image labels and destinations are silent, so reply
+speech never narrates a picture URL. ElevenLabs prepares at most two complete
+segments concurrently while preserving playback order. A failed backend request
+falls back to the automatic macOS voice for that segment.
 
 The thinking cue begins when the request is accepted, including ACP startup, and
 continues during cloud preparation. It pauses for permissions and audible

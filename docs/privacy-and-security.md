@@ -17,6 +17,7 @@ services or processes needed for the action the user selected.
 | Command, conversation, or push-to-talk capture | Microphone audio | Apple Speech; these modes allow the recognizer's normal macOS policy and are not guaranteed to remain on-device |
 | Direct command | Recognized command text | The configured executable, as one or more explicit arguments |
 | Agent request | Recognized request and saved profile instructions; when enabled, one bounded Mac app/window/document/selection block and one resource-link block per selected resource | The configured local ACP process |
+| Remote Markdown image | An HTTPS image request; the destination can observe normal network metadata such as the user's IP address | The image URL's remote host |
 | ElevenLabs reply speech | Formatted user-facing agent reply text | `api.elevenlabs.io` over HTTPS |
 
 The local ACP process may read files, modify the working folder, or contact its
@@ -102,6 +103,8 @@ User-visible conversation state is bounded in memory:
 | Details in one thinking group | 128 |
 | Lifecycle notices | 16 |
 | Pending recognized follow-ups | 16 |
+| One remote Markdown image response | 8 MiB and a 2,048-pixel longest edge |
+| Remote Markdown image memory cache | 32 MiB across at most eight images |
 
 When presentation text or activity is removed to satisfy a bound, the panel
 shows an omission marker or count. Narration queues, provider sessions, ACP

@@ -50,6 +50,7 @@ later mistaken for prose. Any change here needs explicit bound and fence tests.
   text;
 - Markdown emphasis, links, and inline code lose formatting but keep readable
   characters;
+- Markdown images contribute neither their label nor destination;
 - dividers are silent; and
 - every fenced code block becomes the sentence `Code block omitted.`
 

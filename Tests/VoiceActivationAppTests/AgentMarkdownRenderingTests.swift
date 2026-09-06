@@ -8,6 +8,8 @@ import Testing
 @testable import VoiceActivationApp
 
 struct AgentMarkdownRenderingTests {
+    private static let tinyPNG = Data(base64Encoded:
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")!
     private static let representativeMarkdown = """
         # Release report
 
@@ -75,18 +77,33 @@ struct AgentMarkdownRenderingTests {
     }
 
     @Test(arguments: [
-        "https://example.com/private.png",
+        "http://example.com/private.png",
         "file:///tmp/private.png",
         "data:image/png;base64,AAAA",
     ])
-    func inlineImageProvider_WhenAgentEmbedsImage_FailsClosed(_ value: String) async throws {
+    func inlineImageProvider_WhenImageURLIsNotHTTPS_RejectsIt(_ value: String) async throws {
         let imageURL = try #require(URL(string: value))
 
-        await #expect(throws: AgentMarkdownImageError.disabled) {
+        await #expect(throws: AgentMarkdownImageError.unsupportedURL) {
             try await AgentMarkdownInlineImageProvider().image(
                 with: imageURL,
                 label: "private")
         }
+    }
+
+    @Test func inlineImageProvider_WhenHTTPSImageLoads_ReturnsImage() async throws {
+        let imageURL = try #require(URL(string: "https://images.example/picture.png"))
+        let loader = AgentMarkdownImageLoader(fetch: { requestedURL, _ in
+            AgentMarkdownImageDownload(
+                data: Self.tinyPNG,
+                responseURL: requestedURL,
+                statusCode: 200,
+                mimeType: "image/png")
+        })
+
+        _ = try await AgentMarkdownInlineImageProvider(loader: loader).image(
+            with: imageURL,
+            label: "Picture")
     }
 
     @MainActor @Test
@@ -117,13 +134,21 @@ struct AgentMarkdownRenderingTests {
     }
 
     @MainActor @Test
-    func view_WhenRemoteBlockImageIsRendered_ShowsBoundedOmissionPlaceholder() throws {
+    func view_WhenRemoteBlockImageIsRendered_ReservesBoundedImageArea() throws {
+        let loader = AgentMarkdownImageLoader(fetch: { requestedURL, _ in
+            AgentMarkdownImageDownload(
+                data: Self.tinyPNG,
+                responseURL: requestedURL,
+                statusCode: 200,
+                mimeType: "image/png")
+        })
         let image = try renderedImage(
-            markdown: "![Private](https://example.invalid/private.png)")
+            markdown: "![Picture](https://images.example/picture.png)",
+            imageLoader: loader)
 
         #expect(image.width == 420)
-        #expect(image.height >= 12)
-        #expect(image.height < 80)
+        #expect(image.height >= 80)
+        #expect(image.height <= 440)
     }
 
     @MainActor @Test
@@ -147,13 +172,15 @@ struct AgentMarkdownRenderingTests {
     @MainActor
     private func renderedImage(
         markdown: String,
-        style: AgentMarkdownRenderStyle = .response
+        style: AgentMarkdownRenderStyle = .response,
+        imageLoader: any AgentMarkdownImageLoading = AgentMarkdownImageLoader.shared
     ) throws -> CGImage {
         let renderer = ImageRenderer(
             content: AgentMarkdownView(
                 markdown: markdown,
                 accent: .blue,
-                style: style)
+                style: style,
+                imageLoader: imageLoader)
                 .frame(width: 420)
                 .fixedSize(horizontal: false, vertical: true))
         renderer.scale = 1
