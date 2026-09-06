@@ -233,7 +233,10 @@ public struct AgentContinuityPromptContext: Codable, Equatable, Sendable {
     }
 }
 
-/// An in-memory identity that prevents stale restoration callbacks from mutating a run.
+/// A caller-owned identity that prevents stale restoration callbacks from mutating a run.
+///
+/// Establish the token before connecting, then compare it again after every
+/// suspension before applying replay to mutable state.
 public struct AgentRestorationToken: Hashable, Sendable {
     /// The unique local restoration identity.
     public let rawValue: UUID

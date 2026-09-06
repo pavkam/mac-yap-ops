@@ -176,12 +176,11 @@ extension ACPClientConnection {
         onRestoredEvent: @escaping @Sendable (AgentRestorationToken, AgentRunEvent) async -> Void,
         afterResponseValidation: @escaping @Sendable () async -> Void
     ) async throws -> AgentSessionActivation {
-        let token = AgentRestorationToken()
         let delivery = AgentRunEventDelivery(mode: .staged) { event in
-            await onRestoredEvent(token, event)
+            await onRestoredEvent(restoration.token, event)
         }
         let state = ACPClientRestorationState(
-            token: token,
+            token: restoration.token,
             sessionID: restoration.sessionID,
             mode: .load(deliversReplay: deliversReplay),
             delivery: delivery)
@@ -226,7 +225,7 @@ extension ACPClientConnection {
         afterResponseValidation: @escaping @Sendable () async -> Void
     ) async throws -> AgentSessionActivation {
         let state = ACPClientRestorationState(
-            token: AgentRestorationToken(),
+            token: restoration.token,
             sessionID: restoration.sessionID,
             mode: .resume)
         sessionID = restoration.sessionID

@@ -6,18 +6,17 @@ import Testing
 @testable import VoiceActivationCore
 
 private actor TokenGuardedRestorationRecipient {
-    private let gate: AgentEventGate
     private let attempted = AgentEventSignal()
     private var currentToken: AgentRestorationToken?
+    private var attemptedTokens: [AgentRestorationToken] = []
     private var events: [AgentRunEvent] = []
 
-    init(gate: AgentEventGate) {
-        self.gate = gate
+    init(currentToken: AgentRestorationToken) {
+        self.currentToken = currentToken
     }
 
     func receive(token: AgentRestorationToken, event: AgentRunEvent) async {
-        currentToken = token
-        await gate.pause()
+        attemptedTokens.append(token)
         if currentToken == token {
             events.append(event)
         }
@@ -34,6 +33,14 @@ private actor TokenGuardedRestorationRecipient {
 
     func recordedEvents() -> [AgentRunEvent] {
         events
+    }
+
+    func observedTokens() -> [AgentRestorationToken] {
+        attemptedTokens
+    }
+
+    func owns(_ token: AgentRestorationToken) -> Bool {
+        currentToken == token
     }
 }
 
@@ -72,6 +79,70 @@ private final class SignallingConnectionDiagnosticRecorder: VoiceActivationDiagn
 }
 
 extension ACPClientConnectionTests {
+    @Test func connect_WhenLoadSucceeds_CallbackUsesPreEstablishedRequestToken() async throws {
+        let transport = FakeACPTransport()
+        let token = AgentRestorationToken(
+            rawValue: try #require(UUID(uuidString: "11111111-1111-1111-1111-111111111111")))
+        let request = try AgentSessionRestorationRequest(
+            sessionID: "saved",
+            need: .visibleHistory,
+            token: token)
+        let recipient = TokenGuardedRestorationRecipient(currentToken: token)
+        let task = Task {
+            try await ACPClientConnection.connect(
+                transport: transport,
+                configuration: try makeConfiguration(),
+                restoration: request,
+                onRestoredEvent: { callbackToken, event in
+                    await recipient.receive(token: callbackToken, event: event)
+                })
+        }
+        _ = await transport.nextSentMessage()
+        try await transport.feed(restorationInitializeResponse(load: true, resume: false))
+        _ = await transport.nextSentMessage()
+        try await transport.feed(restoredAgentMessage(text: "history"))
+        try await transport.feed(.response(id: .integer(2), result: .object([:])))
+
+        let result = try await task.value
+        #expect(request.token == token)
+        #expect(await recipient.observedTokens() == [token])
+        #expect(await recipient.recordedEvents() == [
+            .agentMessageDelta(messageID: nil, text: "history"),
+        ])
+        await result.connection.close()
+    }
+
+    @Test func connect_WhenLoadHasNoReplay_CallerStillOwnsRequestToken() async throws {
+        let transport = FakeACPTransport()
+        let token = AgentRestorationToken(
+            rawValue: try #require(UUID(uuidString: "22222222-2222-2222-2222-222222222222")))
+        let request = try AgentSessionRestorationRequest(
+            sessionID: "saved",
+            need: .visibleHistory,
+            token: token)
+        let recipient = TokenGuardedRestorationRecipient(currentToken: token)
+        let task = Task {
+            try await ACPClientConnection.connect(
+                transport: transport,
+                configuration: try makeConfiguration(),
+                restoration: request,
+                onRestoredEvent: { callbackToken, event in
+                    await recipient.receive(token: callbackToken, event: event)
+                })
+        }
+        _ = await transport.nextSentMessage()
+        try await transport.feed(restorationInitializeResponse(load: true, resume: false))
+        _ = await transport.nextSentMessage()
+        try await transport.feed(.response(id: .integer(2), result: .object([:])))
+
+        let result = try await task.value
+        #expect(request.token == token)
+        #expect(await recipient.owns(token))
+        #expect(await recipient.observedTokens().isEmpty)
+        #expect(await recipient.recordedEvents().isEmpty)
+        await result.connection.close()
+    }
+
     @Test func connect_WhenRestorationRemoteErrorArrives_RedactsEveryErrorSurface()
         async throws
     {
@@ -169,16 +240,23 @@ extension ACPClientConnectionTests {
         async throws
     {
         let transport = FakeACPTransport()
-        let gate = AgentEventGate()
-        let recipient = TokenGuardedRestorationRecipient(gate: gate)
+        let token = AgentRestorationToken(
+            rawValue: try #require(UUID(uuidString: "33333333-3333-3333-3333-333333333333")))
+        let request = try AgentSessionRestorationRequest(
+            sessionID: "saved",
+            need: .visibleHistory,
+            token: token)
+        let preRecipientGate = AgentEventGate()
+        let recipient = TokenGuardedRestorationRecipient(currentToken: token)
         let task = Task {
             do {
                 return try await ACPClientConnection.connect(
                     transport: transport,
                     configuration: try makeConfiguration(),
-                    restoration: try .init(sessionID: "saved", need: .visibleHistory),
-                    onRestoredEvent: { token, event in
-                        await recipient.receive(token: token, event: event)
+                    restoration: request,
+                    onRestoredEvent: { callbackToken, event in
+                        await preRecipientGate.pause()
+                        await recipient.receive(token: callbackToken, event: event)
                     })
             } catch {
                 await recipient.retire()
@@ -188,15 +266,22 @@ extension ACPClientConnectionTests {
         _ = await transport.nextSentMessage()
         try await transport.feed(restorationInitializeResponse(load: true, resume: false))
         _ = await transport.nextSentMessage()
-        try await transport.feed(restoredAgentMessage(text: "late mutation"))
+        try await transport.feed(restoredAgentMessage(
+            text: "late first mutation",
+            messageID: "first"))
+        try await transport.feed(restoredAgentMessage(
+            text: "queued second mutation",
+            messageID: "second"))
         try await transport.feed(.response(id: .integer(2), result: .object([:])))
-        await gate.waitUntilEntered()
+        await preRecipientGate.waitUntilEntered()
 
         task.cancel()
         await #expect(throws: CancellationError.self) { try await task.value }
-        await gate.open()
+        #expect(!(await recipient.owns(token)))
+        await preRecipientGate.open()
         await recipient.waitUntilAttempted()
 
+        #expect(await recipient.observedTokens() == [token])
         #expect(await recipient.recordedEvents().isEmpty)
         #expect(await transport.observedTerminationCount() == 1)
     }
@@ -206,16 +291,23 @@ extension ACPClientConnectionTests {
     {
         let transport = FakeACPTransport()
         let diagnostics = SignallingConnectionDiagnosticRecorder()
-        let gate = AgentEventGate()
-        let recipient = TokenGuardedRestorationRecipient(gate: gate)
+        let token = AgentRestorationToken(
+            rawValue: try #require(UUID(uuidString: "44444444-4444-4444-4444-444444444444")))
+        let request = try AgentSessionRestorationRequest(
+            sessionID: "saved",
+            need: .visibleHistory,
+            token: token)
+        let preRecipientGate = AgentEventGate()
+        let recipient = TokenGuardedRestorationRecipient(currentToken: token)
         let task = Task {
             do {
                 return try await ACPClientConnection.connect(
                     transport: transport,
                     configuration: try makeConfiguration(),
-                    restoration: try .init(sessionID: "saved", need: .visibleHistory),
-                    onRestoredEvent: { token, event in
-                        await recipient.receive(token: token, event: event)
+                    restoration: request,
+                    onRestoredEvent: { callbackToken, event in
+                        await preRecipientGate.pause()
+                        await recipient.receive(token: callbackToken, event: event)
                     },
                     diagnostics: diagnostics)
             } catch {
@@ -226,16 +318,23 @@ extension ACPClientConnectionTests {
         _ = await transport.nextSentMessage()
         try await transport.feed(restorationInitializeResponse(load: true, resume: false))
         _ = await transport.nextSentMessage()
-        try await transport.feed(restoredAgentMessage(text: "must stay retired"))
+        try await transport.feed(restoredAgentMessage(
+            text: "late first mutation",
+            messageID: "first"))
+        try await transport.feed(restoredAgentMessage(
+            text: "queued second mutation",
+            messageID: "second"))
         try await transport.feed(.response(id: .integer(2), result: .object([:])))
-        await gate.waitUntilEntered()
+        await preRecipientGate.waitUntilEntered()
 
         await transport.finishStreams()
         await diagnostics.wait(for: "acp_client.receive_finished")
         await #expect(throws: ACPClientError.connectionClosed) { try await task.value }
-        await gate.open()
+        #expect(!(await recipient.owns(token)))
+        await preRecipientGate.open()
         await recipient.waitUntilAttempted()
 
+        #expect(await recipient.observedTokens() == [token])
         #expect(await recipient.recordedEvents().isEmpty)
         #expect(await transport.observedTerminationCount() == 1)
     }

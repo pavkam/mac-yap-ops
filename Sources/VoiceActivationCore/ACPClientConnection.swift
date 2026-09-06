@@ -55,6 +55,10 @@ public enum ACPClientError: Error, Equatable, LocalizedError, Sendable {
 }
 
 /// A validated request to reopen one opaque provider-owned ACP session.
+///
+/// The caller owns ``token`` and must establish it as current before connecting.
+/// Restoration callbacks repeat that identity so the caller can reject stale work
+/// after every suspension, including attempts that replay no events.
 public struct AgentSessionRestorationRequest: Equatable, Sendable {
     /// Content-free failures produced while validating a restoration request.
     public enum ValidationError: Error, Equatable, LocalizedError, Sendable {
@@ -71,14 +75,21 @@ public struct AgentSessionRestorationRequest: Equatable, Sendable {
     public let sessionID: String
     /// Whether the caller needs visible replay or provider context only.
     public let need: AgentSessionRestorationNeed
+    /// The caller-owned identity established before restoration callbacks can run.
+    public let token: AgentRestorationToken
 
     /// Creates a restoration request after enforcing the shared ACP identifier bound.
     ///
     /// - Parameters:
     ///   - sessionID: The nonempty opaque identifier retained from the provider.
     ///   - need: Whether visible history or only provider context is required.
+    ///   - token: The identity the caller owns for this restoration attempt.
     /// - Throws: ``ValidationError/invalidSessionID`` without exposing the identifier.
-    public init(sessionID: String, need: AgentSessionRestorationNeed) throws {
+    public init(
+        sessionID: String,
+        need: AgentSessionRestorationNeed,
+        token: AgentRestorationToken = AgentRestorationToken()
+    ) throws {
         guard !sessionID.isEmpty,
               sessionID.utf8.count <= ACPEventDecoder.maximumOpaqueIdentifierBytes
         else {
@@ -86,6 +97,7 @@ public struct AgentSessionRestorationRequest: Equatable, Sendable {
         }
         self.sessionID = sessionID
         self.need = need
+        self.token = token
     }
 }
 
@@ -215,8 +227,9 @@ public actor ACPClientConnection {
     ///   - transport: The already-started framed transport.
     ///   - configuration: The agent identity, permissions, and working context.
     ///   - restoration: A validated saved session request, or `nil` for a new session.
-    ///   - onRestoredEvent: Receives the restoration identity and bounded ordered history.
-    ///     Validate the token after every suspension before mutating consumer state.
+    ///   - onRestoredEvent: Receives ``AgentSessionRestorationRequest/token`` and
+    ///     bounded ordered history. Validate the token after every suspension before
+    ///     mutating consumer state.
     ///   - diagnostics: The privacy-safe lifecycle recorder.
     /// - Returns: The connection, exact activation path, and negotiated capabilities.
     /// - Throws: ``ACPClientError`` or a transport error when initialization fails.

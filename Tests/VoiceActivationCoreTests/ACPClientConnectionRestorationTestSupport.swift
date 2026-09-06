@@ -61,14 +61,22 @@ extension ACPClientConnectionTests {
             ]))
     }
 
-    func restoredAgentMessage(text: String, sessionID: String = "saved") -> ACPMessage {
-        sessionUpdate(.object([
+    func restoredAgentMessage(
+        text: String,
+        messageID: String? = nil,
+        sessionID: String = "saved"
+    ) -> ACPMessage {
+        var update: [String: ACPJSONValue] = [
             "sessionUpdate": .string("agent_message_chunk"),
             "content": .object([
                 "type": .string("text"),
                 "text": .string(text),
             ]),
-        ]), sessionID: sessionID)
+        ]
+        if let messageID {
+            update["messageId"] = .string(messageID)
+        }
+        return sessionUpdate(.object(update), sessionID: sessionID)
     }
 
     func restoredUserMessage(text: String, role: ACPJSONValue?) -> ACPMessage {
