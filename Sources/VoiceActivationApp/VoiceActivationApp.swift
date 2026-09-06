@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Alexandru Ciobanu (alex+git@ciobanu.org)
 // SPDX-License-Identifier: MIT
 
-import AppKit
 import Darwin
 import Foundation
 import SwiftUI
@@ -11,6 +10,7 @@ import VoiceActivationCore
 struct VoiceActivationApp: App {
     @State private var model: AppModel
     @State private var launchAtLogin: LaunchAtLoginSetting
+    @State private var applicationActivationMonitor: ApplicationActivationMonitor
 
     @MainActor
     init() {
@@ -71,14 +71,18 @@ struct VoiceActivationApp: App {
         let preferences = AppPreferences()
         let macContextSnapshotter = SystemMacContextSnapshotter()
         let macContextAccess = MacContextAccessController()
-        _model = State(initialValue: AppModel(
+        let model = AppModel(
             preferences: preferences,
             agentSpeechCredentialStore: credentialStore,
             macContextAccess: macContextAccess,
             macContextCapturer: macContextSnapshotter,
-            diagnostics: diagnostics))
+            diagnostics: diagnostics)
+        let applicationActivationMonitor = ApplicationActivationMonitor()
+        applicationActivationMonitor.start(model: model)
+        _model = State(initialValue: model)
         _launchAtLogin = State(
             initialValue: LaunchAtLoginSetting(diagnostics: diagnostics))
+        _applicationActivationMonitor = State(initialValue: applicationActivationMonitor)
     }
 
     var body: some Scene {
@@ -89,12 +93,6 @@ struct VoiceActivationApp: App {
 
             Image(systemName: presentation.symbolName)
                 .accessibilityLabel(presentation.title)
-                .onReceive(
-                    NotificationCenter.default.publisher(
-                        for: NSApplication.didBecomeActiveNotification))
-                { _ in
-                    model.applicationDidBecomeActive()
-                }
         }
         .menuBarExtraStyle(.window)
         .windowStyle(.plain)

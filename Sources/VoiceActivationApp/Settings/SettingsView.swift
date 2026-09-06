@@ -41,7 +41,6 @@ struct SettingsView: View {
         .onChange(of: model.defaultSpeechVoice) { saved = false }
         .onChange(of: model.elevenLabsAPIKey) { saved = false }
         .task {
-            model.settingsDidAppear()
             await launchAtLogin.refresh()
         }
     }

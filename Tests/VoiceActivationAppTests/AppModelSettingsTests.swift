@@ -33,16 +33,32 @@ extension AppModelTests {
     }
 
     @MainActor @Test
-    func requestMacContextAccess_WhenClicked_PromptsOnceWithoutClaimingAuthorization() throws {
+    func macContextSettingsAction_WhenEnableIsInvoked_PromptsOnceWithoutClaimingAuthorization()
+        throws
+    {
         let access = MacContextAccessSpy(status: .notAuthorized)
         access.statusAfterPrompt = .authorized
         let fixture = try Fixture(macContextAccess: access)
+        let actions = MacContextSettingsActions(model: fixture.model)
 
-        fixture.model.requestMacContextAccess()
+        actions.enableAccessibility()
 
         #expect(access.promptingChecks == 1)
         #expect(access.statusChecks == 0)
         #expect(fixture.model.macContextAccessStatus == .notAuthorized)
+    }
+
+    @MainActor @Test
+    func macContextSettingsAction_WhenSectionAppears_RefreshesStatusWithoutPrompting() throws {
+        let access = MacContextAccessSpy(status: .authorized)
+        let fixture = try Fixture(macContextAccess: access)
+        let actions = MacContextSettingsActions(model: fixture.model)
+
+        actions.appear()
+
+        #expect(access.statusChecks == 1)
+        #expect(access.promptingChecks == 0)
+        #expect(fixture.model.macContextAccessStatus == .authorized)
     }
 
     @MainActor @Test

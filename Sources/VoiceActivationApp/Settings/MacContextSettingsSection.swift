@@ -23,11 +23,26 @@ struct MacContextSettingsPresentation {
     }
 }
 
+@MainActor
+struct MacContextSettingsActions {
+    let enableAccessibility: () -> Void
+    let appear: () -> Void
+
+    init(model: AppModel) {
+        enableAccessibility = model.requestMacContextAccess
+        appear = model.settingsDidAppear
+    }
+}
+
 struct MacContextSettingsSection: View {
     @Bindable var model: AppModel
 
     private var presentation: MacContextSettingsPresentation {
         MacContextSettingsPresentation(accessStatus: model.macContextAccessStatus)
+    }
+
+    private var actions: MacContextSettingsActions {
+        MacContextSettingsActions(model: model)
     }
 
     var body: some View {
@@ -58,11 +73,10 @@ struct MacContextSettingsSection: View {
                 Spacer()
 
                 if presentation.showsEnableAccessibilityButton {
-                    Button("Enable Accessibility…") {
-                        model.requestMacContextAccess()
-                    }
+                    Button("Enable Accessibility…", action: actions.enableAccessibility)
                 }
             }
         }
+        .onAppear(perform: actions.appear)
     }
 }

@@ -123,6 +123,7 @@ actor AppModelAgentRunnerSpy: AgentHarnessRunning {
     private var resets: [Set<UUID>] = []
     private var shouldDelayReset = false
     private var resetContinuation: CheckedContinuation<Void, Never>?
+    private var resetWaiters: [CheckedContinuation<Void, Never>] = []
     private let events: [AgentRunEvent]
 
     init(events: [AgentRunEvent] = []) {
@@ -159,7 +160,14 @@ actor AppModelAgentRunnerSpy: AgentHarnessRunning {
     func reset(profileIDs: Set<UUID>) async {
         resets.append(profileIDs)
         guard shouldDelayReset else { return }
-        await withCheckedContinuation { resetContinuation = $0 }
+        await withCheckedContinuation {
+            resetContinuation = $0
+            let waiters = resetWaiters
+            resetWaiters.removeAll()
+            for waiter in waiters {
+                waiter.resume()
+            }
+        }
     }
 
     func shutdown() async {}
@@ -168,6 +176,10 @@ actor AppModelAgentRunnerSpy: AgentHarnessRunning {
     func recordedResets() -> [Set<UUID>] { resets }
     func delayReset() { shouldDelayReset = true }
     func resetIsWaiting() -> Bool { resetContinuation != nil }
+    func waitUntilResetIsWaiting() async {
+        guard resetContinuation == nil else { return }
+        await withCheckedContinuation { resetWaiters.append($0) }
+    }
     func releaseReset() {
         shouldDelayReset = false
         resetContinuation?.resume()
