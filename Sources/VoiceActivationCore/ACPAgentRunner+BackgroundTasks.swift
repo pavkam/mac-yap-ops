@@ -127,7 +127,7 @@ extension ACPAgentRunner {
                     providerTaskID: taskID.rawValue,
                     state: .active))
             } catch {
-                discardProvisionalMarker(taskID, key: key, record: record)
+                rollbackProvisionalTask(taskID, key: key, record: record)
                 recordContinuityStoreFailure(operation: "task_spawn")
                 return false
             }
@@ -143,7 +143,12 @@ extension ACPAgentRunner {
             return true
 
         case .progress(let taskID, _, _, _, _, _, _):
-            return admitActiveTask(taskID, record: record)
+            return await admitActiveTask(
+                taskID,
+                profileID: profileID,
+                sessionID: sessionID,
+                recordID: recordID,
+                record: record)
 
         case .stateChanged(let taskID, let state, _, _, _):
             if state.isTerminal {
@@ -156,14 +161,29 @@ extension ACPAgentRunner {
                 }
                 return true
             }
-            return admitActiveTask(taskID, record: record)
+            return await admitActiveTask(
+                taskID,
+                profileID: profileID,
+                sessionID: sessionID,
+                recordID: recordID,
+                record: record)
         }
     }
 
     private func admitActiveTask(
         _ taskID: AgentBackgroundTaskID,
+        profileID: UUID,
+        sessionID: String,
+        recordID: UUID,
         record: ACPAgentConnectionRecord
-    ) -> Bool {
+    ) async -> Bool {
+        if record.backgroundTaskWorkKeys[taskID] != nil {
+            record.activeBackgroundTaskIDs.insert(taskID)
+            return true
+        }
+        if record.pendingBackgroundTaskMarkerIDs.contains(taskID) {
+            return false
+        }
         guard record.activeBackgroundTaskIDs.contains(taskID)
                 || record.activeBackgroundTaskIDs.count
                     < Self.maximumActiveBackgroundTasksPerSession
@@ -171,7 +191,32 @@ extension ACPAgentRunner {
             recordBackgroundTaskOverflow()
             return false
         }
+        let key = AgentInterruptedWorkKey(
+            profileID: profileID,
+            sessionID: sessionID,
+            occurrenceID: UUID())
         record.activeBackgroundTaskIDs.insert(taskID)
+        record.pendingBackgroundTaskMarkerIDs.insert(taskID)
+        record.backgroundTaskWorkKeys[taskID] = key
+        do {
+            try await continuityStore.markWorkActive(AgentInterruptedWorkMarker(
+                key: key,
+                providerTaskID: taskID.rawValue,
+                state: .active))
+        } catch {
+            rollbackProvisionalTask(taskID, key: key, record: record)
+            recordContinuityStoreFailure(operation: "task_progress")
+            return false
+        }
+        guard records[profileID]?.id == recordID,
+              record.sessionID == sessionID,
+              record.exitStatus == nil,
+              record.backgroundTaskWorkKeys[taskID] == key,
+              record.pendingBackgroundTaskMarkerIDs.remove(taskID) != nil
+        else {
+            await clearWork(key, operation: "stale_task_progress")
+            return false
+        }
         return true
     }
 
@@ -187,12 +232,14 @@ extension ACPAgentRunner {
         }
     }
 
-    private func discardProvisionalMarker(
+    private func rollbackProvisionalTask(
         _ taskID: AgentBackgroundTaskID,
         key: AgentInterruptedWorkKey,
         record: ACPAgentConnectionRecord
     ) {
         guard record.backgroundTaskWorkKeys[taskID] == key else { return }
+        record.activeBackgroundTaskIDs.remove(taskID)
+        record.stoppableBackgroundTaskIDs.remove(taskID)
         record.pendingBackgroundTaskMarkerIDs.remove(taskID)
         record.backgroundTaskWorkKeys.removeValue(forKey: taskID)
     }

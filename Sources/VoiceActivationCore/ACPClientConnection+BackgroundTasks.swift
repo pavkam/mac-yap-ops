@@ -4,6 +4,29 @@
 import Foundation
 
 extension ACPClientConnection {
+    func retireCancelledPromptPreservingSession() async -> Bool {
+        guard isPromptCancelling,
+              activeTurnToken != nil,
+              let requestID = activePromptRequestID,
+              var pending = pendingRequests[requestID]
+        else { return false }
+        promptResponseWasReceived = true
+        activeEventDelivery?.stopAdmission()
+        await cancelPendingPermissions()
+        retiredPromptRequestID = requestID
+        let result = PendingClientRequest.Result.success(.object([
+            "stopReason": .string(AgentStopReason.cancelled.rawValue),
+        ]))
+        if let continuation = pending.continuation {
+            pendingRequests.removeValue(forKey: requestID)
+            resume(continuation, with: result)
+        } else {
+            pending.bufferedResult = result
+            pendingRequests[requestID] = pending
+        }
+        return true
+    }
+
     func waitForInputCompletion() async {
         _ = await receiveTask?.result
     }

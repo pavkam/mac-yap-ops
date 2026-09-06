@@ -220,7 +220,7 @@ public actor ACPClientConnection {
     var sessionEventDelivery: AgentRunEventDelivery?
     var inFlightBackgroundTaskStops: Set<AgentBackgroundTaskID> = []
     var activeTurnToken: AgentTurnToken?
-    var activePromptRequestID: ACPRequestID?
+    var activePromptRequestID: ACPRequestID?, retiredPromptRequestID: ACPRequestID?
     var pendingMidTurnInputRequestCount = 0
     var promptFrameWasPublished = false
     var promptResponseWasReceived = false
@@ -329,8 +329,6 @@ public actor ACPClientConnection {
             publicationHooks: ACPClientPromptPublicationHooks(),
             onEvent: onEvent)
     }
-
-
     /// Offers opaque input to the exact active turn when negotiated steering is safe.
     ///
     /// Unsupported, cancelling, or idle connections retain no input and request a
@@ -449,7 +447,7 @@ public actor ACPClientConnection {
                 "has_session": String(sessionID != nil),
             ])
         try ensureOpen()
-        guard activeTurnToken == nil else {
+        guard activeTurnToken == nil, retiredPromptRequestID == nil else {
             throw ACPClientError.promptAlreadyActive
         }
         guard let sessionID, let agentName else {
@@ -671,6 +669,7 @@ public actor ACPClientConnection {
         inFlightBackgroundTaskStops.removeAll()
         activeTurnToken = nil
         activePromptRequestID = nil
+        retiredPromptRequestID = nil
         promptFrameWasPublished = false
         promptResponseWasReceived = false
         promptHadActivity = false

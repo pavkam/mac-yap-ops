@@ -603,6 +603,20 @@ public actor ACPAgentRunner: AgentHarnessRunning {
             return
         }
 
+        if let recordID = capturedRecordID,
+           let record = records[profileID],
+           record.id == recordID,
+           !record.activeBackgroundTaskIDs.isEmpty,
+           let connection = record.connection,
+           await connection.retireCancelledPromptPreservingSession()
+        {
+            diagnostics.record(
+                category: .agent,
+                event: "acp_runner.cancel_preserved_background_session",
+                fields: ["turn_id": token.uuidString])
+            return
+        }
+
         diagnostics.record(
             category: .agent,
             event: "acp_runner.cancel_forcing_eviction",

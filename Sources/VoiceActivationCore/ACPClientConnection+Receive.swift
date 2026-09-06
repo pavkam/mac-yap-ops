@@ -240,6 +240,16 @@ extension ACPClientConnection {
         id: ACPRequestID,
         result: PendingClientRequest.Result
     ) async throws {
+        if retiredPromptRequestID == id {
+            retiredPromptRequestID = nil
+            pendingRequestMethods.removeValue(forKey: id)
+            pendingRequestStartedAt.removeValue(forKey: id)
+            diagnostics.record(
+                category: .acp,
+                event: "acp_client.retired_prompt_response_ignored",
+                fields: ["connection_id": connectionID.uuidString])
+            return
+        }
         guard var pending = pendingRequests[id], pending.bufferedResult == nil else {
             diagnostics.record(
                 category: .acp,
