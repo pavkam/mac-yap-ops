@@ -7,6 +7,47 @@ import Testing
 
 @Suite(.serialized)
 struct ACPAgentRunnerContinuityFailureTests {
+    @Test func run_WhenInterruptedAcknowledgementFails_DoesNotConfirmConsumption()
+        async throws
+    {
+        let profileID = UUID()
+        let key = AgentInterruptedWorkKey(
+            profileID: profileID,
+            sessionID: "previous-session",
+            occurrenceID: UUID())
+        let marker = AgentInterruptedWorkMarker(
+            key: key,
+            state: .interruptedByProcessExit)
+        let store = RecordingAgentContinuityStore(
+            markers: [marker],
+            failures: [.acknowledge])
+        let acknowledgements = RunnerContinuityAcknowledgementRecorder()
+        let transport = FakeACPTransport()
+        let runner = makeRunner(transports: [transport], store: store)
+        let run = Task {
+            try await runner.run(
+                profileID: profileID,
+                configuration: try configuration(),
+                prompt: AgentPrompt(request: "continue", context: nil),
+                restorationNeed: .visibleHistory,
+                runContinuity: AgentRunContinuityRequest(
+                    previousTurnInterrupted: true,
+                    interruptedWork: [marker],
+                    onPublishedAcknowledgement: {
+                        await acknowledgements.record($0)
+                    }),
+                onEvent: { _ in })
+        }
+
+        try await establishNewSession(transport, sessionID: "new-session")
+        _ = await transport.nextSentMessage()
+        try await transport.feed(promptResponse(id: 3))
+        _ = try await run.value
+
+        #expect(await acknowledgements.snapshot().isEmpty)
+        #expect((await store.snapshot()).interruptedWork.contains(marker))
+    }
+
     @Test func run_WhenBookmarkReadFails_StartsFreshAndRecordsSafeDiagnostic() async throws {
         let store = RecordingAgentContinuityStore(failures: [.read])
         let diagnostics = RunnerDiagnosticRecorder()

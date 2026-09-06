@@ -69,10 +69,18 @@ struct VoiceActivationApp: App {
         }
 
         let preferences = AppPreferences()
+        let continuityStore = UserDefaultsAgentContinuityStore(
+            defaults: .standard,
+            diagnostics: diagnostics)
+        let agentRunner = ACPAgentRunner(
+            continuityStore: continuityStore,
+            diagnostics: diagnostics)
         let macContextSnapshotter = SystemMacContextSnapshotter()
         let macContextAccess = MacContextAccessController()
         let model = AppModel(
             preferences: preferences,
+            agentRunner: agentRunner,
+            continuityStore: continuityStore,
             agentSpeechCredentialStore: credentialStore,
             macContextAccess: macContextAccess,
             macContextCapturer: macContextSnapshotter,

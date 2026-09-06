@@ -37,6 +37,7 @@ extension AppModelTests {
         init(
             profiles: [WakeProfile]? = nil,
             agentRunner: any AgentHarnessRunning = AppModelAgentRunnerSpy(),
+            continuityStore: any AgentContinuityStoring = InMemoryAgentContinuityStore(),
             agentRunPanel: AppModelAgentPanelSpy = AppModelAgentPanelSpy(),
             agentConversationAudioPlayer: any AgentConversationAudioPlaying =
                 SilentAgentConversationAudioPlayer(),
@@ -49,6 +50,7 @@ extension AppModelTests {
             textToSpeechBackendRegistry: TextToSpeechBackendRegistry? = nil,
             macContextAccess: MacContextAccessSpy = MacContextAccessSpy(),
             macContextCapturer: MacContextCapturerSpy = MacContextCapturerSpy(),
+            permissionRequest: @escaping @MainActor () async -> Bool = { true },
             isExecutableFile: @escaping @MainActor (String) -> Bool = { path in
                 FileManager.default.isExecutableFile(atPath: path)
             },
@@ -56,7 +58,9 @@ extension AppModelTests {
                 var isDirectory: ObjCBool = false
                 return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
                     && isDirectory.boolValue
-            }
+            },
+            diagnostics: any VoiceActivationDiagnosticRecording =
+                VoiceActivationDiagnostics.shared
         ) throws {
             let suite = "VoiceActivationAppModelTests.\(UUID().uuidString)"
             let defaults = try #require(UserDefaults(suiteName: suite))
@@ -75,7 +79,8 @@ extension AppModelTests {
                 shortcut: shortcut,
                 speechSession: speech,
                 agentRunner: agentRunner,
-                permissionRequest: { true },
+                continuityStore: continuityStore,
+                permissionRequest: permissionRequest,
                 soundPlayer: SilentCaptureSoundPlayer(),
                 agentConversationAudioPlayer: agentConversationAudioPlayer,
                 agentSpeechCredentialStore: agentSpeechCredentialStore,
@@ -86,7 +91,8 @@ extension AppModelTests {
                 macContextCapturer: macContextCapturer,
                 isExecutableFile: isExecutableFile,
                 isDirectory: isDirectory,
-                startsAutomatically: false)
+                startsAutomatically: false,
+                diagnostics: diagnostics)
         }
     }
 
@@ -111,6 +117,108 @@ extension AppModelTests {
             accent: .purple,
             pushToTalkHotKey: pushToTalkHotKey)
     }
+}
+
+actor AppModelContinuityStoreSpy: AgentContinuityStoring {
+    enum Call: Equatable, Sendable {
+        case bookmark(UUID)
+        case save(UUID)
+        case remove(Set<UUID>)
+        case mark(AgentInterruptedWorkKey)
+        case clear(AgentInterruptedWorkKey)
+        case reconcile
+        case acknowledge(Set<AgentInterruptedWorkKey>)
+    }
+
+    enum Failure: Error {
+        case reconciliation
+        case removal
+    }
+
+    private var envelope: AgentContinuityEnvelope
+    private var calls: [Call] = []
+    private var reconcileContinuation: CheckedContinuation<Void, Never>?
+    private var reconcileWaiters: [CheckedContinuation<Void, Never>] = []
+    private var delaysReconciliation = false
+    private var failsReconciliation = false
+    private var failsRemoval = false
+    private var reconciledOverride: [AgentInterruptedWorkMarker]?
+
+    init(
+        bookmarks: [AgentSessionBookmark] = [],
+        markers: [AgentInterruptedWorkMarker] = [],
+        reconciledOverride: [AgentInterruptedWorkMarker]? = nil
+    ) {
+        envelope = AgentContinuityEnvelope(
+            schemaVersion: AgentContinuityStorePolicy.schemaVersion,
+            bookmarks: bookmarks,
+            interruptedWork: markers)
+        self.reconciledOverride = reconciledOverride
+    }
+
+    func bookmark(for profileID: UUID) async throws -> AgentSessionBookmark? {
+        calls.append(.bookmark(profileID))
+        return try AgentContinuityStorePolicy.bookmark(for: profileID, in: &envelope)
+    }
+
+    func save(bookmark: AgentSessionBookmark) async throws {
+        calls.append(.save(bookmark.profileID))
+        try AgentContinuityStorePolicy.save(bookmark, in: &envelope)
+    }
+
+    func remove(profileIDs: Set<UUID>) async throws {
+        calls.append(.remove(profileIDs))
+        if failsRemoval { throw Failure.removal }
+        try AgentContinuityStorePolicy.remove(profileIDs: profileIDs, in: &envelope)
+    }
+
+    func markWorkActive(_ marker: AgentInterruptedWorkMarker) async throws {
+        calls.append(.mark(marker.key))
+        try AgentContinuityStorePolicy.markWorkActive(marker, in: &envelope)
+    }
+
+    func clearWork(_ key: AgentInterruptedWorkKey) async throws {
+        calls.append(.clear(key))
+        try AgentContinuityStorePolicy.clearWork(key, in: &envelope)
+    }
+
+    func reconcileInterruptedWork() async throws -> [AgentInterruptedWorkMarker] {
+        calls.append(.reconcile)
+        if delaysReconciliation {
+            await withCheckedContinuation { continuation in
+                reconcileContinuation = continuation
+                let waiters = reconcileWaiters
+                reconcileWaiters.removeAll()
+                waiters.forEach { $0.resume() }
+            }
+        }
+        if failsReconciliation { throw Failure.reconciliation }
+        if let reconciledOverride { return reconciledOverride }
+        return try AgentContinuityStorePolicy.reconcileInterruptedWork(in: &envelope)
+    }
+
+    func acknowledgeInterruptedWork(_ keys: Set<AgentInterruptedWorkKey>) async throws {
+        calls.append(.acknowledge(keys))
+        try AgentContinuityStorePolicy.acknowledgeInterruptedWork(keys, in: &envelope)
+    }
+
+    func delayReconciliation() { delaysReconciliation = true }
+    func failReconciliation() { failsReconciliation = true }
+    func failRemoval() { failsRemoval = true }
+
+    func waitUntilReconciling() async {
+        guard reconcileContinuation == nil else { return }
+        await withCheckedContinuation { reconcileWaiters.append($0) }
+    }
+
+    func releaseReconciliation() {
+        delaysReconciliation = false
+        reconcileContinuation?.resume()
+        reconcileContinuation = nil
+    }
+
+    func recordedCalls() -> [Call] { calls }
+    func snapshot() -> AgentContinuityEnvelope { envelope }
 }
 
 @MainActor

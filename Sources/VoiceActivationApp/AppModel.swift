@@ -85,6 +85,8 @@ final class AppModel {
     var isSavingSettings = false
     /// The latest immutable conversation snapshot shared by menu and panel presenters.
     var agentRunSnapshot: AgentRunSnapshot?
+    /// Bounded identifier-only work proven interrupted during launch reconciliation.
+    var interruptedAgentWork: [AgentInterruptedWorkMarker] = []
 
     /// The compact status derived from runtime state rather than independently persisted flags.
     var statusPresentation: MenuStatusPresentation {
@@ -99,6 +101,7 @@ final class AppModel {
     @ObservationIgnored let speechSession: any SpeechSessionProtocol
     @ObservationIgnored let commandRunner: any CommandRunning
     @ObservationIgnored let agentRunner: any AgentHarnessRunning
+    @ObservationIgnored let continuityStore: any AgentContinuityStoring
     @ObservationIgnored let isExecutableFile: @MainActor (String) -> Bool
     @ObservationIgnored let isDirectory: @MainActor (String) -> Bool
     @ObservationIgnored let permissionRequest: @MainActor () async -> Bool
@@ -128,10 +131,15 @@ final class AppModel {
     @ObservationIgnored var recordingShortcut = false
     @ObservationIgnored var activeProfile: WakeProfile?
     @ObservationIgnored var pendingAgentHandoff: RecordingOverlayHandoff?
+    @ObservationIgnored var pendingInterruptedAgentWork:
+        [UUID: [AgentInterruptedWorkMarker]] = [:]
     @ObservationIgnored lazy var coordinator = VoiceActivationCoordinator(
         speechSession: speechSession,
         commandRunner: commandRunner,
         agentRunner: agentRunner,
+        agentRunContinuity: { [weak self] profileID in
+            self?.agentRunContinuityRequest(for: profileID) ?? AgentRunContinuityRequest()
+        },
         contextCapturer: macContextCapturer,
         configuration: { [weak self] in
             guard let self else { throw ModelError.unavailable }
@@ -152,6 +160,7 @@ final class AppModel {
         speechSession: any SpeechSessionProtocol = AppleSpeechSession(),
         commandRunner: any CommandRunning = CommandRunner(),
         agentRunner: any AgentHarnessRunning = ACPAgentRunner(),
+        continuityStore: any AgentContinuityStoring = InMemoryAgentContinuityStore(),
         permissionRequest: @escaping @MainActor () async -> Bool = SpeechPermissions.request,
         soundPlayer: any CaptureSoundPlaying = SystemCaptureSoundPlayer(),
         agentConversationAudioPlayer: (any AgentConversationAudioPlaying)? = nil,
@@ -192,6 +201,7 @@ final class AppModel {
         self.speechSession = speechSession
         self.commandRunner = commandRunner
         self.agentRunner = agentRunner
+        self.continuityStore = continuityStore
         self.isExecutableFile = isExecutableFile
         self.isDirectory = isDirectory
         self.permissionRequest = permissionRequest
@@ -482,6 +492,38 @@ final class AppModel {
         let profileIDsToReset = agentProfileIDsToReset(
             oldProfiles: activeWakeProfiles,
             newProfiles: profiles)
+        let savedDrafts = wakeProfiles
+        let savedActiveProfiles = activeWakeProfiles
+        let savedLocaleID = localeID
+        let savedReadsAgentRepliesAloud = readsAgentRepliesAloud
+        let savedPlaysAgentWorkingSound = playsAgentWorkingSound
+        let savedCapturesMacContext = capturesMacContext
+        let savedDefaultSpeechVoice = defaultSpeechVoice
+        let savedElevenLabsVoiceID = elevenLabsVoiceID
+        if !profileIDsToReset.isEmpty {
+            await agentRunner.reset(profileIDs: profileIDsToReset)
+            discardInterruptedAgentWork(profileIDs: profileIDsToReset)
+        }
+        guard !Task.isCancelled,
+            !isShutdown,
+            wakeProfiles == savedDrafts,
+            activeWakeProfiles == savedActiveProfiles,
+            localeID == savedLocaleID,
+            readsAgentRepliesAloud == savedReadsAgentRepliesAloud,
+            playsAgentWorkingSound == savedPlaysAgentWorkingSound,
+            capturesMacContext == savedCapturesMacContext,
+            defaultSpeechVoice == savedDefaultSpeechVoice,
+            elevenLabsVoiceID == savedElevenLabsVoiceID
+        else {
+            try? registerShortcuts(activeWakeProfiles)
+            settingsError = "Settings changed while saving. Review them and save again."
+            diagnostics.record(
+                category: .settings,
+                event: "settings.save_failed",
+                level: .warning,
+                fields: ["stage": "stale_after_agent_reset"])
+            return false
+        }
         preferences.wakeProfiles = profiles
         preferences.localeID = localeID
         preferences.readsAgentRepliesAloud = readsAgentRepliesAloud
@@ -499,9 +541,6 @@ final class AppModel {
         activeWakeProfiles = profiles
         wakeProfiles = activeWakeProfiles.map(WakeProfileDraft.init)
         localeID = preferences.localeID
-        if !profileIDsToReset.isEmpty {
-            await agentRunner.reset(profileIDs: profileIDsToReset)
-        }
         preferences.capturesMacContext = capturesMacContext
         macContextCapturer.setEnabled(capturesMacContext)
         settingsError = nil

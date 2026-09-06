@@ -119,6 +119,7 @@ public final class VoiceActivationCoordinator {
     let speechSession: any SpeechSessionProtocol
     let commandRunner: any CommandRunning
     let agentRunner: any AgentHarnessRunning
+    let agentRunContinuity: @MainActor @Sendable (UUID) -> AgentRunContinuityRequest
     let macContextCapturer: any MacContextCapturing
     let configuration: () throws -> ActivationConfiguration
     let timing: ActivationTiming
@@ -177,6 +178,7 @@ public final class VoiceActivationCoordinator {
     ///   - speechSession: Owns the current microphone recognition session.
     ///   - commandRunner: Executes direct-command profiles.
     ///   - agentRunner: Runs and caches ACP agent sessions.
+    ///   - agentRunContinuity: Supplies exact consume-on-publication markers by profile.
     ///   - contextCapturer: Freezes bounded native context for admitted ACP turns.
     ///   - configuration: Supplies a fresh immutable settings snapshot when needed.
     ///   - diagnostics: Records privacy-safe lifecycle metadata.
@@ -184,6 +186,8 @@ public final class VoiceActivationCoordinator {
         speechSession: any SpeechSessionProtocol,
         commandRunner: any CommandRunning,
         agentRunner: any AgentHarnessRunning = ACPAgentRunner(),
+        agentRunContinuity: @escaping @MainActor @Sendable (UUID) ->
+            AgentRunContinuityRequest = { _ in AgentRunContinuityRequest() },
         contextCapturer: any MacContextCapturing = EmptyMacContextCapturer(),
         configuration: @escaping () throws -> ActivationConfiguration,
         diagnostics: any VoiceActivationDiagnosticRecording = VoiceActivationDiagnostics.shared
@@ -192,6 +196,7 @@ public final class VoiceActivationCoordinator {
             speechSession: speechSession,
             commandRunner: commandRunner,
             agentRunner: agentRunner,
+            agentRunContinuity: agentRunContinuity,
             contextCapturer: contextCapturer,
             configuration: configuration,
             timing: .standard,
@@ -202,6 +207,8 @@ public final class VoiceActivationCoordinator {
         speechSession: any SpeechSessionProtocol,
         commandRunner: any CommandRunning,
         agentRunner: any AgentHarnessRunning = ACPAgentRunner(),
+        agentRunContinuity: @escaping @MainActor @Sendable (UUID) ->
+            AgentRunContinuityRequest = { _ in AgentRunContinuityRequest() },
         contextCapturer: any MacContextCapturing = EmptyMacContextCapturer(),
         configuration: @escaping () throws -> ActivationConfiguration,
         timing: ActivationTiming,
@@ -210,6 +217,7 @@ public final class VoiceActivationCoordinator {
         self.speechSession = speechSession
         self.commandRunner = commandRunner
         self.agentRunner = agentRunner
+        self.agentRunContinuity = agentRunContinuity
         self.macContextCapturer = contextCapturer
         self.configuration = configuration
         self.timing = timing

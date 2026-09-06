@@ -86,6 +86,18 @@ extension AppModel {
         }
         started = true
         diagnostics.record(category: .app, event: "app_model.start_started")
+        do {
+            let interrupted = try await continuityStore.reconcileInterruptedWork()
+            guard !isShutdown else { return }
+            publishInterruptedAgentWork(interrupted)
+        } catch {
+            diagnostics.record(
+                category: .app,
+                event: "continuity_store.read_failed",
+                level: .error,
+                fields: ["failure_category": "launch_reconcile"])
+        }
+        guard !isShutdown else { return }
         refreshMacContextAccessStatus()
         startCredentialLoad()
         coordinator.onStateChange = { [weak self] in
@@ -162,6 +174,56 @@ extension AppModel {
             category: .app,
             event: "app_model.start_finished",
             fields: ["passive_listening_started": "true"])
+    }
+
+    /// Replaces launch interruption state with a deterministic bounded snapshot.
+    func publishInterruptedAgentWork(_ markers: [AgentInterruptedWorkMarker]) {
+        let bounded = Array(markers.lazy.filter {
+            $0.state == .interruptedByProcessExit
+        }.prefix(AgentContinuityStorePolicy.maximumRecords))
+        interruptedAgentWork = bounded
+        pendingInterruptedAgentWork = Dictionary(grouping: bounded.lazy.filter {
+            $0.providerTaskID == nil
+        }, by: { $0.key.profileID })
+    }
+
+    /// Supplies exact ordinary interruption markers for the selected profile.
+    func agentRunContinuityRequest(for profileID: UUID) -> AgentRunContinuityRequest {
+        let markers = pendingInterruptedAgentWork[profileID] ?? []
+        return AgentRunContinuityRequest(
+            previousTurnInterrupted: !markers.isEmpty,
+            interruptedWork: markers,
+            onPublishedAcknowledgement: { [weak self] acknowledgedKeys in
+                await self?.consumeInterruptedAgentWork(
+                    acknowledgedKeys,
+                    profileID: profileID)
+            })
+    }
+
+    private func consumeInterruptedAgentWork(
+        _ acknowledgedKeys: Set<AgentInterruptedWorkKey>,
+        profileID: UUID
+    ) {
+        let exactKeys = Set(acknowledgedKeys.filter { $0.profileID == profileID })
+        guard !exactKeys.isEmpty,
+            let pending = pendingInterruptedAgentWork[profileID]
+        else { return }
+        let retained = pending.filter { !exactKeys.contains($0.key) }
+        if retained.isEmpty {
+            pendingInterruptedAgentWork.removeValue(forKey: profileID)
+        } else {
+            pendingInterruptedAgentWork[profileID] = retained
+        }
+        interruptedAgentWork.removeAll {
+            $0.providerTaskID == nil && exactKeys.contains($0.key)
+        }
+    }
+
+    func discardInterruptedAgentWork(profileIDs: Set<UUID>) {
+        for profileID in profileIDs {
+            pendingInterruptedAgentWork.removeValue(forKey: profileID)
+        }
+        interruptedAgentWork.removeAll { profileIDs.contains($0.key.profileID) }
     }
 
     /// Loads the Keychain credential off the launch path and publishes it when available.
@@ -300,7 +362,11 @@ extension AppModel {
                 case .command:
                     return oldProfile.id
                 case .agent(let newConfiguration):
-                    return oldConfiguration == newConfiguration ? nil : oldProfile.id
+                    let oldFingerprint = AgentProviderFingerprint.make(
+                        configuration: oldConfiguration)
+                    let newFingerprint = AgentProviderFingerprint.make(
+                        configuration: newConfiguration)
+                    return oldFingerprint == newFingerprint ? nil : oldProfile.id
                 }
             })
     }

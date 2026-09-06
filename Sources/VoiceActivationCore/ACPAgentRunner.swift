@@ -370,11 +370,12 @@ public actor ACPAgentRunner: AgentHarnessRunning {
                     },
                     afterPublication: { [weak self] in
                         publicationState.markFramePublished()
-                        await self?.confirmPromptPublication(
+                        let acknowledged = await self?.confirmPromptPublication(
                             turnToken: token,
                             profileID: profileID,
                             recordID: recordID,
-                            acknowledgementKeys: runContinuity.ordinaryInterruptedWorkKeys)
+                            acknowledgementKeys: runContinuity.ordinaryInterruptedWorkKeys) ?? []
+                        await runContinuity.confirmPublishedAcknowledgement(acknowledged)
                     })
 
                 let result: AgentRunResult
