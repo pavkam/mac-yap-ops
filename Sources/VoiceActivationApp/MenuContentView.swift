@@ -33,7 +33,7 @@ struct MenuContentView: View {
         .frame(width: 356)
         .background(panelBackground)
         .background {
-            MenuWindowShadowRefreshView(layoutIdentity: layoutIdentity)
+            MenuWindowConfigurationView(layoutIdentity: layoutIdentity)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
         }

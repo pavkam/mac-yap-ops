@@ -32,9 +32,9 @@ It does not import SwiftUI or AppKit.
 Carbon shortcuts, Service Management, Keychain, ElevenLabs, JSONL diagnostics,
 SwiftUI views, and non-activating AppKit panels.
 
-`MenuContentView` tracks structural layout changes and refreshes the AppKit
-shadow of its window-style `MenuBarExtra` after the host resizes. Text-only
-updates do not trigger that bridge.
+`MenuContentView` owns its material and border, so its AppKit bridge disables
+the duplicate system window shadow when the window-style `MenuBarExtra` mounts
+and after structural resizing. Text-only updates do not trigger that bridge.
 
 Stateful owners use same-module extensions to split implementation by
 responsibility without adding forwarding objects. The coordinator separates

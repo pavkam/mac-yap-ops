@@ -15,21 +15,11 @@ private final class MenuOverlayStub: RecordingOverlayDisplaying {
     func hide() {}
 }
 
-@MainActor
-private final class MenuShadowTrackingWindow: NSWindow {
-    private(set) var shadowInvalidationCount = 0
-
-    override func invalidateShadow() {
-        shadowInvalidationCount += 1
-        super.invalidateShadow()
-    }
-}
-
 struct MenuContentViewTests {
     private static let childEnvironmentKey =
         "VOICE_ACTIVATION_MENU_SHADOW_TEST_CHILD"
     private static let testFilter =
-        "render_WhenConversationControlsCollapse_InvalidatesHostWindowShadow"
+        "render_WhenConversationControlsCollapse_LeavesNoSystemWindowShadow"
 
     @MainActor @Test func status_WhenListeningIsRequestedBeforeCoordinatorStarts_ShowsStarting() throws {
         let model = try model(profileCount: 2)
@@ -84,7 +74,7 @@ struct MenuContentViewTests {
     }
 
     @MainActor @Test
-    func render_WhenConversationControlsCollapse_InvalidatesHostWindowShadow() async throws {
+    func render_WhenConversationControlsCollapse_LeavesNoSystemWindowShadow() async throws {
         guard ProcessInfo.processInfo.environment[Self.childEnvironmentKey] == "1" else {
             try IsolatedAppKitTestProcess.run(
                 environmentKey: Self.childEnvironmentKey,
@@ -102,12 +92,13 @@ struct MenuContentViewTests {
                 runID: runID,
                 result: AgentRunResult(stopReason: .endTurn)))
         let hostingView = NSHostingView(rootView: MenuContentView(model: model))
-        let window = MenuShadowTrackingWindow(
+        let window = NSWindow(
             contentRect: NSRect(origin: .zero, size: hostingView.fittingSize),
             styleMask: [.borderless],
             backing: .buffered,
             defer: false)
         window.animationBehavior = .none
+        window.hasShadow = true
         window.contentView = hostingView
         window.setFrameOrigin(NSPoint(x: -10_000, y: -10_000))
         window.orderFrontRegardless()
@@ -118,14 +109,15 @@ struct MenuContentViewTests {
         }
         hostingView.layoutSubtreeIfNeeded()
         try await Task.sleep(for: .milliseconds(20))
-        let invalidationsBeforeDeletion = window.shadowInvalidationCount
+        #expect(window.hasShadow == false)
 
+        window.hasShadow = true
         model.deleteAgentRun()
         hostingView.layoutSubtreeIfNeeded()
         try await Task.sleep(for: .milliseconds(20))
 
         #expect(model.agentRunSnapshot == nil)
-        #expect(window.shadowInvalidationCount > invalidationsBeforeDeletion)
+        #expect(window.hasShadow == false)
     }
 
     @MainActor private func model(profileCount: Int) throws -> AppModel {

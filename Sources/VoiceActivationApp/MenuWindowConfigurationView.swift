@@ -17,44 +17,51 @@ struct MenuContentLayoutIdentity: Equatable {
     }
 }
 
-struct MenuWindowShadowRefreshView: NSViewRepresentable {
+struct MenuWindowConfigurationView: NSViewRepresentable {
     let layoutIdentity: MenuContentLayoutIdentity
 
-    func makeNSView(context: Context) -> MenuWindowShadowRefreshNSView {
-        let view = MenuWindowShadowRefreshNSView()
+    func makeNSView(context: Context) -> MenuWindowConfigurationNSView {
+        let view = MenuWindowConfigurationNSView()
         view.update(layoutIdentity: layoutIdentity)
         return view
     }
 
-    func updateNSView(_ nsView: MenuWindowShadowRefreshNSView, context: Context) {
+    func updateNSView(_ nsView: MenuWindowConfigurationNSView, context: Context) {
         nsView.update(layoutIdentity: layoutIdentity)
     }
 }
 
 @MainActor
-final class MenuWindowShadowRefreshNSView: NSView {
+final class MenuWindowConfigurationNSView: NSView {
     private var layoutIdentity: MenuContentLayoutIdentity?
-    private var refreshTask: Task<Void, Never>?
+    private var configurationTask: Task<Void, Never>?
 
     func update(layoutIdentity: MenuContentLayoutIdentity) {
         guard self.layoutIdentity != layoutIdentity else { return }
         self.layoutIdentity = layoutIdentity
-        scheduleRefresh()
+        configureWindow()
+        scheduleConfiguration()
     }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         guard window != nil else { return }
-        scheduleRefresh()
+        configureWindow()
+        scheduleConfiguration()
     }
 
-    private func scheduleRefresh() {
-        refreshTask?.cancel()
-        refreshTask = Task { @MainActor [weak self] in
+    private func scheduleConfiguration() {
+        configurationTask?.cancel()
+        configurationTask = Task { @MainActor [weak self] in
             await Task.yield()
             guard let self, !Task.isCancelled else { return }
-            window?.invalidateShadow()
-            refreshTask = nil
+            configureWindow()
+            configurationTask = nil
         }
+    }
+
+    private func configureWindow() {
+        guard let window, window.hasShadow else { return }
+        window.hasShadow = false
     }
 }
