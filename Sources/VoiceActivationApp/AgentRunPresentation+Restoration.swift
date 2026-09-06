@@ -140,14 +140,12 @@ extension AgentRunPresentation {
             ignoredToolUpdateCount,
             stage.ignoredToolUpdateCount)
 
-        let liveTimelineHadOmissions = timelineHasOmittedActivity
         timeline = mergedTimeline(
             historical: stage.timeline,
             historicalHasOmissions: stage.timelineHasOmittedActivity,
-            includesHistoryBoundary: stage.hasVisibleHistory)
+            includesHistoryBoundary: stage.hasVisibleHistory,
+            replacesExistingHistory: true)
         timelineHasOmittedActivity = timeline.contains(.omitted)
-            || stage.timelineHasOmittedActivity
-            || liveTimelineHadOmissions
         if liveOutputWasEmpty {
             needsResponseSeparator = !stage.outputBuffer.value.isEmpty
         }
@@ -185,7 +183,8 @@ extension AgentRunPresentation {
         return mergedTimeline(
             historical: stage.timeline,
             historicalHasOmissions: stage.timelineHasOmittedActivity,
-            includesHistoryBoundary: false)
+            includesHistoryBoundary: false,
+            replacesExistingHistory: false)
     }
 
     var sourceQualifiedNotices: [String] {
@@ -257,7 +256,8 @@ extension AgentRunPresentation {
     private func mergedTimeline(
         historical: [AgentRunTimelineItem],
         historicalHasOmissions: Bool,
-        includesHistoryBoundary: Bool
+        includesHistoryBoundary: Bool,
+        replacesExistingHistory: Bool
     ) -> [AgentRunTimelineItem] {
         let isSentinel: (AgentRunTimelineItem) -> Bool = { item in
             switch item {
@@ -269,28 +269,33 @@ extension AgentRunPresentation {
         }
         let existingBoundaryIndex = timeline.lastIndex(of: .historyBoundary)
         let priorHistory: [AgentRunTimelineItem]
+        let retainedLiveSlice: ArraySlice<AgentRunTimelineItem>
         let live: [AgentRunTimelineItem]
         if let existingBoundaryIndex {
-            priorHistory = timeline[..<existingBoundaryIndex].filter { !isSentinel($0) }
+            priorHistory = replacesExistingHistory
+                ? []
+                : timeline[..<existingBoundaryIndex].filter { !isSentinel($0) }
             let liveStartIndex = timeline.index(after: existingBoundaryIndex)
-            live = timeline[liveStartIndex...].filter { !isSentinel($0) }
+            retainedLiveSlice = timeline[liveStartIndex...]
+            live = retainedLiveSlice.filter { !isSentinel($0) }
         } else {
             priorHistory = []
-            live = timeline.filter { !isSentinel($0) }
+            retainedLiveSlice = timeline[...]
+            live = retainedLiveSlice.filter { !isSentinel($0) }
         }
 
         var result = historical.filter { !isSentinel($0) } + priorHistory
         if includesHistoryBoundary
             || historical.contains(.historyBoundary)
-            || existingBoundaryIndex != nil
+            || (existingBoundaryIndex != nil && !replacesExistingHistory)
         {
             result.append(.historyBoundary)
         }
         result.append(contentsOf: live)
         var hasOmissions = historicalHasOmissions
-            || timelineHasOmittedActivity
             || historical.contains(.omitted)
-            || timeline.contains(.omitted)
+            || retainedLiveSlice.contains(.omitted)
+            || (existingBoundaryIndex == nil && timelineHasOmittedActivity)
         enforceAgentRunTimelineBounds(
             &result,
             hasOmittedActivity: &hasOmissions,

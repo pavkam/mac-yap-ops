@@ -56,7 +56,7 @@ struct AgentRunPresentationRestorationSentinelTests {
     }
 
     @MainActor @Test
-    func historyCompletion_WhenLoadedTwice_PreservesOneCorrectlyPlacedBoundary()
+    func historyCompletion_WhenLoadedTwice_ReplacesPriorAuthoritativeHistory()
         throws
     {
         let presentation = AgentRunPresentation(startsElapsedTimer: false)
@@ -67,32 +67,63 @@ struct AgentRunPresentationRestorationSentinelTests {
             prompt: "Current request")
         presentation.receive(
             runID: runID,
-            event: .agentMessageDelta(messageID: "live", text: "Live"))
-
-        for (token, messageID, text) in [
-            (AgentRestorationToken(), "history-1", "History one"),
-            (AgentRestorationToken(), "history-2", "History two"),
-        ] {
-            presentation.beginHistoryRestoration(
-                runID: runID,
-                token: token,
-                sessionID: "saved-session")
-            presentation.receiveRestored(
-                runID: runID,
-                token: token,
-                event: .userMessageDelta(messageID: messageID, text: text))
-            presentation.completeHistoryRestoration(
-                runID: runID,
-                token: token,
-                activation: .loaded(sessionID: "saved-session"))
+            event: .agentMessageDelta(messageID: "live-1", text: "Live one"))
+        presentation.receive(
+            runID: runID,
+            event: .agentMessageDelta(messageID: "live-2", text: "Live two"))
+        let livePresentationIDs = try #require(presentation.snapshot).timeline.compactMap {
+            item -> UUID? in
+            guard case .message(let message) = item else { return nil }
+            return message.id
         }
 
+        let firstToken = AgentRestorationToken()
+        presentation.beginHistoryRestoration(
+            runID: runID,
+            token: firstToken,
+            sessionID: "saved-session")
+        for index in 0...AgentRunPresentation.maximumTimelineItems {
+            presentation.receiveRestored(
+                runID: runID,
+                token: firstToken,
+                event: .userMessageDelta(
+                    messageID: "history-1-\(index)",
+                    text: "History one \(index)"))
+        }
+        presentation.completeHistoryRestoration(
+            runID: runID,
+            token: firstToken,
+            activation: .loaded(sessionID: "saved-session"))
+        #expect(presentation.snapshot?.timeline.first == .omitted)
+
+        let secondToken = AgentRestorationToken()
+        presentation.beginHistoryRestoration(
+            runID: runID,
+            token: secondToken,
+            sessionID: "saved-session")
+        presentation.receiveRestored(
+            runID: runID,
+            token: secondToken,
+            event: .userMessageDelta(messageID: "history-2", text: "History two"))
+        presentation.completeHistoryRestoration(
+            runID: runID,
+            token: secondToken,
+            activation: .loaded(sessionID: "saved-session"))
+
         let snapshot = try #require(presentation.snapshot)
-        #expect(snapshot.timeline.map(timelineLabel) == [
-            "History two", "History one", "boundary", "Live",
+        let labels = snapshot.timeline.map(timelineLabel)
+        #expect(labels.count == 4)
+        #expect(labels.contains { $0.hasPrefix("History one") } == false)
+        #expect(Array(labels.prefix(4)) == [
+            "History two", "boundary", "Live one", "Live two",
         ])
+        #expect(snapshot.timeline.filter { $0 == .omitted }.isEmpty)
         #expect(snapshot.timeline.filter { $0 == .historyBoundary }.count == 1)
         #expect(Set(snapshot.timeline.map(\.id)).count == snapshot.timeline.count)
+        #expect(snapshot.timeline.compactMap { item -> UUID? in
+            guard case .message(let message) = item else { return nil }
+            return message.id
+        } == livePresentationIDs)
     }
 
     @MainActor
