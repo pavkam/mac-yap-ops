@@ -152,6 +152,7 @@ actor ControlledAgentRunner: AgentHarnessRunning {
     private var completions: [CheckedContinuation<AgentRunResult, any Error>?] = []
     private var activeRunIndex: Int?
     private var delaysCancellation = false
+    private var completesImmediately = false
     private var cancellationWaiters: [CheckedContinuation<Void, Never>] = []
 
     func run(
@@ -172,6 +173,10 @@ actor ControlledAgentRunner: AgentHarnessRunning {
             prompt: prompt))
         eventHandlers.append(onEvent)
         activeRunIndex = runIndex
+        if completesImmediately {
+            activeRunIndex = nil
+            return AgentRunResult(stopReason: .endTurn)
+        }
         return try await withCheckedThrowingContinuation { continuation in
             completions.append(continuation)
         }
@@ -219,6 +224,10 @@ actor ControlledAgentRunner: AgentHarnessRunning {
 
     func delayCancellation() {
         delaysCancellation = true
+    }
+
+    func completeRunsImmediately() {
+        completesImmediately = true
     }
 
     func releaseCancellation() {
@@ -281,6 +290,7 @@ final class ControlledMacContextCapturer: MacContextCapturing {
     var nextSnapshot: MacContextSnapshot?
     var suspendsCaptures = false
     var resolvesCancellation = true
+    var onCaptureCancellation: (@Sendable (Int) -> Void)?
     private(set) var currentTargetCallCount = 0
     private(set) var capturedTargets: [MacContextTarget] = []
     private(set) var cancelledCaptureIndices: [Int] = []
@@ -302,6 +312,7 @@ final class ControlledMacContextCapturer: MacContextCapturing {
         let frozenSnapshot = nextSnapshot ?? makeMacContextSnapshot(
             target: target,
             state: .targetUnavailable)
+        let onCaptureCancellation = onCaptureCancellation
         guard suspendsCaptures else { return frozenSnapshot }
 
         return await withTaskCancellationHandler {
@@ -311,6 +322,7 @@ final class ControlledMacContextCapturer: MacContextCapturing {
                     continuation: continuation)
             }
         } onCancel: {
+            onCaptureCancellation?(captureIndex)
             Task { @MainActor [weak self] in
                 self?.cancelCapture(at: captureIndex)
             }
@@ -326,6 +338,69 @@ final class ControlledMacContextCapturer: MacContextCapturing {
         cancelledCaptureIndices.append(index)
         guard resolvesCancellation else { return }
         completeCapture(at: index)
+    }
+}
+
+final class AgentAdmissionDiagnosticGate: VoiceActivationDiagnosticRecording,
+    @unchecked Sendable
+{
+    private let condition = NSCondition()
+    private var blocked = false
+    private var released = false
+
+    func record(
+        category: VoiceActivationDiagnosticCategory,
+        event: String,
+        level: VoiceActivationDiagnosticLevel,
+        fields: [String: String]
+    ) {
+        guard event == "coordinator.agent_execution_task_ready" else { return }
+        condition.lock()
+        blocked = true
+        condition.broadcast()
+        while !released {
+            condition.wait()
+        }
+        condition.unlock()
+    }
+
+    func flush() {}
+
+    func isBlocked() -> Bool {
+        condition.lock()
+        defer { condition.unlock() }
+        return blocked
+    }
+
+    func release() {
+        condition.lock()
+        released = true
+        condition.broadcast()
+        condition.unlock()
+    }
+}
+
+final class ContextCancellationOwnershipProbe: @unchecked Sendable {
+    struct Observation: Equatable {
+        let captureIndex: Int
+        let hasActiveInput: Bool
+        let pendingInputCount: Int
+        let executionGeneration: Int
+    }
+
+    private let lock = NSLock()
+    private var values: [Observation] = []
+
+    func append(_ observation: Observation) {
+        lock.lock()
+        values.append(observation)
+        lock.unlock()
+    }
+
+    func observations() -> [Observation] {
+        lock.lock()
+        defer { lock.unlock() }
+        return values
     }
 }
 

@@ -3,10 +3,58 @@
 
 import Foundation
 
+final class PendingAgentInputAdmission: @unchecked Sendable {
+    // The lock lets detached runner startup validate the MainActor-owned lease
+    // without hopping back to an actor that synchronous speech startup may occupy.
+    private let lock = NSLock()
+    private let inputID: UUID
+    private var runID: UUID?
+    private var generation: Int?
+
+    init(inputID: UUID) {
+        self.inputID = inputID
+    }
+
+    func activate(runID: UUID, generation: Int) {
+        lock.lock()
+        self.runID = runID
+        self.generation = generation
+        lock.unlock()
+    }
+
+    func invalidate() {
+        lock.lock()
+        runID = nil
+        generation = nil
+        lock.unlock()
+    }
+
+    func matches(inputID: UUID, runID: UUID, generation: Int) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return self.inputID == inputID
+            && self.runID == runID
+            && self.generation == generation
+    }
+}
+
 struct PendingAgentInput: Sendable {
     let id: UUID
     let text: String
     let contextCapture: Task<MacContextSnapshot?, Never>?
+    let admission: PendingAgentInputAdmission
+
+    func activateAdmission(runID: UUID, generation: Int) {
+        admission.activate(runID: runID, generation: generation)
+    }
+
+    func invalidateAdmission() {
+        admission.invalidate()
+    }
+
+    func isAdmitted(runID: UUID, generation: Int) -> Bool {
+        admission.matches(inputID: id, runID: runID, generation: generation)
+    }
 
     func cancelContextCapture() {
         contextCapture?.cancel()
@@ -15,6 +63,7 @@ struct PendingAgentInput: Sendable {
 
 extension VoiceActivationCoordinator {
     func makePendingAgentInput(text: String) -> PendingAgentInput {
+        let id = UUID()
         let contextCapture: Task<MacContextSnapshot?, Never>?
         if let target = macContextCapturer.currentTarget() {
             let capturer = macContextCapturer
@@ -28,9 +77,10 @@ extension VoiceActivationCoordinator {
             contextCapture = nil
         }
         return PendingAgentInput(
-            id: UUID(),
+            id: id,
             text: text,
-            contextCapture: contextCapture)
+            contextCapture: contextCapture,
+            admission: PendingAgentInputAdmission(inputID: id))
     }
 
     func resolveAgentPrompt(
@@ -49,19 +99,29 @@ extension VoiceActivationCoordinator {
     }
 
     func cancelActiveAgentInput() {
-        activeAgentInput?.cancelContextCapture()
+        let input = activeAgentInput
         activeAgentInput = nil
+        input?.invalidateAdmission()
+        input?.cancelContextCapture()
     }
 
     func cancelPendingAgentInputs() {
-        for input in pendingAgentPrompts {
+        let inputs = pendingAgentPrompts
+        pendingAgentPrompts.removeAll()
+        for input in inputs {
             input.cancelContextCapture()
         }
-        pendingAgentPrompts.removeAll()
     }
 
     func cancelAllAgentInputs() {
-        cancelActiveAgentInput()
-        cancelPendingAgentInputs()
+        let activeInput = activeAgentInput
+        let pendingInputs = pendingAgentPrompts
+        activeAgentInput = nil
+        pendingAgentPrompts.removeAll()
+        activeInput?.invalidateAdmission()
+        activeInput?.cancelContextCapture()
+        for input in pendingInputs {
+            input.cancelContextCapture()
+        }
     }
 }

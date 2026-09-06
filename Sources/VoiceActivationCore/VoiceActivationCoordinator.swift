@@ -111,11 +111,21 @@ public final class VoiceActivationCoordinator {
     var capturedAction: WakeProfileAction?
     var capturedLocaleID: String?
     var executingAction: WakeProfileAction?
-    var activeAgentRunID: UUID?
+    var activeAgentRunID: UUID? {
+        didSet {
+            guard activeAgentRunID != oldValue else { return }
+            activeAgentInput?.invalidateAdmission()
+        }
+    }
     var capturedCommand = ""
     var generation = 0
     var captureGeneration = 0
-    var executionGeneration = 0
+    var executionGeneration = 0 {
+        didSet {
+            guard executionGeneration != oldValue else { return }
+            activeAgentInput?.invalidateAdmission()
+        }
+    }
     var wakeHandoffTask: Task<Void, Never>?
     var initialSilenceTask: Task<Void, Never>?
     var inactivityTask: Task<Void, Never>?
@@ -124,7 +134,12 @@ public final class VoiceActivationCoordinator {
     var executionTask: Task<Void, Never>?
     var agentCancellationTask: Task<Void, Never>?
     var agentCancellationToken: UUID?
-    var activeAgentInput: PendingAgentInput?
+    var activeAgentInput: PendingAgentInput? {
+        willSet {
+            guard activeAgentInput?.id != newValue?.id else { return }
+            activeAgentInput?.invalidateAdmission()
+        }
+    }
     var pendingAgentPrompts: [PendingAgentInput] = []
     var conversationUtterance = ""
     var conversationCaptureGeneration = 0
@@ -405,9 +420,10 @@ public final class VoiceActivationCoordinator {
     func requestAgentConversationEnd(result: AgentRunResult) {
         guard case .agent = executingAction, let runID = activeAgentRunID else { return }
         guard agentConversationEndResult == nil else { return }
-        cancelPendingAgentInputs()
         agentConversationEndResult = result
         stopActiveSession()
+        executionGeneration &+= 1
+        cancelAllAgentInputs()
         guard agentCancellationTask == nil else { return }
         guard executionTask != nil else {
             finishAgentConversation(runID: runID, result: result)
@@ -415,8 +431,6 @@ public final class VoiceActivationCoordinator {
         }
 
         onAgentRunEvent?(.turnCancellationStarted(runID: runID))
-        executionGeneration &+= 1
-        cancelActiveAgentInput()
         executionTask?.cancel()
         executionTask = nil
         beginAgentCancellation(runID: runID)

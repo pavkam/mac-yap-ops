@@ -234,6 +234,7 @@ extension VoiceActivationCoordinator {
         generation: Int
     ) {
         agentTurnHadActivity = false
+        input.activateAdmission(runID: runID, generation: generation)
         let promptWithoutContext: AgentPrompt?
         if input.contextCapture == nil,
            executionGeneration == generation,
@@ -301,6 +302,8 @@ extension VoiceActivationCoordinator {
                     else { return }
                     prompt = resolvedPrompt
                 }
+                try Task.checkCancellation()
+                guard input.isAdmitted(runID: runID, generation: generation) else { return }
                 try Task.checkCancellation()
                 let result = try await agentRunner.run(
                     profileID: profile.id,
