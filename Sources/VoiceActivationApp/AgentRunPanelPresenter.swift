@@ -11,6 +11,8 @@ enum AgentRunPanelAction: Equatable {
     case copy(runID: UUID)
     case close(runID: UUID)
     case delete(runID: UUID)
+    case openArtifact(runID: UUID, artifactID: UUID)
+    case revealArtifact(runID: UUID, artifactID: UUID)
     case minimize(runID: UUID)
     case restore(runID: UUID)
 }
@@ -23,6 +25,8 @@ protocol AgentRunPanelDisplaying: AnyObject {
     func update(_ snapshot: AgentRunSnapshot)
     func show(runID: UUID)
     func hide(runID: UUID)
+    func discard(runID: UUID)
+    func shutdown()
     func minimize(runID: UUID)
     func restore(runID: UUID)
 }
@@ -50,6 +54,7 @@ final class AgentRunPanelPresenter {
 
     private let display: any AgentRunPanelDisplaying
     private let pasteboard: any AgentRunPasteboardWriting
+    private let artifactOpener: any AgentArtifactOpening
     private let diagnostics: any VoiceActivationDiagnosticRecording
     private var snapshot: AgentRunSnapshot?
     private var cancelledRunID: UUID?
@@ -60,10 +65,12 @@ final class AgentRunPanelPresenter {
     init(
         display: any AgentRunPanelDisplaying,
         pasteboard: any AgentRunPasteboardWriting = SystemAgentRunPasteboardWriter(),
+        artifactOpener: any AgentArtifactOpening = SystemAgentArtifactOpener(),
         diagnostics: any VoiceActivationDiagnosticRecording = VoiceActivationDiagnostics.shared
     ) {
         self.display = display
         self.pasteboard = pasteboard
+        self.artifactOpener = artifactOpener
         self.diagnostics = diagnostics
         display.onAction = { [weak self] action in
             self?.handle(action)
@@ -71,7 +78,11 @@ final class AgentRunPanelPresenter {
     }
 
     func begin(_ snapshot: AgentRunSnapshot, from handoff: RecordingOverlayHandoff?) {
+        if let previousRunID = self.snapshot?.runID, previousRunID != snapshot.runID {
+            artifactOpener.discard(runID: previousRunID)
+        }
         self.snapshot = snapshot
+        artifactOpener.begin(runID: snapshot.runID)
         cancelledRunID = nil
         endedRunID = nil
         isMinimized = false
@@ -125,6 +136,13 @@ final class AgentRunPanelPresenter {
 
     func delete(runID: UUID) {
         handle(.delete(runID: runID))
+    }
+
+    func shutdown() async {
+        snapshot = nil
+        isMinimized = false
+        display.shutdown()
+        await artifactOpener.shutdown()
     }
 
     private func handle(_ action: AgentRunPanelAction) {
@@ -200,8 +218,29 @@ final class AgentRunPanelPresenter {
             }
             self.snapshot = nil
             isMinimized = false
-            display.hide(runID: runID)
+            artifactOpener.discard(runID: runID)
+            display.discard(runID: runID)
             onDelete?(runID)
+            recordApplied(action)
+        case .openArtifact(let runID, let artifactID):
+            guard snapshot.runID == runID,
+                  let artifact = snapshot.artifacts.first(where: { $0.id == artifactID }),
+                  AgentArtifactActionPolicy.canOpen(artifact)
+            else {
+                recordIgnored(action, reason: "artifact_not_openable")
+                return
+            }
+            artifactOpener.open(runID: runID, artifact: artifact)
+            recordApplied(action)
+        case .revealArtifact(let runID, let artifactID):
+            guard snapshot.runID == runID,
+                  let artifact = snapshot.artifacts.first(where: { $0.id == artifactID }),
+                  AgentArtifactActionPolicy.canReveal(artifact)
+            else {
+                recordIgnored(action, reason: "artifact_not_revealable")
+                return
+            }
+            artifactOpener.reveal(runID: runID, artifact: artifact)
             recordApplied(action)
         case .minimize(let runID):
             guard snapshot.runID == runID, !isMinimized else {
@@ -268,6 +307,8 @@ extension AgentRunPanelAction {
         case .copy: "copy"
         case .close: "close"
         case .delete: "delete"
+        case .openArtifact: "open_artifact"
+        case .revealArtifact: "reveal_artifact"
         case .minimize: "minimize"
         case .restore: "restore"
         }
@@ -280,6 +321,8 @@ extension AgentRunPanelAction {
             .copy(let runID),
             .close(let runID),
             .delete(let runID),
+            .openArtifact(let runID, _),
+            .revealArtifact(let runID, _),
             .minimize(let runID),
             .restore(let runID):
             runID

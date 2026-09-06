@@ -158,7 +158,8 @@ struct ProfileSettingsEditor: View {
             if speechMode == .voice {
                 TextToSpeechVoiceSelectionEditor(
                     model: model,
-                    selection: explicitSpeechSelection)
+                    selection: explicitSpeechSelection,
+                    previewContext: .profile(profile.id))
                     .padding(.leading, 8)
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
@@ -295,19 +296,14 @@ private struct ProfileIconBadge: View {
     let accent: WakeProfileAccent
 
     var body: some View {
-        Group {
-            switch icon {
-            case .systemSymbol(let name):
-                Image(systemName: name)
-            case .emoji(let value):
-                Text(value)
-            }
-        }
-        .font(.system(size: 18, weight: .semibold))
-        .foregroundStyle(accent.swiftUIColor)
-        .frame(width: 36, height: 36)
-        .background(accent.swiftUIColor.opacity(0.13), in: RoundedRectangle(cornerRadius: 10))
-        .accessibilityLabel("Profile icon")
+        ProfileIconGlyph(icon: icon)
+            .font(.system(size: 18, weight: .semibold))
+            .foregroundStyle(accent.swiftUIColor)
+            .frame(width: 36, height: 36)
+            .background(
+                accent.swiftUIColor.opacity(0.13),
+                in: RoundedRectangle(cornerRadius: 10))
+            .accessibilityLabel("Profile icon")
     }
 }
 

@@ -1,43 +1,36 @@
 // SPDX-FileCopyrightText: 2026 Alexandru Ciobanu (alex+git@ciobanu.org)
 // SPDX-License-Identifier: MIT
 
+import AppKit
 import SwiftUI
 import VoiceActivationCore
 
 /// Renders the movable expanded conversation panel and its compact notification form.
 struct AgentRunPanelView: View {
     @Bindable var model: AgentRunPanelModel
-    /// The system motion preference used by panel transitions.
     @Environment(\.accessibilityReduceMotion) var reduceMotion
+    @Environment(\.colorSchemeContrast) private var contrast
 
-    /// The retained panel hierarchy whose geometry animates between presentation modes.
     var body: some View {
-        let cornerRadius: CGFloat = model.isMinimized ? 24 : 30
+        let cornerRadius: CGFloat = model.isMinimized ? 18 : 22
         ZStack {
-            AgentRunPanelBackdrop(
-                accent: accent,
-                highlight: accentHighlight,
-                isActive: model.snapshot?.phase == .running,
-                isCompact: model.isMinimized)
+            AgentRunPanelBackdrop()
             content
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .strokeBorder(
-                    LinearGradient(
-                        colors: [
-                            .white.opacity(0.42),
-                            .white.opacity(0.10),
-                            accent.opacity(0.36),
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing),
-                    lineWidth: 0.8)
+                    Color(nsColor: .separatorColor),
+                    lineWidth: contrast == .increased ? 1.5 : 0.5)
+                .accessibilityHidden(true)
         }
         .frame(width: panelSize.width, height: panelSize.height)
+        .tint(accent)
         .animation(
-            .snappy(duration: AgentRunPanelLayout.transitionDuration),
+            reduceMotion
+                ? .easeOut(duration: 0.12)
+                : .snappy(duration: AgentRunPanelLayout.transitionDuration),
             value: model.isMinimized)
     }
 
@@ -46,10 +39,10 @@ struct AgentRunPanelView: View {
         if let snapshot = model.snapshot {
             if model.isMinimized {
                 compactContent(snapshot)
-                    .transition(.scale(scale: 0.92).combined(with: .opacity))
+                    .transition(presentationTransition)
             } else {
                 expandedContent(snapshot)
-                    .transition(.scale(scale: 0.98).combined(with: .opacity))
+                    .transition(presentationTransition)
             }
         }
     }
@@ -60,18 +53,19 @@ struct AgentRunPanelView: View {
             panelSeparator
             ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 18) {
                         requestCard(snapshot)
-                        plan(snapshot)
+                        AgentRunArtifactShelf(snapshot: snapshot, model: model)
                         timeline(snapshot)
+                        plan(snapshot)
                         noticeCards(snapshot)
                         failureCard(snapshot)
                         permissions(snapshot)
                         Color.clear.frame(height: 1).id("agent-run-bottom")
                     }
-                    .padding(.horizontal, 18)
-                    .padding(.top, 16)
-                    .padding(.bottom, 14)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 18)
+                    .padding(.bottom, 16)
                 }
                 .onScrollGeometryChange(for: CGFloat.self) { geometry in
                     max(
@@ -100,21 +94,12 @@ struct AgentRunPanelView: View {
                         model.endUserScrolling(distanceFromBottom: distance)
                     }
                 }
-                .onChange(of: snapshot.timeline) {
-                    followBottom(proxy)
-                }
-                .onChange(of: snapshot.notices) {
-                    followBottom(proxy)
-                }
-                .onChange(of: snapshot.plan) {
-                    followBottom(proxy)
-                }
-                .onChange(of: snapshot.permissions) {
-                    followBottom(proxy)
-                }
-                .onChange(of: snapshot.phase) {
-                    followBottom(proxy)
-                }
+                .onChange(of: snapshot.artifacts) { followBottom(proxy) }
+                .onChange(of: snapshot.timeline) { followBottom(proxy) }
+                .onChange(of: snapshot.notices) { followBottom(proxy) }
+                .onChange(of: snapshot.plan) { followBottom(proxy) }
+                .onChange(of: snapshot.permissions) { followBottom(proxy) }
+                .onChange(of: snapshot.phase) { followBottom(proxy) }
             }
             actionDock(snapshot)
         }
@@ -122,19 +107,25 @@ struct AgentRunPanelView: View {
 
     func followBottom(_ proxy: ScrollViewProxy) {
         guard model.isAutoFollowing else { return }
-        withAnimation(.easeOut(duration: 0.16)) {
-            proxy.scrollTo("agent-run-bottom", anchor: .bottom)
-        }
+        proxy.scrollTo("agent-run-bottom", anchor: .bottom)
     }
 
     func header(_ snapshot: AgentRunSnapshot) -> some View {
-        HStack(spacing: 14) {
-            HStack(spacing: 13) {
-                phaseIcon(snapshot, size: 44, symbolSize: 17)
+        HStack(spacing: 12) {
+            HStack(spacing: 10) {
+                ProfileIconGlyph(icon: snapshot.profileIcon)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(accent)
+                    .frame(width: 22)
+                    .accessibilityHidden(true)
 
-                Text(snapshot.providerName)
-                    .font(.system(size: 17, weight: .bold, design: .rounded))
-                    .tracking(-0.25)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(snapshot.profileName)
+                        .font(.headline)
+                    Text(phaseLabel(snapshot.phase))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
@@ -144,44 +135,36 @@ struct AgentRunPanelView: View {
                 phase: snapshot.phase,
                 elapsedSeconds: snapshot.elapsedSeconds,
                 startedAt: model.elapsedStartedAt)
-                .padding(.horizontal, 9)
-                .frame(height: 28)
-                .background(.white.opacity(0.055), in: Capsule())
-                .overlay {
-                    Capsule().stroke(.white.opacity(0.10), lineWidth: 0.7)
-                }
 
             Button {
                 model.onAction?(.minimize(runID: snapshot.runID))
             } label: {
                 Image(systemName: "minus")
-                    .font(.system(size: 11, weight: .bold))
+                    .frame(width: 22, height: 22)
             }
-            .buttonStyle(AgentRunIconButtonStyle(tint: accent))
+            .buttonStyle(.borderless)
             .help("Minimize conversation")
             .accessibilityLabel("Minimize conversation")
         }
         .padding(.horizontal, 18)
-        .padding(.vertical, 14)
-        .background {
-            LinearGradient(
-                colors: [.white.opacity(0.045), .clear],
-                startPoint: .top,
-                endPoint: .bottom)
-        }
+        .padding(.vertical, 12)
     }
 
     func compactContent(_ snapshot: AgentRunSnapshot) -> some View {
-        HStack(spacing: 13) {
-            HStack(spacing: 13) {
-                phaseIcon(snapshot, size: 48, symbolSize: 18)
+        HStack(spacing: 12) {
+            HStack(spacing: 10) {
+                ProfileIconGlyph(icon: snapshot.profileIcon)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(accent)
+                    .frame(width: 22)
+                    .accessibilityHidden(true)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(snapshot.providerName)
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(snapshot.profileName)
+                        .font(.headline)
                         .lineLimit(1)
                     Text(compactStatus(snapshot))
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -200,31 +183,17 @@ struct AgentRunPanelView: View {
                 model.onAction?(.restore(runID: snapshot.runID))
             } label: {
                 Image(systemName: "arrow.up.left.and.arrow.down.right")
-                    .font(.system(size: 11, weight: .bold))
+                    .frame(width: 22, height: 22)
             }
-            .buttonStyle(AgentRunIconButtonStyle(tint: accent))
+            .buttonStyle(.borderless)
             .help("Restore conversation")
             .accessibilityLabel("Restore conversation")
         }
-        .padding(.horizontal, 15)
+        .padding(.horizontal, 16)
     }
 
-    func phaseIcon(
-        _ snapshot: AgentRunSnapshot,
-        size: CGFloat,
-        symbolSize: CGFloat) -> some View
-    {
-        AgentRunPhaseOrb(
-            symbol: phaseSymbol(snapshot.phase),
-            accent: accent,
-            highlight: accentHighlight,
-            size: size,
-            symbolSize: symbolSize,
-            isActive: snapshot.phase == .running,
-            isFailed: {
-                if case .failed = snapshot.phase { return true }
-                return false
-            }())
+    private var presentationTransition: AnyTransition {
+        reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98))
     }
 
 }

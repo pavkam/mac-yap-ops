@@ -80,4 +80,86 @@ extension AppModel {
     func textToSpeechCredential(for backendID: TextToSpeechBackendID) -> String? {
         backendID == .elevenLabs ? elevenLabsAPIKey : nil
     }
+
+    func isPreviewingTextToSpeechVoice(
+        in context: TextToSpeechVoicePreviewContext
+    ) -> Bool {
+        activeTextToSpeechVoicePreviewContext == context
+    }
+
+    func previewTextToSpeechVoice(
+        _ selection: TextToSpeechVoiceSelection,
+        in context: TextToSpeechVoicePreviewContext
+    ) async {
+        guard let startupAuthorization = readyEffectAuthorization else { return }
+        textToSpeechVoicePreviewGeneration &+= 1
+        let generation = textToSpeechVoicePreviewGeneration
+        textToSpeechVoicePreview.stop()
+        activeTextToSpeechVoicePreviewContext = context
+        textToSpeechVoicePreviewFeedback[context] = nil
+        diagnostics.record(
+            category: .ui,
+            event: "app_model.voice_preview_requested",
+            fields: [
+                "backend": selection.backendID.rawValue,
+                "generation": String(generation),
+            ])
+
+        do {
+            try await textToSpeechVoicePreview.play(
+                TextToSpeechVoicePreviewRequest(
+                    selection: selection,
+                    credential: textToSpeechCredential(for: selection.backendID),
+                    localeID: localeID))
+            guard isEffectAuthorized(startupAuthorization),
+                textToSpeechVoicePreviewGeneration == generation
+            else { return }
+            textToSpeechVoicePreviewFeedback[context] = .success(
+                backendName: textToSpeechBackendName(selection.backendID))
+            diagnostics.record(category: .ui, event: "app_model.voice_preview_finished")
+        } catch is CancellationError {
+            guard isEffectAuthorized(startupAuthorization),
+                textToSpeechVoicePreviewGeneration == generation
+            else { return }
+            diagnostics.record(category: .ui, event: "app_model.voice_preview_cancelled")
+        } catch {
+            guard isEffectAuthorized(startupAuthorization),
+                textToSpeechVoicePreviewGeneration == generation
+            else { return }
+            textToSpeechVoicePreviewFeedback[context] = .failure(error)
+            diagnostics.record(
+                category: .ui,
+                event: "app_model.voice_preview_failed",
+                level: .error,
+                fields: ["error_type": String(describing: type(of: error))])
+        }
+
+        if isEffectAuthorized(startupAuthorization),
+            textToSpeechVoicePreviewGeneration == generation
+        {
+            activeTextToSpeechVoicePreviewContext = nil
+        }
+    }
+
+    func stopTextToSpeechVoicePreview() {
+        guard activeTextToSpeechVoicePreviewContext != nil else { return }
+        textToSpeechVoicePreviewGeneration &+= 1
+        activeTextToSpeechVoicePreviewContext = nil
+        textToSpeechVoicePreview.stop()
+        diagnostics.record(category: .ui, event: "app_model.voice_preview_cancelled")
+    }
+
+    func clearTextToSpeechVoicePreviewFeedback(
+        in context: TextToSpeechVoicePreviewContext
+    ) {
+        if isPreviewingTextToSpeechVoice(in: context) {
+            stopTextToSpeechVoicePreview()
+        }
+        textToSpeechVoicePreviewFeedback[context] = nil
+    }
+
+    private func textToSpeechBackendName(_ backendID: TextToSpeechBackendID) -> String {
+        textToSpeechBackends.first(where: { $0.id == backendID })?.displayName
+            ?? backendID.rawValue
+    }
 }

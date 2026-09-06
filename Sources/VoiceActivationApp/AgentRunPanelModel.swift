@@ -12,31 +12,50 @@ final class AgentRunPanelModel {
     var snapshot: AgentRunSnapshot?
     var isAutoFollowing = true
     private(set) var isMinimized = false
+    private(set) var expandedSize = AgentRunPanelLayout.preferredExpandedSize
     var resolvingPermissions: Set<AgentPermissionKey> = []
     private(set) var expandedThinkingIDs: Set<UUID> = []
+    private(set) var artifactPreviewStates: [UUID: AgentArtifactPreviewState] = [:]
     private(set) var elapsedStartedAt: Date
     @ObservationIgnored var onAction: ((AgentRunPanelAction) -> Void)?
     @ObservationIgnored private let now: @MainActor () -> Date
     @ObservationIgnored private let diagnostics: any VoiceActivationDiagnosticRecording
+    @ObservationIgnored private let previewLoader: any AgentArtifactPreviewLoading
+    @ObservationIgnored private let previewSize: CGSize
+    @ObservationIgnored private let previewScale: CGFloat
+    @ObservationIgnored private var previewTasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var isUserScrolling = false
 
     init(
+        previewLoader: any AgentArtifactPreviewLoading = SystemAgentArtifactPreviewLoader(),
+        previewSize: CGSize = CGSize(width: 320, height: 180),
+        previewScale: CGFloat = 2,
         now: @escaping @MainActor () -> Date = Date.init,
         diagnostics: any VoiceActivationDiagnosticRecording = VoiceActivationDiagnostics.shared
     ) {
+        self.previewLoader = previewLoader
+        self.previewSize = previewSize
+        self.previewScale = previewScale
         self.now = now
         self.diagnostics = diagnostics
         elapsedStartedAt = now()
     }
 
-    func begin(_ snapshot: AgentRunSnapshot) {
+    func begin(
+        _ snapshot: AgentRunSnapshot,
+        expandedSize: CGSize = AgentRunPanelLayout.preferredExpandedSize)
+    {
+        cancelAllPreviewTasks()
+        artifactPreviewStates.removeAll(keepingCapacity: true)
         elapsedStartedAt = now().addingTimeInterval(-TimeInterval(snapshot.elapsedSeconds))
         self.snapshot = snapshot
+        self.expandedSize = expandedSize
         isAutoFollowing = true
         isMinimized = false
         resolvingPermissions = []
         expandedThinkingIDs = []
         isUserScrolling = false
+        synchronizePreviews(previous: nil, current: snapshot)
         diagnostics.record(
             category: .ui,
             event: "agent_panel.model_began",
@@ -78,6 +97,7 @@ final class AgentRunPanelModel {
             elapsedStartedAt = now().addingTimeInterval(-TimeInterval(snapshot.elapsedSeconds))
         }
         self.snapshot = snapshot
+        synchronizePreviews(previous: previousSnapshot, current: snapshot)
         resolvingPermissions = Set(snapshot.permissions.lazy.filter(\.isResolving).map(\.key))
         diagnostics.record(
             category: .ui,
@@ -89,6 +109,15 @@ final class AgentRunPanelModel {
                 "thinking_group_count": String(currentThinking.count),
                 "permission_count": String(snapshot.permissions.count),
             ])
+    }
+
+    func discard(runID: UUID) {
+        guard snapshot?.runID == runID else { return }
+        retirePresentation()
+    }
+
+    func shutdown() {
+        retirePresentation()
     }
 
     func toggleThinkingDetails(thinkingID: UUID) {
@@ -120,6 +149,21 @@ final class AgentRunPanelModel {
         expandedThinkingIDs.contains(thinkingID)
     }
 
+    func previewStatus(for artifactID: UUID) -> AgentArtifactPreviewStatus? {
+        artifactPreviewStates[artifactID]?.status
+    }
+
+    func previewState(for artifactID: UUID) -> AgentArtifactPreviewState? {
+        artifactPreviewStates[artifactID]
+    }
+
+    func preview(for artifactID: UUID) -> AgentArtifactPreview? {
+        guard case let .available(preview) = artifactPreviewStates[artifactID] else {
+            return nil
+        }
+        return preview
+    }
+
     func setMinimized(_ isMinimized: Bool) {
         guard snapshot != nil else { return }
         self.isMinimized = isMinimized
@@ -127,6 +171,11 @@ final class AgentRunPanelModel {
             category: .ui,
             event: "agent_panel.minimized_changed",
             fields: ["minimized": String(isMinimized)])
+    }
+
+    func setExpandedSize(_ expandedSize: CGSize) {
+        guard expandedSize.width > 0, expandedSize.height > 0 else { return }
+        self.expandedSize = expandedSize
     }
 
     func selectPermission(_ permission: AgentPermissionPresentation, optionID: String) {
@@ -178,5 +227,82 @@ final class AgentRunPanelModel {
                 "enabled": String(follows),
                 "distance_from_bottom": String(describing: distanceFromBottom),
             ])
+    }
+
+    private func synchronizePreviews(
+        previous: AgentRunSnapshot?,
+        current: AgentRunSnapshot)
+    {
+        let currentByID = Dictionary(uniqueKeysWithValues: current.artifacts.map { ($0.id, $0) })
+        let previousByID = Dictionary(
+            uniqueKeysWithValues: (previous?.artifacts ?? []).map { ($0.id, $0) })
+
+        for id in Array(previewTasks.keys) where currentByID[id] == nil {
+            previewTasks.removeValue(forKey: id)?.cancel()
+            artifactPreviewStates.removeValue(forKey: id)
+        }
+        for id in Array(artifactPreviewStates.keys) where currentByID[id] == nil {
+            artifactPreviewStates.removeValue(forKey: id)
+        }
+
+        for artifact in current.artifacts {
+            if previousByID[artifact.id] == artifact,
+               artifactPreviewStates[artifact.id] != nil
+            {
+                continue
+            }
+            previewTasks.removeValue(forKey: artifact.id)?.cancel()
+            startPreview(for: artifact, runID: current.runID)
+        }
+    }
+
+    private func startPreview(for artifact: AgentArtifactPresentation, runID: UUID) {
+        artifactPreviewStates[artifact.id] = .loading
+        let loader = previewLoader
+        let size = previewSize
+        let scale = previewScale
+        previewTasks[artifact.id] = Task { [weak self] in
+            let preview = await loader.loadPreview(for: artifact, size: size, scale: scale)
+            guard !Task.isCancelled else { return }
+            self?.completePreview(
+                preview,
+                for: artifact,
+                runID: runID)
+        }
+    }
+
+    private func completePreview(
+        _ preview: AgentArtifactPreview?,
+        for artifact: AgentArtifactPresentation,
+        runID: UUID)
+    {
+        guard snapshot?.runID == runID,
+              snapshot?.artifacts.contains(where: {
+                  $0.id == artifact.id && $0.artifact == artifact.artifact
+              }) == true
+        else {
+            return
+        }
+        previewTasks.removeValue(forKey: artifact.id)
+        artifactPreviewStates[artifact.id] = preview.map(AgentArtifactPreviewState.available)
+            ?? .unavailable
+    }
+
+    private func cancelAllPreviewTasks() {
+        for task in previewTasks.values {
+            task.cancel()
+        }
+        previewTasks.removeAll(keepingCapacity: true)
+    }
+
+    private func retirePresentation() {
+        cancelAllPreviewTasks()
+        artifactPreviewStates.removeAll(keepingCapacity: false)
+        snapshot = nil
+        isAutoFollowing = true
+        isMinimized = false
+        resolvingPermissions = []
+        expandedThinkingIDs = []
+        isUserScrolling = false
     }
 }

@@ -141,7 +141,12 @@ enum AgentMarkdownFormatter {
     }
 
     private static func inlinePlainText(_ markdown: String) -> String {
-        String(attributedString(from: markdown).characters)
+        let attributed = attributedString(from: markdown)
+        return attributed.runs.compactMap { run in
+            guard run.imageURL == nil else { return nil }
+            return String(attributed[run.range].characters)
+        }
+            .joined()
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 

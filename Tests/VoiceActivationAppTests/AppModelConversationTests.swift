@@ -36,7 +36,7 @@ extension AppModelTests {
         #expect(panel.shown == [runID])
     }
 
-    @MainActor @Test func deleteAgentRun_WhenConversationIsTerminal_DiscardsItAndHidesPanel()
+    @MainActor @Test func deleteAgentRun_WhenConversationIsTerminal_DiscardsPanelState()
         throws
     {
         let profile = try makeAgentProfile(displayName: "Codex")
@@ -60,7 +60,8 @@ extension AppModelTests {
                 event: .agentMessageDelta(messageID: "late", text: "Do not restore")))
 
         #expect(fixture.model.agentRunSnapshot == nil)
-        #expect(panel.hidden == [runID])
+        #expect(panel.discarded == [runID])
+        #expect(panel.hidden.isEmpty)
     }
 
     @MainActor @Test func agentLifecycle_WhenEventIsStale_IgnoresIt() throws {
@@ -176,22 +177,70 @@ extension AppModelTests {
         await waitUntil { fixture.model.elevenLabsAPIKey == "saved-key" }
     }
 
-    @MainActor @Test func previewElevenLabsVoice_WhenVoiceIsSelected_UsesDraftCredentials()
+    @MainActor @Test func voicePreview_WhenProfileVoiceIsSelected_UsesDraftCredentials()
         async throws
     {
-        let preview = AppModelElevenLabsVoicePreviewSpy()
-        let fixture = try Fixture(elevenLabsVoicePreview: preview)
+        let preview = AppModelTextToSpeechVoicePreviewSpy()
+        let fixture = try Fixture(textToSpeechVoicePreview: preview)
         await fixture.startForExternalActions()
-        fixture.model.agentSpeechProvider = .elevenLabs
         fixture.model.elevenLabsAPIKey = "draft-key"
-        fixture.model.elevenLabsVoiceID = "voice-42"
+        let selection = TextToSpeechVoiceSelection(
+            backendID: .elevenLabs,
+            voiceID: "voice-42")
+        let context = TextToSpeechVoicePreviewContext.profile(UUID())
 
-        await fixture.model.previewElevenLabsVoice()
+        await fixture.model.previewTextToSpeechVoice(selection, in: context)
 
         #expect(preview.requests.count == 1)
-        #expect(preview.requests.first?.apiKey == "draft-key")
-        #expect(preview.requests.first?.voiceID == "voice-42")
-        #expect(!fixture.model.isPreviewingElevenLabsVoice)
+        #expect(preview.requests.first?.credential == "draft-key")
+        #expect(preview.requests.first?.selection == selection)
+        #expect(fixture.model.activeTextToSpeechVoicePreviewContext == nil)
+        #expect(fixture.model.textToSpeechVoicePreviewFeedback[context]?.kind == .success)
+        #expect(
+            fixture.model.textToSpeechVoicePreviewFeedback[context]?.detail
+                == "The ElevenLabs voice is ready to use.")
+    }
+
+    @MainActor @Test
+    func voicePreview_WhenElevenLabsRequiresPayment_ShowsActionableProfileFeedback()
+        async throws
+    {
+        let preview = AppModelTextToSpeechVoicePreviewSpy()
+        preview.failure = ElevenLabsSpeechClientError.httpStatus(402)
+        let fixture = try Fixture(textToSpeechVoicePreview: preview)
+        await fixture.startForExternalActions()
+        fixture.model.elevenLabsAPIKey = "draft-key"
+        let context = TextToSpeechVoicePreviewContext.profile(UUID())
+        let otherContext = TextToSpeechVoicePreviewContext.profile(UUID())
+
+        await fixture.model.previewTextToSpeechVoice(
+            TextToSpeechVoiceSelection(
+                backendID: .elevenLabs,
+                voiceID: "voice-42"),
+            in: context)
+
+        let feedback = try #require(
+            fixture.model.textToSpeechVoicePreviewFeedback[context])
+        #expect(feedback.kind == .failure)
+        #expect(feedback.title == "ElevenLabs needs credits")
+        #expect(feedback.detail.contains("available credits"))
+        #expect(fixture.model.textToSpeechVoicePreviewFeedback[otherContext] == nil)
+    }
+
+    @MainActor @Test
+    func voicePreviewFeedback_WhenSelectionChanges_ClearsOnlyThatProfile() async throws {
+        let fixture = try Fixture()
+        let context = TextToSpeechVoicePreviewContext.profile(UUID())
+        let otherContext = TextToSpeechVoicePreviewContext.profile(UUID())
+        fixture.model.textToSpeechVoicePreviewFeedback[context] = .failure(
+            ElevenLabsSpeechClientError.httpStatus(402))
+        fixture.model.textToSpeechVoicePreviewFeedback[otherContext] = .failure(
+            ElevenLabsSpeechClientError.httpStatus(403))
+
+        fixture.model.clearTextToSpeechVoicePreviewFeedback(in: context)
+
+        #expect(fixture.model.textToSpeechVoicePreviewFeedback[context] == nil)
+        #expect(fixture.model.textToSpeechVoicePreviewFeedback[otherContext] != nil)
     }
 
     @MainActor @Test func agentPermission_WhenUserSaysAllowAll_ResolvesAndCollapsesPrompt()

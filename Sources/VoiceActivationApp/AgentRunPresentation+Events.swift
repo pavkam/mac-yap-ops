@@ -21,15 +21,20 @@ extension AgentRunPresentation {
             appendResponseMessage(text, messageID: messageID)
         case .thoughtDelta(let messageID, let text):
             appendThinkingMessage(text, messageID: messageID)
+        case .artifact(let artifact):
+            upsertArtifact(artifact)
         case .toolCall(let tool):
             upsertTool(
                 AgentToolPresentation(
                     id: tool.id,
                     title: tool.title,
                     kind: tool.kind,
-                    status: tool.status))
+                    status: tool.status,
+                    content: toolTextContent(tool.content)))
+            upsertArtifacts(from: tool.content)
         case .toolCallUpdate(let update):
             updateTool(update)
+            upsertArtifacts(from: update.content)
         case .plan(let entries):
             plan = entries
         case .metadata(let kind, let summary):
@@ -57,6 +62,11 @@ extension AgentRunPresentation {
         case .unknown(let discriminator, let summary):
             diagnosticBuffer.append("[\(discriminator)] \(summary)\n")
         case .deliveryNotice(let notice):
+            if notice.kind == .artifactTruncated {
+                omittedArtifactCount = saturatingAdd(
+                    omittedArtifactCount,
+                    notice.discardedEntries)
+            }
             appendNotice(noticeDescription(notice))
         }
     }
@@ -104,7 +114,82 @@ extension AgentRunPresentation {
         if let status = update.status {
             tools[index].status = status
         }
+        let textContent = toolTextContent(update.content)
+        if !textContent.isEmpty {
+            tools[index].content = textContent
+        }
         updateTimelineTool(tools[index])
+    }
+
+    func toolTextContent(_ content: [AgentToolCallContent]) -> [String] {
+        content.compactMap { item in
+            guard case let .text(text) = item else { return nil }
+            return text
+        }
+    }
+
+    func upsertArtifacts(from content: [AgentToolCallContent]) {
+        for item in content {
+            guard case let .artifact(artifact) = item else { continue }
+            upsertArtifact(artifact)
+        }
+    }
+
+    func upsertArtifact(_ artifact: AgentArtifact) {
+        let newByteCount = AgentArtifactPresentation(id: UUID(), artifact: artifact)
+            .embeddedByteCount
+        guard newByteCount <= Self.maximumArtifactBytes else {
+            recordArtifactOmission()
+            return
+        }
+
+        if let key = canonicalURIKey(artifact.uri),
+            var index = artifacts.firstIndex(where: {
+                canonicalURIKey($0.artifact.uri) == key
+            })
+        {
+            let id = artifacts[index].id
+            retainedArtifactBytes -= artifacts[index].embeddedByteCount
+            artifacts[index] = AgentArtifactPresentation(id: id, artifact: artifact)
+            retainedArtifactBytes += newByteCount
+
+            while retainedArtifactBytes > Self.maximumArtifactBytes, artifacts.count > 1 {
+                let removalIndex = index == artifacts.startIndex
+                    ? artifacts.index(after: artifacts.startIndex)
+                    : artifacts.startIndex
+                retainedArtifactBytes -= artifacts[removalIndex].embeddedByteCount
+                artifacts.remove(at: removalIndex)
+                if removalIndex < index {
+                    index -= 1
+                }
+                recordArtifactOmission()
+            }
+            return
+        }
+
+        while artifacts.count >= Self.maximumArtifacts
+            || retainedArtifactBytes > Self.maximumArtifactBytes - newByteCount
+        {
+            guard !artifacts.isEmpty else { break }
+            retainedArtifactBytes -= artifacts.removeFirst().embeddedByteCount
+            recordArtifactOmission()
+        }
+        artifacts.append(AgentArtifactPresentation(id: UUID(), artifact: artifact))
+        retainedArtifactBytes += newByteCount
+    }
+
+    func canonicalURIKey(_ uri: String?) -> String? {
+        guard let uri else { return nil }
+        guard var components = URLComponents(string: uri) else { return uri }
+        components.scheme = components.scheme?.lowercased()
+        components.host = components.host?.lowercased()
+        return components.string ?? uri
+    }
+
+    func recordArtifactOmission() {
+        omittedArtifactCount = saturatingIncrement(omittedArtifactCount)
+        guard omittedArtifactCount == 1 else { return }
+        appendNotice("Earlier generated results were omitted to keep this conversation responsive.")
     }
 
     func settleTools() {

@@ -13,8 +13,9 @@ final class AgentRunPanel: NSPanel {
 
 @MainActor
 final class AgentRunPanelController: AgentRunPanelDisplaying {
-    private let model = AgentRunPanelModel()
+    private let model: AgentRunPanelModel
     private let panel: AgentRunPanel
+    private let shouldReduceMotion: @MainActor () -> Bool
     private var currentRunID: UUID?
     private var placement = AgentRunPanelPlacement()
 
@@ -25,9 +26,20 @@ final class AgentRunPanelController: AgentRunPanelDisplaying {
 
     var panelForTesting: AgentRunPanel { panel }
 
-    init() {
+    init(
+        previewLoader: any AgentArtifactPreviewLoading = SystemAgentArtifactPreviewLoader(),
+        shouldReduceMotion: @escaping @MainActor () -> Bool = {
+            NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        }
+    ) {
+        self.shouldReduceMotion = shouldReduceMotion
+        model = AgentRunPanelModel(
+            previewLoader: previewLoader,
+            previewScale: NSScreen.main?.backingScaleFactor ?? 2)
         panel = AgentRunPanel(
-            contentRect: NSRect(origin: .zero, size: AgentRunPanelLayout.expandedSize),
+            contentRect: NSRect(
+                origin: .zero,
+                size: AgentRunPanelLayout.preferredExpandedSize),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false)
@@ -54,11 +66,11 @@ final class AgentRunPanelController: AgentRunPanelDisplaying {
             ])
         currentRunID = snapshot.runID
         placement.reset()
-        model.begin(snapshot)
         let visibleFrame =
             handoff?.visibleScreenFrame ?? NSScreen.main?.visibleFrame
-            ?? NSRect(origin: .zero, size: AgentRunPanelLayout.expandedSize)
+            ?? NSRect(origin: .zero, size: AgentRunPanelLayout.preferredExpandedSize)
         let targetFrame = AgentRunPanelLayout.expandedFrame(in: visibleFrame)
+        model.begin(snapshot, expandedSize: targetFrame.size)
         panel.setFrame(handoff?.sourceFrame ?? targetFrame, display: true)
         panel.orderFrontRegardless()
         animate(to: targetFrame)
@@ -87,10 +99,28 @@ final class AgentRunPanelController: AgentRunPanelDisplaying {
             fields: ["run_id": runID.uuidString])
     }
 
+    func discard(runID: UUID) {
+        guard currentRunID == runID else { return }
+        currentRunID = nil
+        placement.reset()
+        model.discard(runID: runID)
+        panel.orderOut(nil)
+    }
+
+    func shutdown() {
+        currentRunID = nil
+        placement.reset()
+        model.shutdown()
+        panel.orderOut(nil)
+    }
+
     func minimize(runID: UUID) {
         guard currentRunID == runID, !model.isMinimized else { return }
         let targetFrame = placement.minimize(frame: panel.frame, in: visibleFrame)
-        withAnimation(.snappy(duration: AgentRunPanelLayout.transitionDuration)) {
+        withAnimation(shouldReduceMotion()
+            ? nil
+            : .snappy(duration: AgentRunPanelLayout.transitionDuration))
+        {
             model.setMinimized(true)
         }
         animate(to: targetFrame)
@@ -107,7 +137,11 @@ final class AgentRunPanelController: AgentRunPanelDisplaying {
             availableVisibleFrames: NSScreen.screens.map(\.visibleFrame),
             fallbackVisibleFrame: visibleFrame)
         panel.orderFrontRegardless()
-        withAnimation(.snappy(duration: AgentRunPanelLayout.transitionDuration)) {
+        withAnimation(shouldReduceMotion()
+            ? nil
+            : .snappy(duration: AgentRunPanelLayout.transitionDuration))
+        {
+            model.setExpandedSize(targetFrame.size)
             model.setMinimized(false)
         }
         animate(to: targetFrame)
@@ -119,10 +153,19 @@ final class AgentRunPanelController: AgentRunPanelDisplaying {
 
     private var visibleFrame: NSRect {
         panel.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
-            ?? NSRect(origin: .zero, size: AgentRunPanelLayout.expandedSize)
+            ?? NSRect(origin: .zero, size: AgentRunPanelLayout.preferredExpandedSize)
     }
 
     private func animate(to frame: NSRect) {
+        if shouldReduceMotion() {
+            panel.setFrame(frame, display: true)
+            VoiceActivationDiagnostics.shared.record(
+                category: .ui,
+                event: "agent_panel.window_animation_skipped",
+                level: .debug,
+                fields: ["reason": "reduce_motion"])
+            return
+        }
         VoiceActivationDiagnostics.shared.record(
             category: .ui,
             event: "agent_panel.window_animation_started",

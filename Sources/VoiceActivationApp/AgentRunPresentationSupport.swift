@@ -20,6 +20,7 @@ extension AgentRunEvent {
         case .userMessageDelta: "user_message_delta"
         case .agentMessageDelta: "agent_message_delta"
         case .thoughtDelta: "thought_delta"
+        case .artifact: "artifact"
         case .toolCall: "tool_call"
         case .toolCallUpdate: "tool_call_update"
         case .plan: "plan"
@@ -39,10 +40,47 @@ extension AgentRunEvent {
             message.count
         case .metadata(_, let summary), .unknown(_, let summary):
             summary.count
-        case .connected, .userMessageDelta, .toolCall, .toolCallUpdate, .plan,
+        case .connected, .userMessageDelta, .artifact, .toolCall, .toolCallUpdate, .plan,
             .permissionRequested,
             .deliveryNotice:
             0
+        }
+    }
+
+    var presentationArtifactMetrics: (count: Int, bytes: Int) {
+        switch self {
+        case let .artifact(artifact):
+            (1, artifact.embeddedByteCount)
+        case let .toolCall(tool):
+            tool.content.artifactMetrics
+        case let .toolCallUpdate(update):
+            update.content.artifactMetrics
+        case let .permissionRequested(request):
+            request.toolCall.content.artifactMetrics
+        case .connected, .userMessageDelta, .agentMessageDelta, .thoughtDelta, .plan, .metadata,
+            .diagnostic, .unknown, .deliveryNotice:
+            (0, 0)
+        }
+    }
+}
+
+private extension AgentArtifact {
+    var embeddedByteCount: Int {
+        switch payload {
+        case .image(let data, _), .embeddedBlob(let data): data.count
+        case .embeddedText(let text): text.utf8.count
+        case .linked: 0
+        }
+    }
+}
+
+private extension Array where Element == AgentToolCallContent {
+    var artifactMetrics: (count: Int, bytes: Int) {
+        reduce(into: (count: 0, bytes: 0)) { result, content in
+            guard case let .artifact(artifact) = content else { return }
+            result.count += 1
+            let bytes = artifact.embeddedByteCount
+            result.bytes = result.bytes > Int.max - bytes ? Int.max : result.bytes + bytes
         }
     }
 }

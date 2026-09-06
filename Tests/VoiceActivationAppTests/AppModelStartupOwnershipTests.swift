@@ -170,7 +170,7 @@ extension AppModelTests {
                     agentConversationAudioPlayer: SilentAgentConversationAudioPlayer(),
                     agentSpeechCredentialStore: credentials,
                     elevenLabsVoiceCatalog: AppModelElevenLabsVoiceCatalogSpy(voices: []),
-                    elevenLabsVoicePreview: AppModelElevenLabsVoicePreviewSpy(),
+                    textToSpeechVoicePreview: AppModelTextToSpeechVoicePreviewSpy(),
                     macContextAccess: access,
                     macContextCapturer: MacContextCapturerSpy(),
                     isExecutableFile: { _ in true },

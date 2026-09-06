@@ -16,6 +16,9 @@ struct AgentRunPresentationRestorationStage {
         marker: "… earlier diagnostics omitted …\n")
     var plan: [AgentPlanEntry]?
     var tools: [AgentToolPresentation] = []
+    var artifacts: [AgentArtifactPresentation] = []
+    var retainedArtifactBytes = 0
+    var omittedArtifactCount: UInt64 = 0
     var timeline: [AgentRunTimelineItem] = []
     var timelineHasOmittedActivity = false
     var notices: [String] = []
@@ -42,11 +45,15 @@ struct AgentRunPresentationRestorationStage {
         case .thoughtDelta(let messageID, let text):
             hasVisibleHistory = !text.isEmpty || hasVisibleHistory
             appendThinkingMessage(text, messageID: messageID)
+        case .artifact(let artifact):
+            hasVisibleHistory = upsertArtifact(artifact) || hasVisibleHistory
         case .toolCall(let tool):
             hasVisibleHistory = upsertTool(tool, maximumCount: maximumToolCount)
                 || hasVisibleHistory
+            hasVisibleHistory = upsertArtifacts(from: tool.content) || hasVisibleHistory
         case .toolCallUpdate(let update):
             hasVisibleHistory = updateTool(update) || hasVisibleHistory
+            hasVisibleHistory = upsertArtifacts(from: update.content) || hasVisibleHistory
         case .plan(let entries):
             plan = Array(entries.prefix(AgentRunPresentation.maximumPlanEntries))
             hasVisibleHistory = !entries.isEmpty || hasVisibleHistory
@@ -64,6 +71,11 @@ struct AgentRunPresentationRestorationStage {
         case .unknown(let discriminator, let summary):
             diagnosticBuffer.append("[\(discriminator)] \(summary)\n")
         case .deliveryNotice(let notice):
+            if notice.kind == .artifactTruncated {
+                omittedArtifactCount = saturatingAdd(
+                    omittedArtifactCount,
+                    notice.discardedEntries)
+            }
             appendNotice(noticeDescription(notice))
         case .permissionRequested:
             preconditionFailure("Historical permissions must not enter the restoration stage.")
@@ -163,7 +175,8 @@ struct AgentRunPresentationRestorationStage {
             source: .restored(token),
             title: tool.title,
             kind: tool.kind,
-            status: tool.status)
+            status: tool.status,
+            content: toolTextContent(tool.content))
         if let index = tools.firstIndex(where: { $0.id == tool.id }) {
             tools[index] = presentation
             updateTimelineTool(presentation)
@@ -193,8 +206,80 @@ struct AgentRunPresentationRestorationStage {
         if let status = update.status {
             tools[index].status = status
         }
+        let textContent = toolTextContent(update.content)
+        if !textContent.isEmpty {
+            tools[index].content = textContent
+        }
         updateTimelineTool(tools[index])
         return true
+    }
+
+    private func toolTextContent(_ content: [AgentToolCallContent]) -> [String] {
+        content.compactMap { item in
+            guard case let .text(text) = item else { return nil }
+            return text
+        }
+    }
+
+    private mutating func upsertArtifacts(from content: [AgentToolCallContent]) -> Bool {
+        var changed = false
+        for item in content {
+            guard case let .artifact(artifact) = item else { continue }
+            changed = upsertArtifact(artifact) || changed
+        }
+        return changed
+    }
+
+    private mutating func upsertArtifact(_ artifact: AgentArtifact) -> Bool {
+        let presentation = AgentArtifactPresentation(id: UUID(), artifact: artifact)
+        let newByteCount = presentation.embeddedByteCount
+        guard newByteCount <= AgentRunPresentation.maximumArtifactBytes else {
+            omittedArtifactCount = saturatingIncrement(omittedArtifactCount)
+            return false
+        }
+        if let key = canonicalURIKey(artifact.uri),
+            let index = artifacts.firstIndex(where: {
+                canonicalURIKey($0.artifact.uri) == key
+            })
+        {
+            let id = artifacts[index].id
+            retainedArtifactBytes -= artifacts[index].embeddedByteCount
+            artifacts[index] = AgentArtifactPresentation(id: id, artifact: artifact)
+            retainedArtifactBytes += newByteCount
+            trimArtifacts(protecting: index)
+            return true
+        }
+        while artifacts.count >= AgentRunPresentation.maximumArtifacts
+            || retainedArtifactBytes > AgentRunPresentation.maximumArtifactBytes - newByteCount
+        {
+            retainedArtifactBytes -= artifacts.removeFirst().embeddedByteCount
+            omittedArtifactCount = saturatingIncrement(omittedArtifactCount)
+        }
+        artifacts.append(presentation)
+        retainedArtifactBytes += newByteCount
+        return true
+    }
+
+    private mutating func trimArtifacts(protecting protectedIndex: Int) {
+        var index = protectedIndex
+        while retainedArtifactBytes > AgentRunPresentation.maximumArtifactBytes,
+            artifacts.count > 1
+        {
+            let removalIndex = index == artifacts.startIndex
+                ? artifacts.index(after: artifacts.startIndex)
+                : artifacts.startIndex
+            retainedArtifactBytes -= artifacts[removalIndex].embeddedByteCount
+            artifacts.remove(at: removalIndex)
+            if removalIndex < index { index -= 1 }
+            omittedArtifactCount = saturatingIncrement(omittedArtifactCount)
+        }
+    }
+
+    private func canonicalURIKey(_ uri: String?) -> String? {
+        guard let uri, var components = URLComponents(string: uri) else { return uri }
+        components.scheme = components.scheme?.lowercased()
+        components.host = components.host?.lowercased()
+        return components.string ?? uri
     }
 
     private mutating func appendNotice(_ message: String) {

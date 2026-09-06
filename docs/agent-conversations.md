@@ -32,11 +32,16 @@ including ACP startup. Provider-exposed reasoning, plans, and tool activity
 collect inside that card. The next answer settles and collapses it; select the
 card to inspect its retained details.
 
+The initiating profile's name, icon, and accent identify the conversation in
+the menu, panel header, compact pill, and response cards. The ACP provider name
+is implementation detail except while reporting connection progress.
+
 Responses render with a native GitHub-flavored Markdown parser, including
 headings, nested and task lists, tables, block quotes, links, inline code, and
-fenced code blocks. Text remains selectable. Agent-provided images are shown as
-omitted and never trigger a network request; only user-clicked `http` and
-`https` links can open externally.
+fenced code blocks. Text remains selectable. HTTPS Markdown images load directly
+from their remote host into a bounded picture surface; failed or unsupported
+images show an unavailable state. Only user-clicked `http` and `https` links can
+open externally.
 
 Voice Activation displays only thought content the provider sends through ACP;
 it does not claim access to private chain-of-thought. Token bursts publish to the
@@ -46,6 +51,20 @@ rendering every fragment separately.
 New activity follows the bottom while the view is already pinned there. A
 deliberate upward scroll pauses automatic following; returning to the bottom
 enables it again.
+
+## Use generated results
+
+Generated images, PDFs, documents, and resource links appear in a result shelf
+immediately after the request, ahead of the conversation details. Each card uses
+a native image or Quick Look preview when local data is available and otherwise
+shows a quiet file-type treatment. Preview work stays off the main actor and
+never downloads remote content.
+
+Use **Open** for an embedded result, local file, or `http`/`https` resource.
+Local linked files also offer **Reveal in Finder**. Embedded results are written
+only when opened, into an owner-only temporary run directory. Closing preserves
+them with retained output; deleting the result, replacing the run, or quitting
+removes app-owned temporary files.
 
 ## Continue by voice or push-to-talk
 
@@ -98,7 +117,7 @@ identities reject late callbacks and stale pointer actions.
 
 ## Minimize, restore, close, and delete
 
-Drag the provider header to move the expanded panel. The minimize button morphs
+Drag the profile header to move the expanded panel. The minimize button morphs
 it into a movable live-status pill below the menu bar at the screen's top-right.
 Restoring returns to the saved expanded location, adjusted only to stay visible
 on the current screen.
@@ -119,13 +138,20 @@ explicit macOS or ElevenLabs voice. The resolved backend and voice are pinned at
 conversation start. An explicit profile voice remains enabled even when global
 inherited narration is off. ElevenLabs credentials are global and Keychain-backed.
 
+**Test voice** in either the global default or an individual profile uses the
+same backend and credential path as conversation narration. The control shows
+preparing, stop, success, and actionable failure states only on the row that
+started the preview. A 402 response means ElevenLabs needs credits or payment;
+an invalid or missing API key is a 401 response.
+
 When narration is active, Voice Activation removes Markdown formatting and
 queues user-facing agent text while it streams. Complete sentences start
 immediately. An unfinished progress message is flushed when work moves to
 thought, tool, plan, or permission activity, with a 350 ms fallback when no
-semantic boundary arrives. ElevenLabs prepares at most two complete segments
-concurrently while preserving playback order. A failed backend request falls
-back to the automatic macOS voice for that segment.
+semantic boundary arrives. Image labels and destinations are silent, so reply
+speech never narrates a picture URL. ElevenLabs prepares at most two complete
+segments concurrently while preserving playback order. A failed backend request
+falls back to the automatic macOS voice for that segment.
 
 The thinking cue begins when the request is accepted, including ACP startup, and
 continues during cloud preparation. It pauses for permissions and audible
@@ -135,7 +161,8 @@ completion, and failure have distinct deduplicated cues.
 ## Copy retained output
 
 **Copy output** includes the initial request, user-visible response Markdown
-separated by turn, and bounded diagnostics. Provider thought updates remain
+separated by turn, result names and linked URIs, and bounded diagnostics. It
+never includes embedded result bytes. Provider thought updates remain
 inspectable in the timeline but are excluded from the response section.
 
 Copyable output, diagnostics, tools, timeline text, and visible activity are all

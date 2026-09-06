@@ -45,8 +45,8 @@ extension AppModelTests {
                 AgentSpeechCredentialStoreSpy(),
             elevenLabsVoiceCatalog: any ElevenLabsVoiceCatalogLoading =
                 AppModelElevenLabsVoiceCatalogSpy(voices: []),
-            elevenLabsVoicePreview: any ElevenLabsVoicePreviewing =
-                AppModelElevenLabsVoicePreviewSpy(),
+            textToSpeechVoicePreview: any TextToSpeechVoicePreviewing =
+                AppModelTextToSpeechVoicePreviewSpy(),
             textToSpeechBackendRegistry: TextToSpeechBackendRegistry? = nil,
             macContextAccess: MacContextAccessSpy = MacContextAccessSpy(),
             macContextCapturer: MacContextCapturerSpy = MacContextCapturerSpy(),
@@ -85,7 +85,7 @@ extension AppModelTests {
                 agentConversationAudioPlayer: agentConversationAudioPlayer,
                 agentSpeechCredentialStore: agentSpeechCredentialStore,
                 elevenLabsVoiceCatalog: elevenLabsVoiceCatalog,
-                elevenLabsVoicePreview: elevenLabsVoicePreview,
+                textToSpeechVoicePreview: textToSpeechVoicePreview,
                 textToSpeechBackendRegistry: textToSpeechBackendRegistry,
                 macContextAccess: macContextAccess,
                 macContextCapturer: macContextCapturer,

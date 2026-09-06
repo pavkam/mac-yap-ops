@@ -32,6 +32,11 @@ struct MenuContentView: View {
         }
         .frame(width: 356)
         .background(panelBackground)
+        .background {
+            MenuWindowConfigurationView(layoutIdentity: layoutIdentity)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
     }
 
     private var statusHeader: some View {
@@ -149,7 +154,11 @@ struct MenuContentView: View {
     private func agentRunControls(_ snapshot: AgentRunSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Label(snapshot.providerName, systemImage: "sparkles")
+                Label {
+                    Text(snapshot.profileName)
+                } icon: {
+                    ProfileIconGlyph(icon: snapshot.profileIcon)
+                }
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .foregroundStyle(snapshot.accent.swiftUIColor)
                 Spacer()
@@ -268,8 +277,10 @@ struct MenuContentView: View {
             Spacer()
 
             Button {
-                model.shutdown()
-                NSApplication.shared.terminate(nil)
+                Task { @MainActor in
+                    await model.shutdown()
+                    NSApplication.shared.terminate(nil)
+                }
             } label: {
                 Label("Quit", systemImage: "power")
             }
@@ -303,6 +314,20 @@ struct MenuContentView: View {
 
     private var headerAccent: Color {
         model.activeWakeProfiles.first(where: \.isEnabled)?.accent.swiftUIColor ?? .secondary
+    }
+
+    private var layoutIdentity: MenuContentLayoutIdentity {
+        let agentControls: MenuContentLayoutIdentity.AgentControls
+        if let snapshot = model.agentRunSnapshot {
+            agentControls = snapshot.phase.isTerminal ? .terminal : .active
+        } else {
+            agentControls = .hidden
+        }
+        return MenuContentLayoutIdentity(
+            showsLastCommand: !model.lastTranscript.isEmpty,
+            agentControls: agentControls,
+            profileCount: model.activeWakeProfiles.count,
+            showsCaptureCancellation: model.state == .capturing)
     }
 }
 
@@ -372,12 +397,7 @@ private struct MenuProfileRow: View {
     @ViewBuilder
     private var profileIcon: some View {
         if profile.isEnabled {
-            switch profile.icon {
-            case .systemSymbol(let name):
-                Image(systemName: name)
-            case .emoji(let value):
-                Text(value)
-            }
+            ProfileIconGlyph(icon: profile.icon)
         } else {
             Image(systemName: "slash.circle")
         }

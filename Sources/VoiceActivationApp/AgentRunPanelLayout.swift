@@ -4,18 +4,25 @@
 import AppKit
 
 enum AgentRunPanelLayout {
-    static let expandedSize = NSSize(width: 620, height: 420)
+    static let preferredExpandedSize = NSSize(width: 680, height: 560)
     static let compactSize = NSSize(width: 372, height: 84)
     static let bottomInset: CGFloat = 42
     static let compactTopTrailingInset: CGFloat = 16
     static let transitionDuration: TimeInterval = 0.42
 
+    static func expandedSize(in visibleFrame: NSRect) -> NSSize {
+        NSSize(
+            width: min(preferredExpandedSize.width, visibleFrame.width),
+            height: min(preferredExpandedSize.height, visibleFrame.height))
+    }
+
     static func expandedFrame(in visibleFrame: NSRect) -> NSRect {
-        let preferredX = visibleFrame.midX - (expandedSize.width / 2)
+        let size = expandedSize(in: visibleFrame)
+        let preferredX = visibleFrame.midX - (size.width / 2)
         let preferredY = visibleFrame.minY + bottomInset
         return clampedFrame(
             origin: NSPoint(x: preferredX, y: preferredY),
-            size: expandedSize,
+            size: size,
             in: visibleFrame)
     }
 
@@ -30,7 +37,7 @@ enum AgentRunPanelLayout {
 
     static func expandedFrame(restoring frame: NSRect, in visibleFrame: NSRect) -> NSRect {
         topRightAnchoredFrame(
-            size: expandedSize,
+            size: expandedSize(in: visibleFrame),
             topRight: NSPoint(x: frame.maxX, y: frame.maxY),
             in: visibleFrame)
     }

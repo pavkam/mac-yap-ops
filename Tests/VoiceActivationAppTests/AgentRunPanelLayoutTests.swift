@@ -11,24 +11,24 @@ struct AgentRunPanelLayoutTests {
 
         let frame = AgentRunPanelLayout.expandedFrame(in: visibleFrame)
 
-        #expect(frame.size == NSSize(width: 620, height: 420))
+        #expect(frame.size == NSSize(width: 680, height: 560))
         #expect(frame.midX == visibleFrame.midX)
         #expect(frame.minY == visibleFrame.minY + 42)
         #expect(visibleFrame.contains(frame))
     }
 
-    @Test func expandedFrame_WhenVisibleAreaIsSmaller_ClampsOriginWithoutChangingSize() {
+    @Test func expandedFrame_WhenVisibleAreaIsSmaller_FillsTheCompleteVisibleArea() {
         let visibleFrame = NSRect(x: 100, y: 50, width: 500, height: 300)
 
         let frame = AgentRunPanelLayout.expandedFrame(in: visibleFrame)
 
-        #expect(frame.size == NSSize(width: 620, height: 420))
+        #expect(frame.size == visibleFrame.size)
         #expect(frame.origin == visibleFrame.origin)
     }
 
     @Test func compactFrame_WhenPanelMinimizes_MovesBelowTheMenuBarAtTopRight() {
         let visibleFrame = NSRect(x: 0, y: 0, width: 1_440, height: 900)
-        let expandedFrame = NSRect(x: 210, y: 80, width: 620, height: 420)
+        let expandedFrame = NSRect(x: 210, y: 80, width: 680, height: 560)
 
         let compactFrame = AgentRunPanelLayout.compactFrame(
             minimizing: expandedFrame,
@@ -48,14 +48,14 @@ struct AgentRunPanelLayoutTests {
             restoring: movedCompactFrame,
             in: visibleFrame)
 
-        #expect(frame == NSRect(x: -638, y: 354, width: 620, height: 420))
+        #expect(frame == NSRect(x: -698, y: 214, width: 680, height: 560))
         #expect(visibleFrame.contains(frame))
     }
 
     @Test func placement_WhenMinimizedAndRestored_ReturnsToSavedExpandedLocation() {
         let originalScreen = NSRect(x: 0, y: 24, width: 1_440, height: 876)
         let otherScreen = NSRect(x: 1_440, y: 0, width: 1_920, height: 1_080)
-        let expandedFrame = NSRect(x: 280, y: 160, width: 620, height: 420)
+        let expandedFrame = NSRect(x: 280, y: 160, width: 680, height: 560)
         var placement = AgentRunPanelPlacement()
 
         let compactFrame = placement.minimize(
@@ -73,5 +73,22 @@ struct AgentRunPanelLayoutTests {
 
         #expect(compactFrame.maxX == originalScreen.maxX - 16)
         #expect(restoredFrame == expandedFrame)
+    }
+
+    @Test func placement_WhenRestoredOntoASmallDisplay_UsesItsSettledAdaptiveSize() {
+        let largeScreen = NSRect(x: 0, y: 24, width: 1_440, height: 876)
+        let smallScreen = NSRect(x: 1_440, y: 0, width: 500, height: 300)
+        var placement = AgentRunPanelPlacement()
+        _ = placement.minimize(
+            frame: NSRect(x: 280, y: 160, width: 680, height: 560),
+            in: largeScreen)
+        let movedCompactFrame = NSRect(x: 1_568, y: 200, width: 372, height: 84)
+
+        let restoredFrame = placement.restore(
+            from: movedCompactFrame,
+            availableVisibleFrames: [smallScreen],
+            fallbackVisibleFrame: smallScreen)
+
+        #expect(restoredFrame == smallScreen)
     }
 }

@@ -73,6 +73,7 @@ final class AppModelAgentPanelSpy: AgentRunPanelDisplaying {
     private(set) var updates: [AgentRunSnapshot] = []
     private(set) var shown: [UUID] = []
     private(set) var hidden: [UUID] = []
+    private(set) var discarded: [UUID] = []
     private var phaseWaiters: [(AgentRunPhase, CheckedContinuation<Void, Never>)] = []
     private var terminalWaiters: [CheckedContinuation<Void, Never>] = []
 
@@ -93,6 +94,8 @@ final class AppModelAgentPanelSpy: AgentRunPanelDisplaying {
     }
     func show(runID: UUID) { shown.append(runID) }
     func hide(runID: UUID) { hidden.append(runID) }
+    func discard(runID: UUID) { discarded.append(runID) }
+    func shutdown() {}
     func minimize(runID: UUID) {}
     func restore(runID: UUID) {}
 
@@ -408,12 +411,16 @@ actor AppModelElevenLabsVoiceCatalogSpy: ElevenLabsVoiceCatalogLoading {
 }
 
 @MainActor
-final class AppModelElevenLabsVoicePreviewSpy: ElevenLabsVoicePreviewing {
-    private(set) var requests: [(apiKey: String, voiceID: String)] = []
+final class AppModelTextToSpeechVoicePreviewSpy: TextToSpeechVoicePreviewing {
+    private(set) var requests: [TextToSpeechVoicePreviewRequest] = []
     private(set) var stopCount = 0
+    var failure: (any Error)?
 
-    func play(apiKey: String, voiceID: String) async throws {
-        requests.append((apiKey, voiceID))
+    func play(_ request: TextToSpeechVoicePreviewRequest) async throws {
+        requests.append(request)
+        if let failure {
+            throw failure
+        }
     }
 
     func stop() {

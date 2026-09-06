@@ -74,9 +74,18 @@ cycles or more than ten pages. The official [list voices API](https://elevenlabs
 confirms the endpoint, 100-item maximum, and pagination contract.
 
 Settings may retain a manually entered Voice ID if the catalog is unavailable.
-Preview reuses the synthesis client with a short fixed sentence, owns its own
-generation, and must reject stale audio after cancellation. Preview failure does
-not change the saved provider.
+`TextToSpeechVoicePreviewPlayer` sends the selected backend, voice, global
+credential, and locale through the same `TextToSpeechBackendRegistry.prepare`
+contract used by conversation speech. It plays the returned system voice or
+audio with a short fixed sentence, owns its own generation, and rejects stale
+audio after cancellation. Preview failure does not change saved settings.
+
+ElevenLabs' official [error reference](https://elevenlabs.io/docs/eleven-api/resources/errors)
+defines `401` as missing or invalid authentication, `402` as insufficient
+credits or payment required, `403` as an authorization or plan restriction, and
+`429` as rate or concurrency limiting. Do not describe a `402` as a missing API
+key. Keep response bodies out of UI and diagnostics; map the bounded status to
+an actionable category and retain the numeric code only in diagnostics.
 
 ## Credential and privacy contract
 

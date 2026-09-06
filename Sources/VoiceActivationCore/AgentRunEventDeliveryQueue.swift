@@ -3,7 +3,7 @@
 
 import Foundation
 
-/// A lock-protected, single-consumer queue with independent text and control bounds.
+/// A lock-protected, single-consumer queue with independent text, artifact, and control bounds.
 ///
 /// Live output and diagnostics may be coalesced or summarized under pressure.
 /// Lossless staged delivery reports overflow without mutating the admitted prefix.
@@ -14,10 +14,13 @@ final class AgentRunEventDeliveryQueue: @unchecked Sendable {
     private var entries = AgentRunEventDeque()
     private var waiter: CheckedContinuation<AgentRunEvent?, Never>?
     private var pendingOutputBytes = 0
+    private var pendingArtifactBytes = 0
     private var pendingDiagnosticBytes = 0
     private var pendingControlBytes = 0
     private var discardedOutputBytes: UInt64 = 0
     private var discardedOutputEntries: UInt64 = 0
+    private var discardedArtifactBytes: UInt64 = 0
+    private var discardedArtifactEntries: UInt64 = 0
     private var discardedDiagnosticBytes: UInt64 = 0
 
     init(isLossless: Bool = false) {
@@ -29,11 +32,14 @@ final class AgentRunEventDeliveryQueue: @unchecked Sendable {
             AgentRunEventDeliverySnapshot(
                 state: lifecycle,
                 pendingOutputBytes: pendingOutputBytes,
+                pendingArtifactBytes: pendingArtifactBytes,
                 pendingDiagnosticBytes: pendingDiagnosticBytes,
                 pendingControlBytes: pendingControlBytes,
                 pendingEntryCount: entries.count,
                 discardedOutputBytes: discardedOutputBytes,
                 discardedOutputEntries: discardedOutputEntries,
+                discardedArtifactBytes: discardedArtifactBytes,
+                discardedArtifactEntries: discardedArtifactEntries,
                 discardedDiagnosticBytes: discardedDiagnosticBytes)
         }
     }
@@ -106,10 +112,13 @@ final class AgentRunEventDeliveryQueue: @unchecked Sendable {
 
             let savedEntries = entries
             let savedOutputBytes = pendingOutputBytes
+            let savedArtifactBytes = pendingArtifactBytes
             let savedDiagnosticBytes = pendingDiagnosticBytes
             let savedControlBytes = pendingControlBytes
             let savedDiscardedOutputBytes = discardedOutputBytes
             let savedDiscardedOutputEntries = discardedOutputEntries
+            let savedDiscardedArtifactBytes = discardedArtifactBytes
+            let savedDiscardedArtifactEntries = discardedArtifactEntries
             let savedDiscardedDiagnosticBytes = discardedDiagnosticBytes
 
             for entry in normalized.entries {
@@ -119,10 +128,13 @@ final class AgentRunEventDeliveryQueue: @unchecked Sendable {
             guard isWithinCapacity else {
                 entries = savedEntries
                 pendingOutputBytes = savedOutputBytes
+                pendingArtifactBytes = savedArtifactBytes
                 pendingDiagnosticBytes = savedDiagnosticBytes
                 pendingControlBytes = savedControlBytes
                 discardedOutputBytes = savedDiscardedOutputBytes
                 discardedOutputEntries = savedDiscardedOutputEntries
+                discardedArtifactBytes = savedDiscardedArtifactBytes
+                discardedArtifactEntries = savedDiscardedArtifactEntries
                 discardedDiagnosticBytes = savedDiscardedDiagnosticBytes
                 lifecycle = .draining
                 prepareFinishedWaiter(
@@ -166,6 +178,7 @@ final class AgentRunEventDeliveryQueue: @unchecked Sendable {
             lifecycle = .discarded
             entries.removeAll()
             pendingOutputBytes = 0
+            pendingArtifactBytes = 0
             pendingDiagnosticBytes = 0
             pendingControlBytes = 0
             continuation = waiter
@@ -221,6 +234,7 @@ final class AgentRunEventDeliveryQueue: @unchecked Sendable {
             current: { pendingDiagnosticBytes },
             maximum: AgentRunEventDelivery.maximumPendingDiagnosticBytes,
             category: .diagnosticTruncated)
+        trimArtifacts()
 
         while pendingControlBytes > AgentRunEventDelivery.maximumPendingControlBytes {
             guard let index = entries.firstIndex(where: { $0.outputBytes > 0 }) else {
@@ -231,13 +245,18 @@ final class AgentRunEventDeliveryQueue: @unchecked Sendable {
 
         while entries.count > AgentRunEventDelivery.maximumPendingEntries {
             guard let index = entries.firstIndex(where: {
-                $0.outputBytes > 0 || $0.diagnosticBytes > 0
+                $0.outputBytes > 0 || $0.artifactBytes > 0 || $0.diagnosticBytes > 0
             }) else {
                 return false
             }
-            let kind: AgentRunEventDeliveryNoticeKind = entries[index].outputBytes > 0
-                ? .outputTruncated
-                : .diagnosticTruncated
+            let kind: AgentRunEventDeliveryNoticeKind
+            if entries[index].outputBytes > 0 {
+                kind = .outputTruncated
+            } else if entries[index].artifactBytes > 0 {
+                kind = .artifactTruncated
+            } else {
+                kind = .diagnosticTruncated
+            }
             discardWholeEntry(at: index, noticeKind: kind)
         }
         return true
@@ -261,6 +280,8 @@ final class AgentRunEventDeliveryQueue: @unchecked Sendable {
                 switch category {
                 case .outputTruncated:
                     entry.outputBytes > 0
+                case .artifactTruncated:
+                    false
                 case .diagnosticTruncated:
                     entry.diagnosticBytes > 0
                 case .controlTruncated:
@@ -290,14 +311,30 @@ final class AgentRunEventDeliveryQueue: @unchecked Sendable {
         }
     }
 
+    private func trimArtifacts() {
+        while pendingArtifactBytes > AgentRunEventDelivery.maximumPendingArtifactBytes {
+            guard let index = entries.firstIndex(where: { $0.artifactBytes > 0 }) else {
+                return
+            }
+            discardWholeEntry(at: index, noticeKind: .artifactTruncated)
+        }
+    }
+
     private func discardWholeEntry(
         at index: Int,
         noticeKind: AgentRunEventDeliveryNoticeKind)
     {
         let removed = remove(at: index)
-        let bytes = noticeKind == .outputTruncated
-            ? removed.outputBytes
-            : removed.diagnosticBytes
+        let bytes = switch noticeKind {
+        case .outputTruncated:
+            removed.outputBytes
+        case .artifactTruncated:
+            removed.artifactBytes
+        case .diagnosticTruncated:
+            removed.diagnosticBytes
+        case .controlTruncated:
+            0
+        }
         addDiscarded(kind: noticeKind, bytes: bytes, entries: 1)
         insertNotice(
             at: index,
@@ -312,6 +349,12 @@ final class AgentRunEventDeliveryQueue: @unchecked Sendable {
         discardedBytes: UInt64,
         discardedEntries: UInt64)
     {
+        if let existingIndex = entries.firstIndex(where: { $0.noticeKind == kind }) {
+            var notice = entries[existingIndex]
+            notice.addNoticeCounts(bytes: discardedBytes, entries: discardedEntries)
+            entries[existingIndex] = notice
+            return
+        }
         if index > 0, entries[index - 1].noticeKind == kind {
             var notice = entries[index - 1]
             notice.addNoticeCounts(bytes: discardedBytes, entries: discardedEntries)
@@ -341,6 +384,9 @@ final class AgentRunEventDeliveryQueue: @unchecked Sendable {
         case .outputTruncated:
             discardedOutputBytes = saturatingAdd(discardedOutputBytes, UInt64(bytes))
             discardedOutputEntries = saturatingAdd(discardedOutputEntries, entries)
+        case .artifactTruncated:
+            discardedArtifactBytes = saturatingAdd(discardedArtifactBytes, UInt64(bytes))
+            discardedArtifactEntries = saturatingAdd(discardedArtifactEntries, entries)
         case .diagnosticTruncated:
             discardedDiagnosticBytes = saturatingAdd(discardedDiagnosticBytes, UInt64(bytes))
         case .controlTruncated:
@@ -364,12 +410,14 @@ final class AgentRunEventDeliveryQueue: @unchecked Sendable {
 
     private func addCounters(for entry: AgentRunEventDeliveryEntry) {
         pendingOutputBytes += entry.outputBytes
+        pendingArtifactBytes += entry.artifactBytes
         pendingDiagnosticBytes += entry.diagnosticBytes
         pendingControlBytes += entry.controlBytes
     }
 
     private func subtractCounters(for entry: AgentRunEventDeliveryEntry) {
         pendingOutputBytes -= entry.outputBytes
+        pendingArtifactBytes -= entry.artifactBytes
         pendingDiagnosticBytes -= entry.diagnosticBytes
         pendingControlBytes -= entry.controlBytes
     }

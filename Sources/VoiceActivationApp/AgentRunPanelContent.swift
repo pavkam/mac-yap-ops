@@ -6,7 +6,24 @@ import VoiceActivationCore
 
 extension AgentRunPanelView {
     func requestCard(_ snapshot: AgentRunSnapshot) -> some View {
-        userBubble(snapshot.prompt, label: "You")
+        userBubble(snapshot.prompt, label: "Request")
+    }
+
+    func miniAgentMark(_ snapshot: AgentRunSnapshot) -> some View {
+        ZStack {
+            Circle()
+                .fill(LinearGradient(
+                    colors: [accent, accent.opacity(0.68)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing))
+            Circle().stroke(.white.opacity(0.28), lineWidth: 0.7)
+            ProfileIconGlyph(icon: snapshot.profileIcon)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.white)
+        }
+        .frame(width: 27, height: 27)
+        .shadow(color: accent.opacity(0.18), radius: 5, y: 2)
+        .accessibilityHidden(true)
     }
 
     @ViewBuilder
@@ -15,27 +32,24 @@ extension AgentRunPanelView {
            snapshot.phase == .running || snapshot.phase == .cancelling
         {
             HStack(spacing: 10) {
-                AgentRunWorkingGlyph(tint: accent, size: 28)
+                AgentRunWorkingGlyph(tint: accent, size: 24)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(snapshot.phase == .cancelling ? "Wrapping up" : "Warming up")
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.primary)
+                    Text(snapshot.phase == .cancelling ? "Wrapping up" : "Starting")
+                        .font(.callout.weight(.semibold))
                     Text(snapshot.phase == .cancelling
                         ? "Waiting for the agent to stop safely"
                         : "Connecting to \(snapshot.providerName)")
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
-                        .foregroundStyle(.tertiary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
-            .font(.system(size: 12, weight: .medium, design: .rounded))
-            .padding(12)
-            .background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 14))
+            .accessibilityElement(children: .combine)
         } else {
             ForEach(snapshot.timeline) { item in
                 switch item {
                 case .omitted:
                     Label("Earlier activity omitted", systemImage: "ellipsis.circle")
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 case .historyBoundary:
@@ -44,7 +58,7 @@ extension AgentRunPanelView {
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 case let .message(message):
-                    messageBlock(message)
+                    messageBlock(message, snapshot: snapshot)
                 case let .userMessage(message):
                     userMessageBlock(message)
                 case let .thinking(thinking):
@@ -54,23 +68,32 @@ extension AgentRunPanelView {
         }
     }
 
-    func messageBlock(_ message: AgentMessagePresentation) -> some View {
+    func messageBlock(
+        _ message: AgentMessagePresentation,
+        snapshot: AgentRunSnapshot
+    ) -> some View {
         HStack(alignment: .top, spacing: 10) {
             if message.kind == .response {
-                miniAgentMark
+                miniAgentMark(snapshot)
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                sectionLabel(
-                    message.kind == .thought
-                        ? "Thinking"
-                        : model.snapshot?.providerName ?? "Agent",
-                    symbol: message.kind == .thought ? "brain.head.profile" : "sparkles")
-                AgentMarkdownView(markdown: message.text)
-                    .foregroundStyle(message.kind == .thought ? .secondary : .primary)
+                if message.kind == .thought {
+                    sectionLabel("Thinking", symbol: "brain.head.profile")
+                } else {
+                    Label {
+                        Text(snapshot.profileName)
+                    } icon: {
+                        ProfileIconGlyph(icon: snapshot.profileIcon)
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+                AgentMarkdownView(
+                    markdown: message.text,
+                    accent: accent,
+                    style: message.kind == .thought ? .detail : .response)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
-                    .tint(accent)
             }
             .padding(.horizontal, 13)
             .padding(.vertical, 11)
@@ -84,74 +107,55 @@ extension AgentRunPanelView {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.trailing, message.kind == .response ? 40 : 18)
+        .padding(.leading, message.kind == .thought ? 12 : 0)
     }
 
     func userMessageBlock(_ message: AgentUserMessagePresentation) -> some View {
-        userBubble(message.text, label: "You")
+        userBubble(message.text, label: "Follow-up")
     }
 
     @ViewBuilder
     func noticeCards(_ snapshot: AgentRunSnapshot) -> some View {
         ForEach(Array(snapshot.notices.enumerated()), id: \.offset) { _, notice in
-            HStack(alignment: .top, spacing: 9) {
-                Image(systemName: "info.circle.fill")
-                    .foregroundStyle(.orange)
+            Label {
                 Text(notice)
                     .frame(maxWidth: .infinity, alignment: .leading)
+            } icon: {
+                Image(systemName: "info.circle")
+                    .foregroundStyle(.secondary)
             }
-            .font(.system(size: 11, weight: .medium, design: .rounded))
+            .font(.caption)
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 11)
-            .padding(.vertical, 9)
-            .background(
-                LinearGradient(
-                    colors: [.orange.opacity(0.12), .white.opacity(0.025)],
-                    startPoint: .leading,
-                    endPoint: .trailing),
-                in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(.orange.opacity(0.18), lineWidth: 0.7)
-            }
+            .padding(10)
+            .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 9))
         }
     }
 
     @ViewBuilder
     func failureCard(_ snapshot: AgentRunSnapshot) -> some View {
         if case let .failed(message) = snapshot.phase {
-            HStack(alignment: .top, spacing: 11) {
-                ZStack {
-                    Circle().fill(.red.opacity(0.16))
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(.red)
-                }
-                .frame(width: 30, height: 30)
-
-                VStack(alignment: .leading, spacing: 4) {
+            Label {
+                VStack(alignment: .leading, spacing: 3) {
                     Text("Agent stopped")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .font(.callout.weight(.semibold))
                     Text(message)
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .font(.callout)
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+            } icon: {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                LinearGradient(
-                    colors: [.red.opacity(0.16), .pink.opacity(0.045)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing),
-                in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+            .background(.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
             .overlay {
-                RoundedRectangle(cornerRadius: 15, style: .continuous)
-                    .stroke(.red.opacity(0.24), lineWidth: 0.8)
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(.red.opacity(0.45), lineWidth: 1)
             }
+            .accessibilityElement(children: .combine)
         }
     }
-
 }

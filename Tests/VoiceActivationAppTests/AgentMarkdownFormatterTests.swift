@@ -69,4 +69,16 @@ struct AgentMarkdownFormatterTests {
 
         #expect(spoken == "Result\nEverything passed. See the report.\nFirst item\nCode block omitted.")
     }
+
+    @Test func spokenText_WhenResponseContainsAnImage_OmitsItsLabelAndDestination() {
+        let spoken = AgentMarkdownFormatter.spokenText(from: """
+            Here is the picture.
+
+            ![https://images.example/picture.png](https://images.example/picture.png)
+
+            Enjoy.
+            """)
+
+        #expect(spoken == "Here is the picture.\nEnjoy.")
+    }
 }

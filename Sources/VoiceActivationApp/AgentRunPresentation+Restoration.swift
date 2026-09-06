@@ -132,6 +132,10 @@ extension AgentRunPresentation {
         notices = boundedNotices(stage.notices + notices)
 
         historicalTools = stage.tools
+        historicalArtifacts = stage.artifacts
+        omittedArtifactCount = saturatingAdd(
+            omittedArtifactCount,
+            stage.omittedArtifactCount)
         if let restoredPlan = stage.plan {
             historicalPlan = restoredPlan
         }
@@ -222,6 +226,34 @@ extension AgentRunPresentation {
         saturatingAdd(
             ignoredToolUpdateCount,
             restorationState?.stage.ignoredToolUpdateCount ?? 0)
+    }
+
+    var sourceQualifiedArtifactProjection: (
+        artifacts: [AgentArtifactPresentation],
+        omittedCount: UInt64
+    ) {
+        let stagedArtifacts = restorationState?.stage.artifacts ?? []
+        var combined = historicalArtifacts + stagedArtifacts + artifacts
+        var seenURIs: Set<String> = []
+        combined = combined.reversed().filter { artifact in
+            guard let key = canonicalURIKey(artifact.artifact.uri) else { return true }
+            return seenURIs.insert(key).inserted
+        }.reversed()
+
+        var retainedBytes = combined.reduce(0) { $0 + $1.embeddedByteCount }
+        var additionalOmissions: UInt64 = 0
+        while combined.count > Self.maximumArtifacts
+            || retainedBytes > Self.maximumArtifactBytes
+        {
+            retainedBytes -= combined.removeFirst().embeddedByteCount
+            additionalOmissions = saturatingIncrement(additionalOmissions)
+        }
+        let stagedOmissions = restorationState?.stage.omittedArtifactCount ?? 0
+        return (
+            combined,
+            saturatingAdd(
+                saturatingAdd(omittedArtifactCount, stagedOmissions),
+                additionalOmissions))
     }
 
     func enforceSourceQualifiedToolBounds() {

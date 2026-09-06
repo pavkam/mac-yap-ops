@@ -24,7 +24,7 @@ extension AppModelTests {
         let permission = PermissionRequestGate()
         let credentials = AgentSpeechCredentialStoreSpy(apiKey: "startup-key")
         let catalog = AppModelElevenLabsVoiceCatalogSpy(voices: [])
-        let preview = AppModelElevenLabsVoicePreviewSpy()
+        let preview = AppModelTextToSpeechVoicePreviewSpy()
         let composition = VoiceActivationAppComposition.make(
             continuityStore: store,
             activationMonitor: ApplicationActivationMonitor(
@@ -44,7 +44,7 @@ extension AppModelTests {
                     agentConversationAudioPlayer: SilentAgentConversationAudioPlayer(),
                     agentSpeechCredentialStore: credentials,
                     elevenLabsVoiceCatalog: catalog,
-                    elevenLabsVoicePreview: preview,
+                    textToSpeechVoicePreview: preview,
                     macContextAccess: access,
                     macContextCapturer: MacContextCapturerSpy(),
                     isExecutableFile: { _ in true },
@@ -65,7 +65,11 @@ extension AppModelTests {
         composition.model.elevenLabsVoiceID = "draft-voice"
         let earlySave = await composition.model.saveSettings()
         await composition.model.loadTextToSpeechVoices(for: .elevenLabs)
-        await composition.model.previewElevenLabsVoice()
+        await composition.model.previewTextToSpeechVoice(
+            TextToSpeechVoiceSelection(
+                backendID: .elevenLabs,
+                voiceID: "draft-voice"),
+            in: .defaultVoice)
         #expect(!earlySave)
         #expect(access.statusChecks == 0)
         #expect(access.promptingChecks == 0)
@@ -96,13 +100,17 @@ extension AppModelTests {
         composition.model.setPushToTalkShortcutRecording(false)
         #expect(await composition.model.saveSettings())
         await composition.model.loadTextToSpeechVoices(for: .elevenLabs)
-        await composition.model.previewElevenLabsVoice()
+        await composition.model.previewTextToSpeechVoice(
+            TextToSpeechVoiceSelection(
+                backendID: .elevenLabs,
+                voiceID: "draft-voice"),
+            in: .defaultVoice)
         #expect(access.statusChecks == 3)
         #expect(access.promptingChecks == 1)
         #expect(shortcut.stopCount == 1)
         #expect(!credentials.savedKeys.isEmpty)
         #expect(await catalog.requestedAPIKeys.count == 1)
-        #expect(preview.requests.map(\.voiceID) == ["draft-voice"])
+        #expect(preview.requests.map(\.selection.voiceID) == ["draft-voice"])
     }
 
     @MainActor

@@ -621,6 +621,7 @@ extension AgentRunEvent {
         case .userMessageDelta: "user_message_delta"
         case .agentMessageDelta: "agent_message_delta"
         case .thoughtDelta: "thought_delta"
+        case .artifact: "artifact"
         case .toolCall: "tool_call"
         case .toolCallUpdate: "tool_call_update"
         case .plan: "plan"
@@ -638,7 +639,7 @@ extension AgentRunEvent {
         switch self {
         case .agentMessageDelta(_, let text), .thoughtDelta(_, let text):
             !text.isEmpty
-        case .toolCall, .toolCallUpdate, .permissionRequested, .deliveryNotice:
+        case .artifact, .toolCall, .toolCallUpdate, .permissionRequested, .deliveryNotice:
             true
         case .plan(let entries):
             !entries.isEmpty

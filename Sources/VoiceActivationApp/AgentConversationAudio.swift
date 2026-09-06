@@ -45,6 +45,7 @@ final class AgentConversationAudioOrchestrator: AgentConversationAudioPlaying {
                 AgentSpeechConfiguration(selection: selection, credential: nil)
             }
         },
+        backendRegistry: TextToSpeechBackendRegistry? = nil,
         elevenLabsSynthesizer: any ElevenLabsSpeechSynthesizing = ElevenLabsSpeechClient(),
         elevenLabsAudioPlayer: any AgentAudioDataPlaying = SystemAgentAudioDataPlayer(),
         systemSpeechPlayer: any AgentSystemSpeechPlaying = SystemAgentSpeechPlayer(),
@@ -56,6 +57,7 @@ final class AgentConversationAudioOrchestrator: AgentConversationAudioPlaying {
         self.speechConfiguration = speechConfiguration
         self.diagnostics = diagnostics
         speechQueue = AgentSpeechQueue(
+            backendRegistry: backendRegistry,
             synthesizer: elevenLabsSynthesizer,
             audioPlayer: elevenLabsAudioPlayer,
             systemSpeechPlayer: systemSpeechPlayer,
@@ -368,7 +370,7 @@ final class AgentConversationAudioPresenter {
             narration.markSemanticBoundary()
             handleToolSound(id: tool.id, status: tool.status)
             updateWorking(true)
-        case .thoughtDelta, .plan, .connected:
+        case .thoughtDelta, .artifact, .plan, .connected:
             narration.markSemanticBoundary()
             updateWorking(true)
         case .metadata, .diagnostic, .unknown, .deliveryNotice:
@@ -526,6 +528,7 @@ extension AgentRunEvent {
         case .userMessageDelta: "user_message_delta"
         case .agentMessageDelta: "agent_message_delta"
         case .thoughtDelta: "thought_delta"
+        case .artifact: "artifact"
         case .toolCall: "tool_call"
         case .toolCallUpdate: "tool_call_update"
         case .plan: "plan"

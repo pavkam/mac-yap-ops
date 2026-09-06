@@ -14,6 +14,8 @@ final class AgentRunPresentation {
     static let maximumOutputBytes = 512 * 1_024
     static let maximumDiagnosticBytes = 16 * 1_024
     static let maximumTools = 32
+    static let maximumArtifacts = 32
+    static let maximumArtifactBytes = 4 * 1_024 * 1_024
     static let maximumPlanEntries = 64
     static let maximumNotices = 16
     static let maximumTimelineTextBytes = 64 * 1_024
@@ -26,12 +28,23 @@ final class AgentRunPresentation {
 
     /// The current immutable view of the active or retained terminal conversation.
     var snapshot: AgentRunSnapshot? {
-        guard let runID, let profileID, let accent, let prompt, let providerName, let phase else {
+        guard let runID,
+              let profileID,
+              let profileName,
+              let profileIcon,
+              let accent,
+              let prompt,
+              let providerName,
+              let phase
+        else {
             return nil
         }
+        let artifactProjection = sourceQualifiedArtifactProjection
         return AgentRunSnapshot(
             runID: runID,
             profileID: profileID,
+            profileName: profileName,
+            profileIcon: profileIcon,
             accent: accent,
             prompt: prompt,
             providerName: sourceQualifiedProviderName ?? providerName,
@@ -46,7 +59,9 @@ final class AgentRunPresentation {
             notices: sourceQualifiedNotices,
             elapsedSeconds: elapsedSeconds,
             evictedToolCount: sourceQualifiedEvictedToolCount,
-            ignoredToolUpdateCount: sourceQualifiedIgnoredToolUpdateCount)
+            ignoredToolUpdateCount: sourceQualifiedIgnoredToolUpdateCount,
+            artifacts: artifactProjection.artifacts,
+            omittedArtifactCount: artifactProjection.omittedCount)
     }
 
     let startsElapsedTimer: Bool
@@ -55,6 +70,8 @@ final class AgentRunPresentation {
     let clock = ContinuousClock()
     var runID: UUID?
     var profileID: UUID?
+    var profileName: String?
+    var profileIcon: ProfileIcon?
     var accent: WakeProfileAccent?
     var prompt: String?
     var providerName: String?
@@ -69,6 +86,10 @@ final class AgentRunPresentation {
         marker: "… earlier diagnostics omitted …\n")
     var plan: [AgentPlanEntry] = []
     var tools: [AgentToolPresentation] = []
+    var artifacts: [AgentArtifactPresentation] = []
+    var retainedArtifactBytes = 0
+    var omittedArtifactCount: UInt64 = 0
+    var historicalArtifacts: [AgentArtifactPresentation] = []
     var historicalPlan: [AgentPlanEntry] = []
     var historicalTools: [AgentToolPresentation] = []
     var timeline: [AgentRunTimelineItem] = []
@@ -117,6 +138,8 @@ final class AgentRunPresentation {
         cancelTimers()
         self.runID = runID
         profileID = profile.id
+        profileName = profile.name
+        profileIcon = profile.icon
         accent = profile.accent
         self.prompt = prompt
         if case .agent(let configuration) = profile.action {
@@ -131,6 +154,10 @@ final class AgentRunPresentation {
         diagnosticBuffer.removeAll()
         plan = []
         tools = []
+        artifacts = []
+        retainedArtifactBytes = 0
+        omittedArtifactCount = 0
+        historicalArtifacts = []
         historicalPlan = []
         historicalTools = []
         timeline = []
@@ -165,6 +192,7 @@ final class AgentRunPresentation {
                 ])
             return
         }
+        let artifactMetrics = event.presentationArtifactMetrics
         diagnosticsRecorder.record(
             category: .ui,
             event: "agent_presentation.event_received",
@@ -173,6 +201,8 @@ final class AgentRunPresentation {
                 "run_id": runID.uuidString,
                 "event_kind": event.presentationDiagnosticName,
                 "delta_character_count": String(event.presentationCharacterCount),
+                "artifact_count": String(artifactMetrics.count),
+                "artifact_byte_count": String(artifactMetrics.bytes),
                 "task_priority": String(Task.currentPriority.rawValue),
             ])
         if case .connected = event {
@@ -395,6 +425,8 @@ final class AgentRunPresentation {
         cancelTimers()
         runID = nil
         profileID = nil
+        profileName = nil
+        profileIcon = nil
         accent = nil
         prompt = nil
         providerName = nil
@@ -405,6 +437,10 @@ final class AgentRunPresentation {
         diagnosticBuffer.removeAll(keepingCapacity: false)
         plan.removeAll(keepingCapacity: false)
         tools.removeAll(keepingCapacity: false)
+        artifacts.removeAll(keepingCapacity: false)
+        retainedArtifactBytes = 0
+        omittedArtifactCount = 0
+        historicalArtifacts.removeAll(keepingCapacity: false)
         historicalPlan.removeAll(keepingCapacity: false)
         historicalTools.removeAll(keepingCapacity: false)
         timeline.removeAll(keepingCapacity: false)

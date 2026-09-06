@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Alexandru Ciobanu (alex+git@ciobanu.org)
 // SPDX-License-Identifier: MIT
 
+import AppKit
 import SwiftUI
 import Testing
 import VoiceActivationCore
@@ -15,6 +16,11 @@ private final class MenuOverlayStub: RecordingOverlayDisplaying {
 }
 
 struct MenuContentViewTests {
+    private static let childEnvironmentKey =
+        "VOICE_ACTIVATION_MENU_SHADOW_TEST_CHILD"
+    private static let testFilter =
+        "render_WhenConversationControlsCollapse_LeavesNoSystemWindowShadow"
+
     @MainActor @Test func status_WhenListeningIsRequestedBeforeCoordinatorStarts_ShowsStarting() throws {
         let model = try model(profileCount: 2)
 
@@ -65,6 +71,53 @@ struct MenuContentViewTests {
         let image = try #require(renderer.cgImage)
 
         #expect(image.height <= 600)
+    }
+
+    @MainActor @Test
+    func render_WhenConversationControlsCollapse_LeavesNoSystemWindowShadow() async throws {
+        guard ProcessInfo.processInfo.environment[Self.childEnvironmentKey] == "1" else {
+            try IsolatedAppKitTestProcess.run(
+                environmentKey: Self.childEnvironmentKey,
+                testFilter: Self.testFilter)
+            return
+        }
+
+        let model = try model(profileCount: 2)
+        let profile = try #require(model.activeWakeProfiles.first)
+        let runID = UUID()
+        model.handleAgentRunLifecycleEvent(
+            .started(runID: runID, profile: profile, prompt: "Show a picture"))
+        model.handleAgentRunLifecycleEvent(
+            .completed(
+                runID: runID,
+                result: AgentRunResult(stopReason: .endTurn)))
+        let hostingView = NSHostingView(rootView: MenuContentView(model: model))
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: hostingView.fittingSize),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false)
+        window.animationBehavior = .none
+        window.hasShadow = true
+        window.contentView = hostingView
+        window.setFrameOrigin(NSPoint(x: -10_000, y: -10_000))
+        window.orderFrontRegardless()
+        defer {
+            window.orderOut(nil)
+            window.contentView = nil
+            window.close()
+        }
+        hostingView.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(window.hasShadow == false)
+
+        window.hasShadow = true
+        model.deleteAgentRun()
+        hostingView.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(20))
+
+        #expect(model.agentRunSnapshot == nil)
+        #expect(window.hasShadow == false)
     }
 
     @MainActor private func model(profileCount: Int) throws -> AppModel {

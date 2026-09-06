@@ -32,6 +32,10 @@ It does not import SwiftUI or AppKit.
 Carbon shortcuts, Service Management, Keychain, ElevenLabs, JSONL diagnostics,
 SwiftUI views, and non-activating AppKit panels.
 
+`MenuContentView` owns its material and border, so its AppKit bridge disables
+the duplicate system window shadow when the window-style `MenuBarExtra` mounts
+and after structural resizing. Text-only updates do not trigger that bridge.
+
 Stateful owners use same-module extensions to split implementation by
 responsibility without adding forwarding objects. The coordinator separates
 speech and execution transitions; `AppModel` separates lifecycle,
@@ -59,7 +63,8 @@ VoiceActivationApp
       ├─ RecordingOverlayPresenter → non-activating NSPanel
       ├─ AgentRunPresentation → AgentRunPanelPresenter
       ├─ AgentConversationAudioPresenter
-      │   ├─ AgentSpeechQueue → TextToSpeechBackendRegistry
+      │   ├─ AgentSpeechQueue ─┐
+      │   ├─ Voice preview ────┴→ TextToSpeechBackendRegistry
       │   │   ├─ SystemTextToSpeechBackend
       │   │   └─ ElevenLabsTextToSpeechBackend
       │   └─ AgentActivitySoundLoop
@@ -92,6 +97,10 @@ Agent conversation audio resolves the selected profile's inherited, disabled,
 or explicit speech preference once when the conversation starts. Follow-up
 turns retain that backend, voice, and global backend credential snapshot even
 when Settings changes.
+
+Settings voice previews use that same backend registry and preparation contract,
+including the global credential lookup. The preview player owns only the sample,
+cancellation generation, and playback of the prepared system voice or audio.
 
 The recording overlay is a retained, non-activating AppKit panel hosting one
 SwiftUI hierarchy. It follows the active screen, shows only capture state, and
@@ -126,13 +135,20 @@ ID is removed before the provider process starts. The shared continuity store
 persists no conversation content.
 
 `AgentRunPresentation` reduces typed lifecycle and ACP events into one bounded
-conversation timeline. The panel presenter rejects stale run actions and hosts
-the timeline in a non-activating floating panel. Its app-owned Markdown boundary
-uses MarkdownUI's `cmark-gfm` parser with semantic panel styling, non-networking
-image providers, and an `http`/`https` link allowlist; no WebKit surface or raw
-HTML execution enters the panel. `AgentConversationAudioPresenter`
-maps the same typed lifecycle into narration and activity cues without making
-the presentation model own audio playback.
+conversation timeline plus a deduplicated result collection. The panel
+presenter rejects stale run actions and hosts a result-first layout in a
+non-activating floating panel. Embedded image bytes are decoded off the main
+actor; Quick Look previews only existing local files. Explicit open and reveal
+actions cross a generation-checked workspace boundary, and private materialized
+files follow run deletion and application shutdown.
+
+The app-owned Markdown boundary uses MarkdownUI's `cmark-gfm` parser with
+semantic panel styling, bounded credential-free HTTPS image loading, and an
+`http`/`https` link allowlist; no WebKit surface or raw HTML execution enters the
+panel. Image bytes are capped before off-main Image I/O downsampling and remain
+in a bounded memory-only cache.
+`AgentConversationAudioPresenter` maps the same typed lifecycle into narration
+and activity cues without making the presentation model own audio playback.
 
 See [ACP agent harness](agent-harness.md) for the wire contract and
 [Agent conversations](agent-conversations.md) for the user-visible model.

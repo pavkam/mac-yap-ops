@@ -49,12 +49,13 @@ push-to-talk details, see [Getting started](docs/getting-started.md).
 - Focused Mac-context snapshots for ACP requests: one bounded snapshot per
   admitted utterance, enabled by default, with an explicit Accessibility action
   in Settings. Direct commands never receive this context.
-- A non-activating conversation panel with ordered turns, bounded follow-ups,
-  provider-exposed thinking and tools, spoken permission choices, cancellation,
-  retained output controls, and capability-gated ACP session restoration across
-  application launches.
+- A non-activating, result-first conversation panel with native previews for
+  generated images, PDFs, documents, and local resources; ordered turns,
+  bounded follow-ups, provider-exposed thinking and tools, spoken permission
+  choices, cancellation, retained output controls, and capability-gated ACP
+  session restoration across application launches.
 - Selectable GitHub-flavored Markdown responses with safe link handling and
-  agent-provided images omitted instead of fetched from the network.
+  bounded HTTPS image loading; typed ACP results use the local preview shelf.
 - Optional macOS or ElevenLabs reply speech with a global default or per-profile
   voice, plus barge-in, activity cues, and profile-aware follow-ups.
 - Structured local diagnostics, Launch at Login, and signed SwiftPM app-bundle
