@@ -25,6 +25,8 @@ public enum ACPClientError: Error, Equatable, LocalizedError, Sendable {
     case sessionUnavailable(code: Int64, message: String)
     /// A non-recoverable remote JSON-RPC request failed.
     case remoteError(code: Int64, message: String)
+    /// Mid-turn delivery became ambiguous and must not be replayed automatically.
+    case ambiguousMidTurnInput
 
     /// A user-presentable explanation of the ACP failure.
     public var errorDescription: String? {
@@ -54,6 +56,8 @@ public enum ACPClientError: Error, Equatable, LocalizedError, Sendable {
             "The agent session is no longer available (\(code)): \(message)"
         case .remoteError(let code, let message):
             "The agent request failed (\(code)): \(message)"
+        case .ambiguousMidTurnInput:
+            "The agent could not confirm whether it received the mid-turn input."
         }
     }
 }
@@ -216,6 +220,7 @@ public actor ACPClientConnection {
     var activeEventDelivery: AgentRunEventDelivery?
     var activeTurnToken: AgentTurnToken?
     var activePromptRequestID: ACPRequestID?
+    var pendingMidTurnInputRequestCount = 0
     var promptFrameWasPublished = false
     var promptResponseWasReceived = false
     var promptHadActivity = false
@@ -322,6 +327,80 @@ public actor ACPClientConnection {
             prompt,
             publicationHooks: ACPClientPromptPublicationHooks(),
             onEvent: onEvent)
+    }
+
+    /// Offers opaque input to the exact active turn when negotiated steering is safe.
+    ///
+    /// Unsupported, cancelling, or idle connections retain no input and request a
+    /// normal prompt. Once a steering request is published, any result except the
+    /// two ownership-safe outcomes closes the connection and forbids replay.
+    ///
+    /// - Parameter prompt: The bounded request and captured context to offer.
+    /// - Returns: Whether the active turn consumed the input.
+    /// - Throws: ``ACPClientError`` when delivery is invalid or ambiguous.
+    public func offerMidTurnInput(
+        _ prompt: AgentPrompt
+    ) async throws -> AgentMidTurnInputResult {
+        guard prompt.request.utf8.count <= Self.maximumPromptBytes else {
+            throw ACPClientError.promptTooLarge(maximumBytes: Self.maximumPromptBytes)
+        }
+        guard capabilities?.supportsHostOwnedIdleSteering == true,
+              activeTurnToken != nil,
+              activePromptRequestID != nil,
+              promptFrameWasPublished,
+              !promptResponseWasReceived,
+              !isPromptCancelling,
+              let sessionID
+        else {
+            return .promptRequired
+        }
+
+        let blocks = try MacContextPromptEncoder.content(
+            for: prompt,
+            systemInstruction: "").dropFirst()
+        pendingMidTurnInputRequestCount += 1
+        defer { pendingMidTurnInputRequestCount -= 1 }
+        do {
+            let result = try await withTaskCancellationHandler {
+                try await sendRequest(
+                    method: "_session/steering",
+                    params: .object([
+                        "sessionId": .string(sessionID),
+                        "prompt": .array(blocks.map(Self.encodedPromptBlock(for:))),
+                        "_meta": .object([
+                            "steering": .object([
+                                "idleBehavior": .string("promptRequired"),
+                            ]),
+                        ]),
+                    ]))
+            } onCancel: {
+                Task {
+                    await self.abortAmbiguousMidTurnInput()
+                }
+            }
+            let object = try requiredObject(result, named: "steering result")
+            switch try requiredString(object["outcome"], named: "steering outcome") {
+            case "injected":
+                return .injected
+            case "promptRequired":
+                return .promptRequired
+            default:
+                throw ACPClientError.ambiguousMidTurnInput
+            }
+        } catch {
+            await abortAmbiguousMidTurnInput()
+            throw ACPClientError.ambiguousMidTurnInput
+        }
+    }
+
+    func abortAmbiguousMidTurnInput() async {
+        guard pendingMidTurnInputRequestCount > 0 else {
+            return
+        }
+        isPromptCancelling = true
+        await cancelPendingPermissions()
+        await sendCancelIfPromptWasPublished()
+        await close()
     }
 
     func prompt(
@@ -551,6 +630,9 @@ public actor ACPClientConnection {
             ])
         await cancelPendingPermissions()
         await sendCancelIfPromptWasPublished()
+        if pendingMidTurnInputRequestCount > 0 {
+            await close()
+        }
     }
 
     /// Idempotently closes the connection and joins its receive loop.
