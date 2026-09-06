@@ -576,6 +576,7 @@ extension AgentRunEvent {
     var coordinatorDiagnosticName: String {
         switch self {
         case .connected: "connected"
+        case .userMessageDelta: "user_message_delta"
         case .agentMessageDelta: "agent_message_delta"
         case .thoughtDelta: "thought_delta"
         case .toolCall: "tool_call"
@@ -599,7 +600,7 @@ extension AgentRunEvent {
             true
         case .plan(let entries):
             !entries.isEmpty
-        case .connected, .metadata, .diagnostic, .unknown:
+        case .connected, .userMessageDelta, .metadata, .diagnostic, .unknown:
             false
         }
     }

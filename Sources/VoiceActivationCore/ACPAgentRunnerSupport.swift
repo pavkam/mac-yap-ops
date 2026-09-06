@@ -7,6 +7,7 @@ extension AgentRunEvent {
     var runnerDiagnosticName: String {
         switch self {
         case .connected: "connected"
+        case .userMessageDelta: "user_message_delta"
         case .agentMessageDelta: "agent_message_delta"
         case .thoughtDelta: "thought_delta"
         case .toolCall: "tool_call"

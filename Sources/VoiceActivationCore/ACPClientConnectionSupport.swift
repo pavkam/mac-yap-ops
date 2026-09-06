@@ -25,6 +25,7 @@ extension AgentRunEvent {
     var clientDiagnosticName: String {
         switch self {
         case .connected: "connected"
+        case .userMessageDelta: "user_message_delta"
         case .agentMessageDelta: "agent_message_delta"
         case .thoughtDelta: "thought_delta"
         case .toolCall: "tool_call"
@@ -35,6 +36,19 @@ extension AgentRunEvent {
         case .diagnostic: "diagnostic"
         case .deliveryNotice: "delivery_notice"
         case .unknown: "unknown"
+        }
+    }
+}
+
+extension AgentSessionActivation {
+    var diagnosticOperation: String {
+        switch self {
+        case .new, .freshAfterUnavailableBookmark, .freshBecauseRestorationUnsupported:
+            "new"
+        case .loaded:
+            "load"
+        case .resumed:
+            "resume"
         }
     }
 }

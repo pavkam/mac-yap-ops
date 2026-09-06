@@ -9,6 +9,8 @@ extension AgentRunPresentation {
         switch event {
         case .connected(let agentName, _):
             providerName = agentName
+        case .userMessageDelta:
+            break
         case .agentMessageDelta(let messageID, let text):
             if needsResponseSeparator, !text.isEmpty {
                 outputBuffer.append("\n\n")

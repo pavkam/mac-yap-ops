@@ -193,7 +193,7 @@ extension ACPClientConnectionTests {
         let connectionTask = Task {
             try await ACPClientConnection.connect(
                 transport: transport,
-                configuration: configuration)
+                configuration: configuration).connection
         }
 
         let initialize = await transport.nextSentMessage()
@@ -247,7 +247,7 @@ extension ACPClientConnectionTests {
         let connectionTask = Task {
             try await ACPClientConnection.connect(
                 transport: transport,
-                configuration: try makeConfiguration())
+                configuration: try makeConfiguration()).connection
         }
         _ = await transport.nextSentMessage()
         try await transport.feed(initializeResponse(protocolVersion: 2))
@@ -265,7 +265,7 @@ extension ACPClientConnectionTests {
         let connectionTask = Task {
             try await ACPClientConnection.connect(
                 transport: transport,
-                configuration: try makeConfiguration())
+                configuration: try makeConfiguration()).connection
         }
         _ = await transport.nextSentMessage()
         try await transport.feed(initializeResponse(authMethods: [
@@ -303,7 +303,7 @@ extension ACPClientConnectionTests {
         let connectionTask = Task {
             try await ACPClientConnection.connect(
                 transport: transport,
-                configuration: try makeConfiguration())
+                configuration: try makeConfiguration()).connection
         }
         _ = await transport.nextSentMessage()
         try await transport.feed(initializeResponse())
@@ -317,7 +317,7 @@ extension ACPClientConnectionTests {
             result: .object(["sessionId": .string(oversized)])))
 
         await #expect(throws: ACPClientError.malformedResponse(
-            "sessionId exceeds the opaque identifier limit.")) {
+            "Invalid session identifier.")) {
             try await connectionTask.value
         }
         #expect(await transport.observedTerminationCount() == 1)

@@ -345,6 +345,8 @@ final class AgentConversationAudioPresenter {
             event: "conversation_audio.agent_event_received",
             fields: ["event_kind": event.audioDiagnosticName])
         switch event {
+        case .userMessageDelta:
+            break
         case .agentMessageDelta(let messageID, let text):
             if readsActiveReplies {
                 narration.append(messageID: messageID, text: text)
@@ -499,6 +501,7 @@ extension AgentRunEvent {
     fileprivate var audioDiagnosticName: String {
         switch self {
         case .connected: "connected"
+        case .userMessageDelta: "user_message_delta"
         case .agentMessageDelta: "agent_message_delta"
         case .thoughtDelta: "thought_delta"
         case .toolCall: "tool_call"

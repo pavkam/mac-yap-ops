@@ -142,7 +142,7 @@ extension ACPAgentRunner {
                         try await ACPClientConnection.connect(
                             transport: transport,
                             configuration: configuration,
-                            diagnostics: connectionDiagnostics))
+                            diagnostics: connectionDiagnostics).connection)
                 } catch {
                     return .failed(error)
                 }

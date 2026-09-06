@@ -54,6 +54,152 @@ public enum ACPClientError: Error, Equatable, LocalizedError, Sendable {
     }
 }
 
+/// A validated request to reopen one opaque provider-owned ACP session.
+public struct AgentSessionRestorationRequest: Equatable, Sendable {
+    /// Content-free failures produced while validating a restoration request.
+    public enum ValidationError: Error, Equatable, LocalizedError, Sendable {
+        /// The session identifier was empty or exceeded the opaque identifier bound.
+        case invalidSessionID
+
+        /// A fixed description that never includes the opaque identifier.
+        public var errorDescription: String? {
+            "The saved ACP session identifier is invalid."
+        }
+    }
+
+    /// The bounded opaque provider session identifier to reopen.
+    public let sessionID: String
+    /// Whether the caller needs visible replay or provider context only.
+    public let need: AgentSessionRestorationNeed
+
+    /// Creates a restoration request after enforcing the shared ACP identifier bound.
+    ///
+    /// - Parameters:
+    ///   - sessionID: The nonempty opaque identifier retained from the provider.
+    ///   - need: Whether visible history or only provider context is required.
+    /// - Throws: ``ValidationError/invalidSessionID`` without exposing the identifier.
+    public init(sessionID: String, need: AgentSessionRestorationNeed) throws {
+        guard !sessionID.isEmpty,
+              sessionID.utf8.count <= ACPEventDecoder.maximumOpaqueIdentifierBytes
+        else {
+            throw ValidationError.invalidSessionID
+        }
+        self.sessionID = sessionID
+        self.need = need
+    }
+}
+
+/// The negotiated ACP connection and the exact session activation it completed.
+public struct ACPConnectionResult: Sendable {
+    /// The initialized connection ready for a new live prompt.
+    public let connection: ACPClientConnection
+    /// The exact new, loaded, resumed, or negotiated-fresh activation path.
+    public let activation: AgentSessionActivation
+    /// The strictly decoded runtime restoration capabilities.
+    public let capabilities: ACPSessionRestorationCapabilities
+
+    /// Creates the completed result of one ACP connection handshake.
+    public init(
+        connection: ACPClientConnection,
+        activation: AgentSessionActivation,
+        capabilities: ACPSessionRestorationCapabilities
+    ) {
+        self.connection = connection
+        self.activation = activation
+        self.capabilities = capabilities
+    }
+}
+
+enum ACPClientRestorationMode {
+    case load(deliversReplay: Bool)
+    case resume
+}
+
+final class ACPClientRestorationState {
+    let token: AgentRestorationToken
+    let sessionID: String
+    let mode: ACPClientRestorationMode
+    let sink: ACPRestoredEventSink?
+    let delivery: AgentRunEventDelivery?
+    var requestID: ACPRequestID?
+    var responseWasReceived = false
+
+    init(
+        token: AgentRestorationToken,
+        sessionID: String,
+        mode: ACPClientRestorationMode,
+        sink: ACPRestoredEventSink? = nil,
+        delivery: AgentRunEventDelivery? = nil
+    ) {
+        self.token = token
+        self.sessionID = sessionID
+        self.mode = mode
+        self.sink = sink
+        self.delivery = delivery
+    }
+}
+
+actor ACPRestoredEventSink {
+    private enum State: Equatable {
+        case staged
+        case committed
+        case discarded
+    }
+
+    private let handler: @Sendable (AgentRunEvent) async -> Void
+    private var state = State.staged
+    private var waiters: [CheckedContinuation<Bool, Never>] = []
+
+    init(handler: @escaping @Sendable (AgentRunEvent) async -> Void) {
+        self.handler = handler
+    }
+
+    func consume(_ event: AgentRunEvent) async {
+        let shouldForward = await forwardingDecision()
+        guard shouldForward, !Task.isCancelled else {
+            return
+        }
+        await handler(event)
+    }
+
+    func commit() {
+        guard state == .staged else {
+            return
+        }
+        state = .committed
+        resumeWaiters(with: true)
+    }
+
+    func discard() {
+        guard state != .discarded else {
+            return
+        }
+        state = .discarded
+        resumeWaiters(with: false)
+    }
+
+    private func forwardingDecision() async -> Bool {
+        switch state {
+        case .committed:
+            return true
+        case .discarded:
+            return false
+        case .staged:
+            return await withCheckedContinuation { continuation in
+                waiters.append(continuation)
+            }
+        }
+    }
+
+    private func resumeWaiters(with decision: Bool) {
+        let pending = waiters
+        waiters.removeAll()
+        for waiter in pending {
+            waiter.resume(returning: decision)
+        }
+    }
+}
+
 /// Owns protocol state, ordered writes, and one active prompt over an ACP transport.
 public actor ACPClientConnection {
     /// The maximum accepted UTF-8 size for the untouched recognized request.
@@ -64,6 +210,13 @@ public actor ACPClientConnection {
     public static let maximumPendingPermissions = 32
 
     static let maximumAdvertisedAuthenticationMethods = 8
+    static let resumeSetupUpdateAllowlist: Set<String> = [
+        "available_commands_update",
+        "config_option_update",
+        "current_mode_update",
+        "session_info_update",
+        "usage_update",
+    ]
     static let clientName = "voice-activation"
     static let clientTitle = "Voice Activation"
     static let clientVersion = "0.1.0"
@@ -88,8 +241,12 @@ public actor ACPClientConnection {
     var pendingRequestStartedAt: [ACPRequestID: UInt64] = [:]
     var pendingPermissions: [PendingPermissionKey: PendingPermission] = [:]
     var authenticationMethodNames: [String] = []
+    var sessionRestorationCapabilities = ACPSessionRestorationCapabilities(
+        loadSession: false,
+        resumeSession: false)
     var sessionID: String?
     var agentName: String?
+    var activeRestoration: ACPClientRestorationState?
     var activeEventDelivery: AgentRunEventDelivery?
     var activeTurnToken: AgentTurnToken?
     var activePromptRequestID: ACPRequestID?
@@ -116,27 +273,66 @@ public actor ACPClientConnection {
         self.diagnostics = diagnostics
     }
 
-    /// Initializes the ACP protocol and creates one remote session.
+    /// Initializes ACP and activates a capability-gated new or restored session.
     ///
     /// - Parameters:
     ///   - transport: The already-started framed transport.
     ///   - configuration: The agent identity, permissions, and working context.
+    ///   - restoration: A validated saved session request, or `nil` for a new session.
+    ///   - onRestoredEvent: Receives bounded ordered history only after load succeeds.
     ///   - diagnostics: The privacy-safe lifecycle recorder.
-    /// - Returns: An initialized connection ready for one prompt at a time.
+    /// - Returns: The connection, exact activation path, and negotiated capabilities.
     /// - Throws: ``ACPClientError`` or a transport error when initialization fails.
     public static func connect(
         transport: any ACPTransport,
         configuration: AgentHarnessConfiguration,
+        restoration: AgentSessionRestorationRequest? = nil,
+        onRestoredEvent: @escaping @Sendable (AgentRunEvent) async -> Void = { _ in },
         diagnostics: any VoiceActivationDiagnosticRecording = VoiceActivationDiagnostics.shared
     )
-        async throws -> ACPClientConnection
+        async throws -> ACPConnectionResult
     {
+        try await connect(
+            transport: transport,
+            configuration: configuration,
+            restoration: restoration,
+            onRestoredEvent: onRestoredEvent,
+            clientCapabilityFragments: [],
+            diagnostics: diagnostics)
+    }
+
+    static func connect(
+        transport: any ACPTransport,
+        configuration: AgentHarnessConfiguration,
+        restoration: AgentSessionRestorationRequest?,
+        onRestoredEvent: @escaping @Sendable (AgentRunEvent) async -> Void,
+        clientCapabilityFragments: [ACPJSONValue],
+        diagnostics: any VoiceActivationDiagnosticRecording
+    ) async throws -> ACPConnectionResult {
         let connection = ACPClientConnection(
             transport: transport,
             configuration: configuration,
             diagnostics: diagnostics)
-        try await connection.start()
-        return connection
+        do {
+            let activation = try await withTaskCancellationHandler {
+                try Task.checkCancellation()
+                return try await connection.start(
+                    restoration: restoration,
+                    onRestoredEvent: onRestoredEvent,
+                    clientCapabilityFragments: clientCapabilityFragments)
+            } onCancel: {
+                Task {
+                    await connection.cancelStartup()
+                }
+            }
+            return ACPConnectionResult(
+                connection: connection,
+                activation: activation,
+                capabilities: await connection.sessionRestorationCapabilities)
+        } catch {
+            await connection.close()
+            throw error
+        }
     }
 
     /// Sends one prompt and streams ordered events until the harness returns a stop reason.
@@ -393,6 +589,7 @@ public actor ACPClientConnection {
                 "pending_permission_count": String(pendingPermissions.count),
             ])
 
+        let restoration = detachRestoration()
         let eventDelivery = activeEventDelivery
         activeEventDelivery = nil
         activeTurnToken = nil
@@ -402,7 +599,9 @@ public actor ACPClientConnection {
         promptHadActivity = false
         isPromptCancelling = false
         cancelFrameWasSent = false
+        sessionID = nil
 
+        await discardRestoration(restoration)
         await eventDelivery?.finish(.discard)
         await cancelPendingPermissions()
         if terminalError == nil {

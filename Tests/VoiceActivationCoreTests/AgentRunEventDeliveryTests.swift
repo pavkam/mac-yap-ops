@@ -282,7 +282,17 @@ struct AgentRunEventDeliveryTests {
             #expect(delivery.send(event) == .accepted)
             admitted.append(event)
         }
+        let beforeOverflow = delivery.snapshotForTesting
         #expect(delivery.send(.metadata(kind: "control", summary: "overflow")) == .capacityExceeded)
+        let afterOverflow = delivery.snapshotForTesting
+        #expect(afterOverflow.state == .draining)
+        #expect(afterOverflow.pendingOutputBytes == beforeOverflow.pendingOutputBytes)
+        #expect(afterOverflow.pendingDiagnosticBytes == beforeOverflow.pendingDiagnosticBytes)
+        #expect(afterOverflow.pendingControlBytes == beforeOverflow.pendingControlBytes)
+        #expect(afterOverflow.pendingEntryCount == beforeOverflow.pendingEntryCount)
+        #expect(afterOverflow.discardedOutputBytes == beforeOverflow.discardedOutputBytes)
+        #expect(afterOverflow.discardedOutputEntries == beforeOverflow.discardedOutputEntries)
+        #expect(afterOverflow.discardedDiagnosticBytes == beforeOverflow.discardedDiagnosticBytes)
         #expect(delivery.send(.metadata(kind: "control", summary: "after")) == .stopped)
 
         let draining = Task { await delivery.finish(.drain) }

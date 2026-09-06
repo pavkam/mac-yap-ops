@@ -22,7 +22,7 @@ extension ACPClientConnectionTests {
                     policy: policy,
                     preset: preset,
                     systemPrompt: systemPrompt),
-                diagnostics: diagnostics)
+                diagnostics: diagnostics).connection
         }
         _ = await transport.nextSentMessage()
         try await transport.feed(initializeResponse())
@@ -182,13 +182,14 @@ extension ACPClientConnectionTests {
     func permissionRequest(
         id: ACPRequestID,
         toolID: String = "tool-1",
-        options: [ACPJSONValue]) -> ACPMessage
+        options: [ACPJSONValue],
+        sessionID: String = "session-1") -> ACPMessage
     {
         .request(
             id: id,
             method: "session/request_permission",
             params: .object([
-                "sessionId": .string("session-1"),
+                "sessionId": .string(sessionID),
                 "toolCall": .object([
                     "toolCallId": .string(toolID),
                     "title": .string("Edit a file"),

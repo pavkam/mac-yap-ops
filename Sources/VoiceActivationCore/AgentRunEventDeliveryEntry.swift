@@ -5,6 +5,7 @@ import Foundation
 
 /// The independent bounded channel used for streamed text backpressure.
 enum AgentRunEventDeliveryTextKind: Equatable {
+    case userMessage(String?)
     case agentMessage(String?)
     case thought(String?)
     case diagnostic
@@ -27,6 +28,8 @@ struct AgentRunEventDeliveryEntry {
             preconditionFailure("A delivery entry must contain an event or text.")
         }
         return switch textKind {
+        case let .userMessage(messageID):
+            .userMessageDelta(messageID: messageID, text: textBuffer.value)
         case let .agentMessage(messageID):
             .agentMessageDelta(messageID: messageID, text: textBuffer.value)
         case let .thought(messageID):
@@ -61,7 +64,8 @@ struct AgentRunEventDeliveryEntry {
         self.textKind = textKind
         textBuffer = buffer
         switch textKind {
-        case let .agentMessage(messageID), let .thought(messageID):
+        case let .userMessage(messageID), let .agentMessage(messageID),
+            let .thought(messageID):
             outputBytes = buffer.count
             diagnosticBytes = 0
             controlBytes = messageID?.utf8.count ?? 0
@@ -85,7 +89,7 @@ struct AgentRunEventDeliveryEntry {
         }
         let discarded = textBuffer!.append(otherBuffer.value)
         switch kind {
-        case .agentMessage, .thought:
+        case .userMessage, .agentMessage, .thought:
             outputBytes = textBuffer!.count
         case .diagnostic:
             diagnosticBytes = textBuffer!.count
@@ -99,7 +103,7 @@ struct AgentRunEventDeliveryEntry {
         }
         let discarded = textBuffer!.discardPrefix(atLeast: byteCount)
         switch kind {
-        case .agentMessage, .thought:
+        case .userMessage, .agentMessage, .thought:
             outputBytes = textBuffer!.count
         case .diagnostic:
             diagnosticBytes = textBuffer!.count
@@ -121,7 +125,9 @@ struct AgentRunEventDeliveryEntry {
         switch event {
         case let .connected(agentName, sessionID):
             return agentName.utf8.count + sessionID.utf8.count
-        case let .agentMessageDelta(messageID, _), let .thoughtDelta(messageID, _):
+        case let .userMessageDelta(messageID, _),
+            let .agentMessageDelta(messageID, _),
+            let .thoughtDelta(messageID, _):
             return messageID?.utf8.count ?? 0
         case let .toolCall(toolCall):
             return toolCall.id.utf8.count + toolCall.title.utf8.count

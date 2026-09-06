@@ -39,10 +39,10 @@ public struct ACPEventDecoder: Sendable {
         switch discriminator {
         case "user_message_chunk":
             let chunk = try contentChunk(update)
-            let suffix = chunk.messageID.map { " (\($0))" } ?? ""
-            return .metadata(
-                kind: discriminator,
-                summary: bounded("User message chunk\(suffix)"))
+            guard chunk.isUserRequest, let text = chunk.text else {
+                return nil
+            }
+            return .userMessageDelta(messageID: chunk.messageID, text: text)
         case "agent_message_chunk":
             let chunk = try contentChunk(update)
             guard let text = chunk.text else {
@@ -86,17 +86,29 @@ public struct ACPEventDecoder: Sendable {
         }
     }
 
+    func sessionUpdateDiscriminator(from message: ACPMessage) throws -> String {
+        guard case let .notification(method, params) = message, method == "session/update" else {
+            throw malformed("session/update notification")
+        }
+        let parameters = try object(params, named: "params")
+        _ = try opaqueString(parameters["sessionId"], named: "sessionId")
+        let update = try object(parameters["update"], named: "update")
+        return try string(update["sessionUpdate"], named: "sessionUpdate")
+    }
+
     private func contentChunk(_ update: [String: ACPJSONValue]) throws -> ContentChunk {
         let content = try object(update["content"], named: "content")
         let contentType = try string(content["type"], named: "content.type")
         let messageID = try optionalOpaqueString(update["messageId"], named: "messageId")
+        let isUserRequest = promptBlockRoleIsRequest(content["_meta"])
 
         switch contentType {
         case "text":
             return ContentChunk(
                 contentType: contentType,
                 messageID: messageID,
-                text: try string(content["text"], named: "content.text"))
+                text: try string(content["text"], named: "content.text"),
+                isUserRequest: isUserRequest)
         case "image":
             _ = try string(content["data"], named: "content.data")
             _ = try string(content["mimeType"], named: "content.mimeType")
@@ -112,7 +124,21 @@ public struct ACPEventDecoder: Sendable {
             throw malformed("content.type")
         }
 
-        return ContentChunk(contentType: contentType, messageID: messageID, text: nil)
+        return ContentChunk(
+            contentType: contentType,
+            messageID: messageID,
+            text: nil,
+            isUserRequest: isUserRequest)
+    }
+
+    private func promptBlockRoleIsRequest(_ value: ACPJSONValue?) -> Bool {
+        guard case let .object(metadata) = value,
+              case let .object(namespace) = metadata["ciobanu.org.voiceActivation"],
+              case .string("request") = namespace["promptBlockRole"]
+        else {
+            return false
+        }
+        return true
     }
 
     private func validateEmbeddedResource(_ content: [String: ACPJSONValue]) throws {
@@ -309,7 +335,9 @@ public struct ACPEventDecoder: Sendable {
 
     private func opaqueString(_ value: ACPJSONValue?, named name: String) throws -> String {
         let identifier = try string(value, named: name)
-        guard identifier.utf8.count <= Self.maximumOpaqueIdentifierBytes else {
+        guard !identifier.isEmpty,
+              identifier.utf8.count <= Self.maximumOpaqueIdentifierBytes
+        else {
             throw malformed(name)
         }
         return identifier
@@ -400,4 +428,5 @@ private struct ContentChunk: Sendable {
     let contentType: String
     let messageID: String?
     let text: String?
+    let isUserRequest: Bool
 }

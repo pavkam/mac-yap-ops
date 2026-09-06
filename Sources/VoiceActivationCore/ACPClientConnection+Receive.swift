@@ -35,7 +35,14 @@ extension ACPClientConnection {
             }
             try framer.finish()
         } catch {
-            receiveFailure = userSafeError(error)
+            let restoration = detachRestoration()
+            await discardRestoration(restoration)
+            if restoration != nil, error is ACPEventDecoder.EventError {
+                receiveFailure = .malformedResponse(
+                    "Invalid session restoration update.")
+            } else {
+                receiveFailure = userSafeError(error)
+            }
             diagnostics.record(
                 category: .acp,
                 event: "acp_client.receive_failed",
@@ -71,24 +78,49 @@ extension ACPClientConnection {
         case .response(let id, let result):
             try await completePendingRequest(id: id, result: .success(result))
         case .errorResponse(let id, let error):
-            let message = boundedText(
+            let boundedMessage = boundedText(
                 error.message,
                 maximumBytes: Self.maximumDiagnosticBytes)
+            let isRestorationResponse = activeRestoration?.requestID == id
+            let classifiedError = ACPRemoteErrorClassifier.clientError(
+                for: error,
+                safeMessage: boundedMessage,
+                isPromptResponse: isRestorationResponse || id == activePromptRequestID,
+                promptHadActivity: isRestorationResponse ? false : promptHadActivity)
+            let clientError: ACPClientError
+            if isRestorationResponse,
+               case let .sessionUnavailable(code, _) = classifiedError
+            {
+                clientError = .sessionUnavailable(
+                    code: code,
+                    message: "Saved agent session is unavailable.")
+            } else {
+                clientError = classifiedError
+            }
             try await completePendingRequest(
                 id: id,
-                result: .failure(
-                    ACPRemoteErrorClassifier.clientError(
-                        for: error,
-                        safeMessage: message,
-                        isPromptResponse: id == activePromptRequestID,
-                        promptHadActivity: promptHadActivity)))
+                result: .failure(clientError))
         case .request(let id, let method, let params):
+            if method == "session/request_permission",
+               let restoration = activeRestoration,
+               !restoration.responseWasReceived
+            {
+                throw ACPClientError.malformedResponse(
+                    "Permission request arrived during session restoration.")
+            }
             if activeTurnToken != nil, !promptResponseWasReceived {
                 promptHadActivity = true
             }
             try await handleRequest(id: id, method: method, params: params)
         case .notification(let method, let params):
             if method == "session/update" {
+                if let restoration = activeRestoration {
+                    try await handleRestorationSessionUpdate(
+                        message,
+                        params: params,
+                        restoration: restoration)
+                    return
+                }
                 guard try sessionUpdateBelongsToActiveSession(params) else {
                     try await deliver(
                         .diagnostic(
@@ -116,14 +148,66 @@ extension ACPClientConnection {
         }
     }
 
+    func handleRestorationSessionUpdate(
+        _ message: ACPMessage,
+        params: ACPJSONValue?,
+        restoration: ACPClientRestorationState
+    ) async throws {
+        guard try sessionUpdateBelongsToActiveSession(params) else {
+            return
+        }
+        guard !restoration.responseWasReceived else {
+            throw ACPClientError.malformedResponse(
+                "Session update arrived after restoration response.")
+        }
+
+        switch restoration.mode {
+        case .load:
+            if let event = try eventDecoder.event(from: message) {
+                try await deliverRestored(event, restoration: restoration)
+            }
+        case .resume:
+            let discriminator = try eventDecoder.sessionUpdateDiscriminator(from: message)
+            guard Self.resumeSetupUpdateAllowlist.contains(discriminator) else {
+                throw ACPClientError.malformedResponse(
+                    "Historical session update arrived during session/resume.")
+            }
+            _ = try eventDecoder.event(from: message)
+        }
+    }
+
+    func deliverRestored(
+        _ event: AgentRunEvent,
+        restoration: ACPClientRestorationState
+    ) async throws {
+        guard activeRestoration === restoration,
+              let delivery = restoration.delivery
+        else {
+            return
+        }
+        switch delivery.send(event) {
+        case .accepted, .ignored:
+            return
+        case .stopped:
+            throw ACPClientError.malformedResponse(
+                "Session update arrived after restoration response.")
+        case .capacityExceeded, .invalid:
+            let detached = detachRestoration(matching: restoration)
+            await discardRestoration(detached)
+            throw ACPClientError.eventDeliveryOverflow
+        }
+    }
+
     func sessionUpdateBelongsToActiveSession(_ params: ACPJSONValue?) throws -> Bool {
         let parameters = try requiredObject(params, named: "session/update params")
         let updateSessionID = try requiredString(
             parameters["sessionId"],
             named: "session/update sessionId")
-        guard updateSessionID.utf8.count <= ACPEventDecoder.maximumOpaqueIdentifierBytes else {
+        guard !updateSessionID.isEmpty,
+              updateSessionID.utf8.count <= ACPEventDecoder.maximumOpaqueIdentifierBytes
+        else {
             throw ACPClientError.malformedResponse(
-                "session/update sessionId exceeds the opaque identifier limit.")
+                "Invalid session/update sessionId.")
         }
         return updateSessionID == sessionID
     }
@@ -165,6 +249,13 @@ extension ACPClientConnection {
                     String(Self.elapsedMilliseconds(since: $0))
                 } ?? "unknown",
             ])
+
+        if let restoration = activeRestoration,
+           restoration.requestID == id
+        {
+            restoration.responseWasReceived = true
+            restoration.delivery?.stopAdmission()
+        }
 
         if id == activePromptRequestID {
             promptResponseWasReceived = true

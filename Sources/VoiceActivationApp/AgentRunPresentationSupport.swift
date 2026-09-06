@@ -17,6 +17,7 @@ extension AgentRunEvent {
     var presentationDiagnosticName: String {
         switch self {
         case .connected: "connected"
+        case .userMessageDelta: "user_message_delta"
         case .agentMessageDelta: "agent_message_delta"
         case .thoughtDelta: "thought_delta"
         case .toolCall: "tool_call"
@@ -38,7 +39,8 @@ extension AgentRunEvent {
             message.count
         case .metadata(_, let summary), .unknown(_, let summary):
             summary.count
-        case .connected, .toolCall, .toolCallUpdate, .plan, .permissionRequested,
+        case .connected, .userMessageDelta, .toolCall, .toolCallUpdate, .plan,
+            .permissionRequested,
             .deliveryNotice:
             0
         }
