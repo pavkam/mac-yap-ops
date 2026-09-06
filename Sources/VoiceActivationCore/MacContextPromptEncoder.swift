@@ -5,6 +5,8 @@ import Foundation
 
 /// Failures produced while encoding a bounded Mac-context prompt block.
 public enum MacContextPromptEncodingError: Error, Equatable, Sendable {
+    /// The fixed-schema continuity metadata exceeded its defensive UTF-8 bound.
+    case continuityTooLarge(maximumBytes: Int)
     /// The context could not be reduced below its UTF-8 JSON bound.
     case contextTooLarge(maximumBytes: Int)
 }
@@ -17,15 +19,14 @@ public enum MacContextPromptEncoder {
     /// Produces the ACP content order for one request.
     ///
     /// The result always contains the instruction and untouched request. When context exists,
-    /// its JSON block and retained resource links are placed between them. Continuity is reserved
-    /// for a future owning feature and is deliberately not inferred here.
+    /// continuity JSON, Mac-context JSON, and retained resource links are placed between them.
     ///
     /// - Parameters:
     ///   - prompt: The typed request and optional captured context.
     ///   - systemInstruction: The independent client instruction for this provider.
-    /// - Returns: Content in instruction, optional context, optional links, request order.
-    /// - Throws: ``MacContextPromptEncodingError/contextTooLarge(maximumBytes:)`` when the
-    ///   bounded context cannot be encoded safely.
+    /// - Returns: Content in instruction, continuity, context, links, request order.
+    /// - Throws: ``MacContextPromptEncodingError`` when a bounded metadata block cannot
+    ///   be encoded safely.
     public static func content(
         for prompt: AgentPrompt,
         systemInstruction: String
@@ -33,6 +34,11 @@ public enum MacContextPromptEncoder {
         var blocks: [AgentPromptContent] = [
             .text(role: .instruction, value: systemInstruction),
         ]
+        if let continuity = prompt.continuity {
+            blocks.append(.text(
+                role: .continuity,
+                value: try encode(continuity)))
+        }
         if let snapshot = prompt.context {
             let encodedContext = try encode(snapshot)
             blocks.append(.text(
@@ -44,6 +50,17 @@ public enum MacContextPromptEncoder {
         }
         blocks.append(.text(role: .request, value: prompt.request))
         return blocks
+    }
+
+    private static func encode(_ continuity: AgentContinuityPromptContext) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        let data = try encoder.encode(continuity)
+        guard data.count <= AgentContinuityPromptContext.maximumEncodedBytes else {
+            throw MacContextPromptEncodingError.continuityTooLarge(
+                maximumBytes: AgentContinuityPromptContext.maximumEncodedBytes)
+        }
+        return String(decoding: data, as: UTF8.self)
     }
 
     private static func encode(

@@ -38,6 +38,7 @@ final class ACPAgentConnectionRecord {
     let configuration: AgentHarnessConfiguration
     let transport: any ACPTransport
     var connection: ACPClientConnection?
+    var sessionID: String?
     var diagnosticsTask: Task<Void, Never>?
     var exitTask: Task<Void, Never>?
     var standardError = Data()
@@ -65,6 +66,25 @@ final class ACPAgentConnectionRecord {
     }
 }
 
+extension AgentSessionActivation {
+    var sessionID: String {
+        switch self {
+        case .new(let sessionID),
+             .loaded(let sessionID),
+             .resumed(let sessionID),
+             .freshAfterUnavailableBookmark(let sessionID),
+             .freshBecauseRestorationUnsupported(let sessionID):
+            sessionID
+        }
+    }
+}
+
+/// One cache acquisition and the activation that must inform only its first prompt.
+struct ACPAgentConnectionAcquisition {
+    let record: ACPAgentConnectionRecord
+    let activation: AgentSessionActivation?
+}
+
 /// Tracks the identities and cancellation state needed to reject callbacks from retired turns.
 struct ACPAgentActiveTurn {
     let token: UUID
@@ -73,8 +93,31 @@ struct ACPAgentActiveTurn {
     var connection: ACPClientConnection?
     let completion: ACPAgentRunCompletionLatch
     let delivery: AgentRunEventDelivery
+    let streamEventHandler: @Sendable (AgentRunStreamEvent) async -> Void
     var isCancelling: Bool
     var deliveryOverflowed: Bool
+    var restorationToken: AgentRestorationToken?
+    var restorationRecordID: UUID?
+    var connectionAttemptUsedRestoration: Bool
+}
+
+/// Thread-safe prompt publication evidence shared across the runner and connection actors.
+final class ACPAgentPromptPublicationState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var markerWasWritten = false
+    private var frameWasPublished = false
+
+    func markMarkerWritten() {
+        lock.withLock { markerWasWritten = true }
+    }
+
+    func markFramePublished() {
+        lock.withLock { frameWasPublished = true }
+    }
+
+    func snapshot() -> (markerWasWritten: Bool, frameWasPublished: Bool) {
+        lock.withLock { (markerWasWritten, frameWasPublished) }
+    }
 }
 
 /// The minimal terminal value needed by the cancellation race.
@@ -104,7 +147,7 @@ enum ACPAgentPromptSettleRace: Sendable {
 
 /// The first terminal outcome produced while starting one ACP connection.
 enum ACPAgentConnectionStartupOutcome: Sendable {
-    case connected(ACPClientConnection)
+    case connected(ACPConnectionResult)
     case failed(any Error)
     case cancelled
     case timedOut

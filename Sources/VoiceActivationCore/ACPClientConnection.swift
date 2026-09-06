@@ -15,6 +15,8 @@ public enum ACPClientError: Error, Equatable, LocalizedError, Sendable {
     case promptTooLarge(maximumBytes: Int)
     /// The connection already has one active prompt.
     case promptAlreadyActive
+    /// Local lifecycle state could not be persisted before prompt publication.
+    case promptPublicationPreparationFailed
     /// Required control events exceeded the bounded delivery queue.
     case eventDeliveryOverflow
     /// The harness sent a structurally invalid success response.
@@ -42,6 +44,8 @@ public enum ACPClientError: Error, Equatable, LocalizedError, Sendable {
             "The prompt exceeds the \(maximumBytes)-byte UTF-8 limit."
         case .promptAlreadyActive:
             "An agent prompt is already active on this connection."
+        case .promptPublicationPreparationFailed:
+            "The agent prompt could not be published safely."
         case .eventDeliveryOverflow:
             "The agent produced more control events than can be delivered safely."
         case .malformedResponse(let description):
@@ -145,6 +149,19 @@ final class ACPClientRestorationState {
         self.sessionID = sessionID
         self.mode = mode
         self.delivery = delivery
+    }
+}
+
+struct ACPClientPromptPublicationHooks: Sendable {
+    let beforePublication: @Sendable () async throws -> Void
+    let afterPublication: @Sendable () async -> Void
+
+    init(
+        beforePublication: @escaping @Sendable () async throws -> Void = {},
+        afterPublication: @escaping @Sendable () async -> Void = {}
+    ) {
+        self.beforePublication = beforePublication
+        self.afterPublication = afterPublication
     }
 }
 
@@ -300,6 +317,17 @@ public actor ACPClientConnection {
         _ prompt: AgentPrompt,
         onEvent: @escaping @Sendable (AgentRunEvent) async -> Void
     ) async throws -> AgentRunResult {
+        try await self.prompt(
+            prompt,
+            publicationHooks: ACPClientPromptPublicationHooks(),
+            onEvent: onEvent)
+    }
+
+    func prompt(
+        _ prompt: AgentPrompt,
+        publicationHooks: ACPClientPromptPublicationHooks,
+        onEvent: @escaping @Sendable (AgentRunEvent) async -> Void
+    ) async throws -> AgentRunResult {
         let promptStartedAt = DispatchTime.now().uptimeNanoseconds
         guard prompt.request.utf8.count <= Self.maximumPromptBytes else {
             diagnostics.record(
@@ -366,7 +394,8 @@ public actor ACPClientConnection {
                 params: .object([
                     "sessionId": .string(sessionID),
                     "prompt": .array(blocks.map(Self.encodedPromptBlock(for:))),
-                ]))
+                ]),
+                publicationHooks: publicationHooks)
             let object = try requiredObject(result, named: "session/prompt result")
             let encodedReason = try requiredString(
                 object["stopReason"],

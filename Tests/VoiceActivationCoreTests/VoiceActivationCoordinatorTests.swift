@@ -135,6 +135,8 @@ actor ControlledAgentRunner: AgentHarnessRunning {
         let profileID: UUID
         let configuration: AgentHarnessConfiguration
         let prompt: AgentPrompt
+        let restorationNeed: AgentSessionRestorationNeed
+        let runContinuity: AgentRunContinuityRequest
     }
 
     struct PermissionResolution: Equatable, Sendable {
@@ -148,7 +150,7 @@ actor ControlledAgentRunner: AgentHarnessRunning {
     private var runAttempts = 0
     private var invocations: [Invocation] = []
     private var permissionResolutions: [PermissionResolution] = []
-    private var eventHandlers: [@Sendable (AgentRunEvent) async -> Void] = []
+    private var eventHandlers: [@Sendable (AgentRunStreamEvent) async -> Void] = []
     private var completions: [CheckedContinuation<AgentRunResult, any Error>?] = []
     private var activeRunIndex: Int?
     private var delaysCancellation = false
@@ -162,7 +164,9 @@ actor ControlledAgentRunner: AgentHarnessRunning {
         profileID: UUID,
         configuration: AgentHarnessConfiguration,
         prompt: AgentPrompt,
-        onEvent: @escaping @Sendable (AgentRunEvent) async -> Void
+        restorationNeed: AgentSessionRestorationNeed,
+        runContinuity: AgentRunContinuityRequest,
+        onEvent: @escaping @Sendable (AgentRunStreamEvent) async -> Void
     ) async throws -> AgentRunResult {
         if let preClaimGate {
             self.preClaimGate = nil
@@ -182,7 +186,9 @@ actor ControlledAgentRunner: AgentHarnessRunning {
         invocations.append(Invocation(
             profileID: profileID,
             configuration: configuration,
-            prompt: prompt))
+            prompt: prompt,
+            restorationNeed: restorationNeed,
+            runContinuity: runContinuity))
         eventHandlers.append(onEvent)
         activeRunIndex = runIndex
         if completesImmediately {
@@ -260,7 +266,7 @@ actor ControlledAgentRunner: AgentHarnessRunning {
     }
 
     func emit(_ event: AgentRunEvent, from runIndex: Int) async {
-        await eventHandlers[runIndex](event)
+        await eventHandlers[runIndex](.live(event))
     }
 
     func complete(

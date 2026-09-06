@@ -17,6 +17,11 @@ actor RunnerEventRecorder {
         }
     }
 
+    func record(_ streamEvent: AgentRunStreamEvent) {
+        guard case .live(let event) = streamEvent else { return }
+        record(event)
+    }
+
     func nextEvent() async -> AgentRunEvent {
         if !events.isEmpty {
             return events.removeFirst()

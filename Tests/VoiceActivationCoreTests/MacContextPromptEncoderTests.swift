@@ -6,6 +6,46 @@ import Testing
 @testable import VoiceActivationCore
 
 struct MacContextPromptEncoderTests {
+    @Test func content_WhenContinuityExists_OrdersStableBoundedJSONBeforeContextAndRequest()
+        throws
+    {
+        let snapshot = snapshot(
+            windowTitle: "Notes",
+            resources: [.init(uri: "file:///tmp/notes.md", name: "notes.md")])
+        let prompt = AgentPrompt(
+            request: "Untouched request",
+            context: snapshot,
+            continuity: AgentContinuityPromptContext(
+                sessionState: .loaded,
+                previousTurnInterrupted: true))
+
+        let blocks = try MacContextPromptEncoder.content(
+            for: prompt,
+            systemInstruction: "Reply concisely")
+
+        #expect(blocks.count == 5)
+        #expect(blocks[0] == .text(role: .instruction, value: "Reply concisely"))
+        guard case .text(role: .continuity, value: let continuity) = blocks[1] else {
+            Issue.record("Expected continuity JSON")
+            return
+        }
+        #expect(continuity == """
+        {"previousTurnInterrupted":true,"schema":"voice-activation.agent-continuity.v1","sessionState":"loaded"}
+        """)
+        #expect(continuity.utf8.count <= AgentContinuityPromptContext.maximumEncodedBytes)
+        guard case .text(role: .macContext, value: _) = blocks[2] else {
+            Issue.record("Expected Mac context after continuity")
+            return
+        }
+        #expect(blocks[3] == .resourceLink(
+            role: .macResource,
+            uri: "file:///tmp/notes.md",
+            name: "notes.md"))
+        #expect(blocks[4] == .text(role: .request, value: "Untouched request"))
+        #expect(prompt.request == "Untouched request")
+        #expect(prompt.context == snapshot)
+    }
+
     @Test func content_WhenContextExists_OrdersInstructionContextLinksAndRequest() throws {
         let prompt = AgentPrompt(
             request: "Summarize this",

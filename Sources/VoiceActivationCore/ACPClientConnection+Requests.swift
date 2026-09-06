@@ -373,7 +373,10 @@ extension ACPClientConnection {
         return try await waitForResponse(id: id)
     }
 
-    func sendPromptRequest(params: ACPJSONValue?) async throws -> ACPJSONValue {
+    func sendPromptRequest(
+        params: ACPJSONValue?,
+        publicationHooks: ACPClientPromptPublicationHooks
+    ) async throws -> ACPJSONValue {
         try ensureOpen()
         let id = try reserveRequestID()
         activePromptRequestID = id
@@ -389,6 +392,15 @@ extension ACPClientConnection {
             ])
 
         do {
+            try await publicationHooks.beforePublication()
+        } catch {
+            pendingRequests.removeValue(forKey: id)
+            pendingRequestMethods.removeValue(forKey: id)
+            pendingRequestStartedAt.removeValue(forKey: id)
+            throw ACPClientError.promptPublicationPreparationFailed
+        }
+
+        do {
             try await write(.request(id: id, method: "session/prompt", params: params))
         } catch {
             pendingRequests.removeValue(forKey: id)
@@ -401,6 +413,7 @@ extension ACPClientConnection {
         }
 
         promptFrameWasPublished = true
+        await publicationHooks.afterPublication()
         await sendCancelIfPromptWasPublished()
         return try await waitForResponse(id: id)
     }

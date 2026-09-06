@@ -27,6 +27,7 @@ actor FakeACPTransport: ACPTransport {
     private var streamsWereFinished = false
     private var outputCallCount = 0
     private var shouldSuspendNextSend = false
+    private var shouldFailNextSend = false
     private var sendIsSuspended = false
     private var suspendedSendContinuation: CheckedContinuation<Void, Never>?
     private var suspendedSendWaiters: [CheckedContinuation<Void, Never>] = []
@@ -71,6 +72,11 @@ actor FakeACPTransport: ACPTransport {
                 suspendedSendContinuation = continuation
             }
             sendIsSuspended = false
+        }
+
+        if shouldFailNextSend {
+            shouldFailNextSend = false
+            throw FakeACPTransportError.outputFailed
         }
 
         rawFrames.append(data)
@@ -132,6 +138,10 @@ actor FakeACPTransport: ACPTransport {
 
     func suspendNextSend() {
         shouldSuspendNextSend = true
+    }
+
+    func failNextSend() {
+        shouldFailNextSend = true
     }
 
     func waitUntilSendIsSuspended() async {

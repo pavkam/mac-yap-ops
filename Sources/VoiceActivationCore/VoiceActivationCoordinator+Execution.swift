@@ -308,7 +308,12 @@ extension VoiceActivationCoordinator {
                     profileID: profile.id,
                     configuration: configuration,
                     prompt: prompt,
-                    onEvent: { [weak self] event in
+                    restorationNeed: .visibleHistory,
+                    runContinuity: AgentRunContinuityRequest(),
+                    onEvent: { [weak self] streamEvent in
+                        guard case .live(let event) = streamEvent else {
+                            return
+                        }
                         let receivedAtUptime = DispatchTime.now().uptimeNanoseconds
                         await mainRunLoopScheduler.perform { [weak self] in
                             self?.publishAgentEvent(

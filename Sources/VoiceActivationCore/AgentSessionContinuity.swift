@@ -214,22 +214,88 @@ public enum AgentContinuityPromptSessionState: String, Codable, Equatable, Senda
 
 /// Bounded, identifier-free continuity state supplied to a provider with a new prompt.
 public struct AgentContinuityPromptContext: Codable, Equatable, Sendable {
+    /// The only schema emitted for continuity prompt metadata.
+    public static let schemaIdentifier = "voice-activation.agent-continuity.v1"
+    /// The maximum encoded UTF-8 size of one continuity metadata block.
+    public static let maximumEncodedBytes = 512
+
     /// The fixed schema identifier for this compact context block.
     public let schema: String
     /// The session activation state visible to the provider.
-    public let sessionState: AgentContinuityPromptSessionState
+    ///
+    /// A normal new session has no restoration state, so interruption-only metadata
+    /// encodes this field as JSON `null` instead of inventing a semantic state.
+    public let sessionState: AgentContinuityPromptSessionState?
     /// Whether the previous locally active turn ended with process exit.
     public let previousTurnInterrupted: Bool
 
     /// Creates fixed-schema continuity metadata without conversation content.
     public init(
-        schema: String,
-        sessionState: AgentContinuityPromptSessionState,
+        sessionState: AgentContinuityPromptSessionState?,
         previousTurnInterrupted: Bool
     ) {
-        self.schema = schema
+        schema = Self.schemaIdentifier
         self.sessionState = sessionState
         self.previousTurnInterrupted = previousTurnInterrupted
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case schema
+        case sessionState
+        case previousTurnInterrupted
+    }
+
+    /// Encodes all three fixed fields, using `null` for a normal interruption-only state.
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schema, forKey: .schema)
+        try container.encode(sessionState, forKey: .sessionState)
+        try container.encode(previousTurnInterrupted, forKey: .previousTurnInterrupted)
+    }
+
+    /// Decodes fixed-schema identifier-free continuity metadata.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let decodedSchema = try container.decode(String.self, forKey: .schema)
+        guard decodedSchema == Self.schemaIdentifier else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .schema,
+                in: container,
+                debugDescription: "Unsupported agent continuity prompt schema")
+        }
+        schema = decodedSchema
+        sessionState = try container.decodeIfPresent(
+            AgentContinuityPromptSessionState.self,
+            forKey: .sessionState)
+        previousTurnInterrupted = try container.decode(
+            Bool.self,
+            forKey: .previousTurnInterrupted)
+    }
+}
+
+/// Consume-on-publication interruption metadata supplied by the App lifecycle owner.
+///
+/// The value carries exact identifier-only markers transiently. Provider-managed task
+/// markers are excluded so session prompting cannot acknowledge another feature's work.
+public struct AgentRunContinuityRequest: Equatable, Sendable {
+    /// Whether the next successfully published prompt should report an interrupted turn.
+    public let previousTurnInterrupted: Bool
+    /// Exact ordinary-turn keys eligible for acknowledgement after frame publication.
+    public let ordinaryInterruptedWorkKeys: Set<AgentInterruptedWorkKey>
+
+    /// Creates a request by accepting only reconciled ordinary-turn markers.
+    ///
+    /// - Parameters:
+    ///   - previousTurnInterrupted: Whether interruption metadata should be emitted.
+    ///   - interruptedWork: Reconciled markers owned by the selected profile.
+    public init(
+        previousTurnInterrupted: Bool = false,
+        interruptedWork: [AgentInterruptedWorkMarker] = []
+    ) {
+        self.previousTurnInterrupted = previousTurnInterrupted
+        ordinaryInterruptedWorkKeys = Set(interruptedWork.lazy.filter {
+            $0.state == .interruptedByProcessExit && $0.providerTaskID == nil
+        }.map(\.key))
     }
 }
 

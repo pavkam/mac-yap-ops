@@ -146,7 +146,9 @@ actor AppModelAgentRunnerSpy: AgentHarnessRunning {
         profileID: UUID,
         configuration: AgentHarnessConfiguration,
         prompt: AgentPrompt,
-        onEvent: @escaping @Sendable (AgentRunEvent) async -> Void
+        restorationNeed: AgentSessionRestorationNeed,
+        runContinuity: AgentRunContinuityRequest,
+        onEvent: @escaping @Sendable (AgentRunStreamEvent) async -> Void
     ) async throws -> AgentRunResult {
         guard admission.claim() else { throw CancellationError() }
         invocations.append(
@@ -155,7 +157,7 @@ actor AppModelAgentRunnerSpy: AgentHarnessRunning {
                 configuration: configuration,
                 prompt: prompt))
         for event in events {
-            await onEvent(event)
+            await onEvent(.live(event))
         }
         return AgentRunResult(stopReason: .endTurn)
     }
@@ -215,11 +217,13 @@ actor AppModelPermissionAgentRunnerSpy: AgentHarnessRunning {
         profileID: UUID,
         configuration: AgentHarnessConfiguration,
         prompt: AgentPrompt,
-        onEvent: @escaping @Sendable (AgentRunEvent) async -> Void
+        restorationNeed: AgentSessionRestorationNeed,
+        runContinuity: AgentRunContinuityRequest,
+        onEvent: @escaping @Sendable (AgentRunStreamEvent) async -> Void
     ) async throws -> AgentRunResult {
         guard admission.claim() else { throw CancellationError() }
         await onEvent(
-            .permissionRequested(
+            .live(.permissionRequested(
                 AgentPermissionRequest(
                     turnToken: turnToken,
                     requestID: requestID,
@@ -241,7 +245,7 @@ actor AppModelPermissionAgentRunnerSpy: AgentHarnessRunning {
                             id: "deny-once",
                             label: "Deny",
                             kind: .rejectOnce),
-                    ])))
+                    ]))))
         return await withCheckedContinuation { continuation = $0 }
     }
 

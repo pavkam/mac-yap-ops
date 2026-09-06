@@ -9,15 +9,23 @@ public struct AgentPrompt: Equatable, Sendable {
     public let request: String
     /// The optional bounded Mac-context snapshot captured when the request was admitted.
     public let context: MacContextSnapshot?
+    /// Optional identifier-free continuity metadata composed after session activation.
+    public let continuity: AgentContinuityPromptContext?
 
     /// Creates a typed agent request.
     ///
     /// - Parameters:
     ///   - request: The untouched recognized request.
     ///   - context: The optional context snapshot associated with this request.
-    public init(request: String, context: MacContextSnapshot?) {
+    ///   - continuity: Optional fixed-schema session continuity metadata.
+    public init(
+        request: String,
+        context: MacContextSnapshot?,
+        continuity: AgentContinuityPromptContext? = nil
+    ) {
         self.request = request
         self.context = context
+        self.continuity = continuity
     }
 }
 

@@ -46,6 +46,8 @@ import Testing
                 profileID: UUID(),
                 configuration: configuration,
                 prompt: AgentPrompt(request: "First", context: nil),
+                restorationNeed: .visibleHistory,
+                runContinuity: AgentRunContinuityRequest(),
                 onEvent: { _ in })
         }
         #expect(await factory.createdConfigurations().isEmpty)

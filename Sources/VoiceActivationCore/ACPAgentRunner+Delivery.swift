@@ -4,6 +4,114 @@
 import Foundation
 
 extension ACPAgentRunner {
+    func continuityContext(
+        activation: AgentSessionActivation?,
+        previousTurnInterrupted: Bool
+    ) -> AgentContinuityPromptContext? {
+        let state: AgentContinuityPromptSessionState?
+        switch activation {
+        case .loaded:
+            state = .loaded
+        case .resumed:
+            state = .resumedWithoutHistory
+        case .freshAfterUnavailableBookmark:
+            state = .freshAfterUnavailableBookmark
+        case .freshBecauseRestorationUnsupported:
+            state = .freshBecauseRestorationUnsupported
+        case .new, nil:
+            state = nil
+        }
+        guard state != nil || previousTurnInterrupted else { return nil }
+        return AgentContinuityPromptContext(
+            sessionState: state,
+            previousTurnInterrupted: previousTurnInterrupted)
+    }
+
+    func preparePromptPublication(
+        key: AgentInterruptedWorkKey,
+        turnToken: UUID,
+        profileID: UUID,
+        recordID: UUID
+    ) async throws {
+        try ensurePromptPublicationOwner(
+            turnToken: turnToken,
+            profileID: profileID,
+            recordID: recordID)
+        do {
+            try await continuityStore.markWorkActive(AgentInterruptedWorkMarker(
+                key: key,
+                state: .active))
+        } catch {
+            recordContinuityStoreFailure(operation: "mark")
+            throw ACPClientError.promptPublicationPreparationFailed
+        }
+        do {
+            try ensurePromptPublicationOwner(
+                turnToken: turnToken,
+                profileID: profileID,
+                recordID: recordID)
+        } catch {
+            await clearWork(key, operation: "prepublication_cleanup")
+            throw error
+        }
+    }
+
+    func confirmPromptPublication(
+        turnToken: UUID,
+        profileID: UUID,
+        recordID: UUID,
+        acknowledgementKeys: Set<AgentInterruptedWorkKey>
+    ) async {
+        let profileKeys = Set(acknowledgementKeys.filter { $0.profileID == profileID })
+        guard let turn = activeTurn,
+              turn.token == turnToken,
+              turn.profileID == profileID,
+              turn.recordID == recordID,
+              records[profileID]?.id == recordID,
+              !profileKeys.isEmpty
+        else { return }
+        do {
+            try await continuityStore.acknowledgeInterruptedWork(profileKeys)
+        } catch {
+            recordContinuityStoreFailure(operation: "acknowledge")
+        }
+    }
+
+    func clearWorkIfPromptWasNotPublished(
+        key: AgentInterruptedWorkKey,
+        state: ACPAgentPromptPublicationState
+    ) async {
+        let snapshot = state.snapshot()
+        guard snapshot.markerWasWritten, !snapshot.frameWasPublished else { return }
+        await clearWork(key, operation: "prepublication_cleanup")
+    }
+
+    func clearSettledWork(_ key: AgentInterruptedWorkKey) async {
+        await clearWork(key, operation: "clear")
+    }
+
+    func clearWork(_ key: AgentInterruptedWorkKey, operation: String) async {
+        do {
+            try await continuityStore.clearWork(key)
+        } catch {
+            recordContinuityStoreFailure(operation: operation)
+        }
+    }
+
+    func ensurePromptPublicationOwner(
+        turnToken: UUID,
+        profileID: UUID,
+        recordID: UUID
+    ) throws {
+        guard let turn = activeTurn,
+              turn.token == turnToken,
+              turn.profileID == profileID,
+              turn.recordID == recordID,
+              !turn.isCancelling,
+              records[profileID]?.id == recordID
+        else { throw ACPAgentRunnerError.cancelled }
+    }
+
     func retainedStandardErrorByteCountForTesting(profileID: UUID) -> Int {
         records[profileID]?.standardError.count ?? 0
     }

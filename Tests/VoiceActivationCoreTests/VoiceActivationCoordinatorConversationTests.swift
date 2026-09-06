@@ -251,7 +251,9 @@ extension VoiceActivationCoordinatorTests {
             ControlledAgentRunner.Invocation(
                 profileID: agentProfile.id,
                 configuration: try makeAgentConfiguration(),
-                prompt: AgentPrompt(request: "inspect the parser", context: nil)),
+                prompt: AgentPrompt(request: "inspect the parser", context: nil),
+                restorationNeed: .visibleHistory,
+                runContinuity: AgentRunContinuityRequest()),
         ])
         guard case let .started(runID, startedProfile, prompt) = lifecycleEvents.first else {
             Issue.record("Expected an agent run start")

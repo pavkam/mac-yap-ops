@@ -115,6 +115,8 @@ public protocol AgentHarnessRunning: Sendable {
     ///   - profileID: The wake profile that owns the cached session.
     ///   - configuration: The harness launch and permission configuration.
     ///   - prompt: The typed user request and its optional captured Mac context.
+    ///   - restorationNeed: Whether a restored session should replay visible history.
+    ///   - runContinuity: Consume-on-publication interruption metadata from App lifecycle.
     ///   - onEvent: An asynchronous sink for ordered streaming events.
     /// - Returns: The turn's terminal stop reason.
     /// - Throws: A transport, protocol, launch, or cancellation error.
@@ -123,7 +125,9 @@ public protocol AgentHarnessRunning: Sendable {
         profileID: UUID,
         configuration: AgentHarnessConfiguration,
         prompt: AgentPrompt,
-        onEvent: @escaping @Sendable (AgentRunEvent) async -> Void
+        restorationNeed: AgentSessionRestorationNeed,
+        runContinuity: AgentRunContinuityRequest,
+        onEvent: @escaping @Sendable (AgentRunStreamEvent) async -> Void
     ) async throws -> AgentRunResult
 
     /// Answers one pending permission request for the active turn.
@@ -155,13 +159,17 @@ extension AgentHarnessRunning {
         profileID: UUID,
         configuration: AgentHarnessConfiguration,
         prompt: AgentPrompt,
-        onEvent: @escaping @Sendable (AgentRunEvent) async -> Void
+        restorationNeed: AgentSessionRestorationNeed = .visibleHistory,
+        runContinuity: AgentRunContinuityRequest = AgentRunContinuityRequest(),
+        onEvent: @escaping @Sendable (AgentRunStreamEvent) async -> Void
     ) async throws -> AgentRunResult {
         try await run(
             admission: AgentRunAdmission(),
             profileID: profileID,
             configuration: configuration,
             prompt: prompt,
+            restorationNeed: restorationNeed,
+            runContinuity: runContinuity,
             onEvent: onEvent)
     }
 }

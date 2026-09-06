@@ -117,7 +117,8 @@ extension ACPAgentRunnerTests {
         #expect(await replacementTransport.nextSentMessage() == promptRequest(
             id: 3,
             text: "Continue safely",
-            sessionID: "replacement-session"))
+            sessionID: "replacement-session",
+            continuityState: .freshAfterUnavailableBookmark))
         try await replacementTransport.feed(promptResponse(id: 3, stopReason: "end_turn"))
 
         #expect(try await recoveredRun.value == AgentRunResult(stopReason: .endTurn))
