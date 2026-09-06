@@ -228,10 +228,26 @@ ordinary work never survives process death.
 
 ## An agent is waiting for permission
 
-With **Ask every time**, choose one provider-supplied option in the panel or say
-`allow`, `allow all`, `deny`, or `deny all`. The decision applies to the oldest
-visible request. Longer utterances remain ordinary follow-ups. Cancelling the
-turn settles all pending permission requests.
+With **Ask every time**, choose one exact provider option in the panel or say its
+label. The existing `allow`, `allow all`, `deny`, and `deny all` shortcuts work
+only when they identify one offered option. Duplicate normalized labels are
+ambiguous and send nothing. The decision applies to the oldest visible request;
+each response still carries its exact turn, JSON-RPC request, and option ID.
+
+If the agent supplies valid `_meta.permission` version-1 text, the panel shows
+and speech reads that exact title and optional description. Otherwise the app
+uses the standard ACP tool title and exact option labels. Missing metadata is a
+normal fallback, not a provider failure. A malformed title, a title over 4 KiB,
+or a description over 8 KiB discards the whole extension. A complete spoken
+confirmation over 20,000 characters, or one that cannot fit the speech queue,
+stays visible but is silent; it is never truncated or partly spoken.
+
+**Read inherited replies aloud** and the profile's reply-speech choice also gate
+confirmation audio. Multiple cards retain arrival order. Resolving one stops
+queued speech for it and requeues only the remaining prompts. Cancelling the turn
+settles every pending permission once and adds no local `Stopped.` or result
+sentence. A tool completion is intentionally silent; wait for the agent-authored
+message that follows it.
 
 ## Conversation speech or sounds do not play
 
@@ -246,10 +262,12 @@ a conversation falls back to macOS speech.
 
 Typed spoken content always remains visible. When speech is enabled, the selected
 backend receives only the admitted spoken unit; choosing ElevenLabs sends that
-text to ElevenLabs. Legacy replies use the existing Markdown formatter. Raw tool
-payloads, plans, thoughts, permissions, diagnostics, ACP frames, and display-only
-text are never synthesized. Speaking during reply audio stops playback and
-becomes a follow-up. Activity sounds yield to permissions and audible narration.
+text to ElevenLabs. Legacy replies use the existing Markdown formatter.
+Permission speech is limited to bounded provider presentation or the standard
+tool title and exact option labels. Raw tool payloads, plans, thoughts,
+diagnostics, ACP frames, and display-only text are never synthesized. Speaking
+during reply audio stops playback and becomes a follow-up. Activity sounds yield
+to permissions and audible narration.
 
 See [Agent conversations](agent-conversations.md) and
 [Sound design](sound-design.md) for the complete behavior.

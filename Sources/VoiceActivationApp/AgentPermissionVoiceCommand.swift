@@ -31,43 +31,71 @@ enum AgentPermissionVoiceCommand {
         let phrase = normalized(transcript)
         guard !phrase.isEmpty else { return nil }
 
-        if let exact = options.first(where: { normalized($0.label) == phrase }) {
-            return .select(optionID: exact.id)
+        let exact = options.filter { normalized($0.label) == phrase }
+        if exact.count == 1, let option = exact.first {
+            return .select(optionID: option.id)
+        }
+        if exact.count > 1 {
+            return nil
         }
         if allowAlwaysPhrases.contains(phrase) {
-            return selection(
+            return selectionResult(
                 preferred: .allowAlways,
                 fallback: .allowOnce,
-                options: options)
+                options: options).decision
         }
         if allowOncePhrases.contains(phrase) {
-            return selection(
+            return selectionResult(
                 preferred: .allowOnce,
                 fallback: .allowAlways,
-                options: options)
+                options: options).decision
         }
         if rejectAlwaysPhrases.contains(phrase) {
-            return selection(
+            let result = selectionResult(
                 preferred: .rejectAlways,
                 fallback: .rejectOnce,
-                options: options) ?? .cancel
+                options: options)
+            return result.isUnavailable ? .cancel : result.decision
         }
         if rejectOncePhrases.contains(phrase) {
-            return options.first(where: { $0.kind == .rejectOnce })
-                .map { .select(optionID: $0.id) } ?? .cancel
+            let result = selectionResult(
+                preferred: .rejectOnce,
+                fallback: .rejectAlways,
+                options: options)
+            return result.isUnavailable ? .cancel : result.decision
         }
         return nil
     }
 
-    private static func selection(
+    private struct SelectionResult {
+        let decision: AgentPermissionVoiceDecision?
+        let isUnavailable: Bool
+    }
+
+    private static func selectionResult(
         preferred: AgentPermissionOptionKind,
         fallback: AgentPermissionOptionKind,
-        options: [AgentPermissionOption]) -> AgentPermissionVoiceDecision?
+        options: [AgentPermissionOption]
+    ) -> SelectionResult
     {
-        options.first(where: { $0.kind == preferred })
-            .map { .select(optionID: $0.id) }
-            ?? options.first(where: { $0.kind == fallback })
-                .map { .select(optionID: $0.id) }
+        let preferredOptions = options.filter { $0.kind == preferred }
+        if preferredOptions.count == 1, let option = preferredOptions.first {
+            return SelectionResult(
+                decision: .select(optionID: option.id),
+                isUnavailable: false)
+        }
+        guard preferredOptions.isEmpty else {
+            return SelectionResult(decision: nil, isUnavailable: false)
+        }
+        let fallbackOptions = options.filter { $0.kind == fallback }
+        if fallbackOptions.count == 1, let option = fallbackOptions.first {
+            return SelectionResult(
+                decision: .select(optionID: option.id),
+                isUnavailable: false)
+        }
+        return SelectionResult(
+            decision: nil,
+            isUnavailable: fallbackOptions.isEmpty)
     }
 
     private static func normalized(_ value: String) -> String {

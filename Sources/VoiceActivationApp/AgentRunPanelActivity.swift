@@ -157,11 +157,13 @@ extension AgentRunPanelView {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Permission requested")
                             .font(.callout.weight(.semibold))
-                        Text(permission.toolTitle)
+                        Text(permission.promptTitle ?? "Agent action")
                             .font(.body)
-                        Text("Say “allow”, “allow all”, “deny”, or “deny all”.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        if let description = permission.promptDescription {
+                            Text(description)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 } icon: {
                     Image(systemName: "hand.raised.fill")
@@ -197,6 +199,7 @@ extension AgentRunPanelView {
         let button = Button(option.label) {
             model.selectPermission(permission, optionID: option.id)
         }
+        .accessibilityLabel(option.label)
         .disabled(permission.isResolving || model.resolvingPermissions.contains(permission.key))
 
         if isAllow {

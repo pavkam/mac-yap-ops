@@ -28,6 +28,7 @@ final class SilentAgentConversationAudioPlayer: AgentConversationAudioPlaying {
         inputFormat: AgentSpeechInputFormat,
         admissionPolicy: AgentSpeechAdmissionPolicy
     ) {}
+    func speakVerbatim(_ texts: [String], localeID: String) -> Bool { true }
     func stopSpeaking() {}
     func stopAll() {}
 }

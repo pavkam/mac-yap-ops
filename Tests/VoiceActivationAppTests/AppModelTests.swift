@@ -344,6 +344,7 @@ actor AppModelPermissionAgentRunnerSpy: AgentHarnessRunning {
 final class AppModelAgentConversationAudioSpy: AgentConversationAudioPlaying {
     var onSpeakingChange: ((Bool) -> Void)?
     private(set) var spoken: [(text: String, localeID: String)] = []
+    private(set) var stopSpeakingCount = 0
 
     func beginConversation(
         profile: WakeProfile,
@@ -371,7 +372,17 @@ final class AppModelAgentConversationAudioSpy: AgentConversationAudioPlaying {
         onSpeakingChange?(true)
     }
 
+    @discardableResult
+    func speakVerbatim(_ texts: [String], localeID: String) -> Bool {
+        for text in texts {
+            spoken.append((text, localeID))
+        }
+        if !texts.isEmpty { onSpeakingChange?(true) }
+        return true
+    }
+
     func stopSpeaking() {
+        stopSpeakingCount += 1
         onSpeakingChange?(false)
     }
 

@@ -42,4 +42,22 @@ struct AgentPermissionVoiceCommandTests {
 
         #expect(AgentPermissionVoiceCommand.match("deny", options: allowOnly) == .cancel)
     }
+
+    @Test func match_WhenNormalizedLabelsAreDuplicated_ReturnsNoDecision() {
+        let duplicated = [
+            AgentPermissionOption(id: "first", label: "Allow once", kind: .allowOnce),
+            AgentPermissionOption(id: "second", label: "allow-once", kind: .allowOnce),
+        ]
+
+        #expect(AgentPermissionVoiceCommand.match("ALLOW ONCE!", options: duplicated) == nil)
+    }
+
+    @Test func match_WhenSemanticChoiceIsAmbiguous_ReturnsNoDecision() {
+        let duplicated = [
+            AgentPermissionOption(id: "first", label: "Approve this", kind: .allowOnce),
+            AgentPermissionOption(id: "second", label: "Proceed", kind: .allowOnce),
+        ]
+
+        #expect(AgentPermissionVoiceCommand.match("allow", options: duplicated) == nil)
+    }
 }

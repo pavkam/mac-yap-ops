@@ -65,8 +65,9 @@ push-to-talk details, see [Getting started](docs/getting-started.md).
   Ordinary unmarked replies keep the existing visible Markdown and narration
   behavior.
 - Optional macOS or ElevenLabs reply speech with a global default or per-profile
-  voice, plus barge-in, activity cues, and profile-aware follow-ups. Spoken
-  responses remain visible and copyable even when reply reading is disabled.
+  voice, plus exact agent-requested confirmations, barge-in, activity cues, and
+  profile-aware follow-ups. Spoken responses and confirmation choices remain
+  visible and usable when reply reading is disabled.
 - Structured local diagnostics, Launch at Login, and signed SwiftPM app-bundle
   packaging.
 
@@ -81,11 +82,13 @@ They run with the signed-in user's access, and a provider may contact its own
 services. Provider authentication stays with its CLI. The optional ElevenLabs
 key stays in macOS Keychain.
 
-Reply speech is derived only from agent-authored response text. Voice Activation
-never synthesizes raw tool payloads, plans, thoughts, permissions, diagnostics,
-or ACP frames. The macOS backend uses the local system synthesizer. Selecting
-ElevenLabs sends only admitted response text to ElevenLabs for synthesis. Typed
-spoken text remains visible in the conversation panel without being rewritten.
+Reply speech is derived only from agent-authored response text. Confirmation
+speech uses only the provider's bounded presentation title and description, or
+the standard ACP tool title, followed by exact option labels. Voice Activation
+never synthesizes raw tool input or output, tool content, locations, plans,
+thoughts, diagnostics, or ACP frames. The macOS backend uses the local system
+synthesizer. Selecting ElevenLabs sends only admitted response or confirmation
+text to ElevenLabs. Typed spoken text remains visible without being rewritten.
 
 The app does not maintain a conversation-history database or audio archive. It
 persists only bounded ACP session identifiers, compatibility fingerprints, and

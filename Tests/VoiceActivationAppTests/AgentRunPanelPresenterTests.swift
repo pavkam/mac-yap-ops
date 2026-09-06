@@ -157,7 +157,8 @@ struct AgentRunPanelPresenterTests {
             requestID: .string("permission"))
         let permission = AgentPermissionPresentation(
             key: key,
-            toolTitle: "Edit file",
+            promptTitle: "Edit file",
+            promptDescription: nil,
             options: [
                 AgentPermissionOption(id: "once", label: "Allow once", kind: .allowOnce)
             ],

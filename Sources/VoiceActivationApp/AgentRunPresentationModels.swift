@@ -46,7 +46,8 @@ struct AgentPermissionPresentation: Equatable, Identifiable, Sendable {
     var id: AgentPermissionKey { key }
 
     let key: AgentPermissionKey
-    let toolTitle: String
+    let promptTitle: String?
+    let promptDescription: String?
     let options: [AgentPermissionOption]
     var isResolving: Bool
 }

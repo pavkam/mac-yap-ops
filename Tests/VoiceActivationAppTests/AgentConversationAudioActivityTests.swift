@@ -82,7 +82,7 @@ extension AgentConversationAudioPresenterTests {
         #expect(player.activitySounds.isEmpty)
     }
 
-    @MainActor @Test func lifecycle_WhenVoiceCancelsConversation_ReadsStoppedAcknowledgement() throws {
+    @MainActor @Test func lifecycle_WhenVoiceCancelsConversation_EmitsNoAppAuthoredSpeech() throws {
         let player = AgentConversationAudioSpy()
         let presenter = AgentConversationAudioPresenter(
             player: player,
@@ -99,8 +99,7 @@ extension AgentConversationAudioPresenterTests {
             runID: runID,
             result: AgentRunResult(stopReason: .cancelled)))
 
-        #expect(player.spoken.map(\.text) == ["Stopped."])
-        #expect(player.spoken.map(\.localeID) == ["en-US"])
+        #expect(player.spoken.isEmpty)
     }
 
     @MainActor @Test func lifecycle_WhenAudioOptionsAreDisabled_ProducesNoPlayback() throws {
@@ -165,15 +164,19 @@ extension AgentConversationAudioPresenterTests {
             runID: runID,
             profile: try agentProfile(),
             prompt: "Question"))
+        let request = AgentPermissionRequest(
+            turnToken: AgentTurnToken(),
+            requestID: .integer(4),
+            toolCall: AgentToolCallUpdate(id: "tool", title: "Edit"),
+            options: [])
         presenter.handle(.event(
             runID: runID,
-            event: .permissionRequested(AgentPermissionRequest(
-                turnToken: AgentTurnToken(),
-                requestID: .integer(4),
-                toolCall: AgentToolCallUpdate(id: "tool", title: "Edit"),
-                options: []))))
+            event: .permissionRequested(request)))
 
-        presenter.resumeAfterPermission(runID: runID)
+        presenter.permissionResolutionBegan(
+            runID: runID,
+            turnToken: request.turnToken,
+            requestID: request.requestID)
 
         #expect(player.workingStates.suffix(2) == [false, true])
     }
