@@ -51,9 +51,12 @@ push-to-talk details, see [Getting started](docs/getting-started.md).
   in Settings. Direct commands never receive this context.
 - A non-activating, result-first conversation panel with native previews for
   generated images, PDFs, documents, and local resources; ordered turns,
-  bounded follow-ups, provider-exposed thinking and tools, spoken permission
-  choices, cancellation, retained output controls, and capability-gated ACP
-  session restoration across application launches.
+  bounded voice follow-ups, per-input delivery state, provider-exposed thinking
+  and tools, spoken permission choices, cancellation, retained output controls,
+  and capability-gated ACP session restoration across application launches.
+- Ordinary follow-up speech stays opaque agent input. The exact validated
+  Claude ACP pin can add it to an active turn; Cursor, Codex, and unsupported
+  providers retain it in a bounded FIFO for the next ordinary turn.
 - Selectable GitHub-flavored Markdown responses with safe link handling and
   bounded HTTPS image loading; typed ACP results use the local preview shelf.
 - Optional macOS or ElevenLabs reply speech with a global default or per-profile

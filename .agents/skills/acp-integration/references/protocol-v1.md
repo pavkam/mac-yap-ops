@@ -36,6 +36,27 @@ content plus session creation, prompt, cancel, and updates; optional loading,
 terminal, filesystem, MCP, elicitation, and authentication features must be
 gated by the advertised capability before use.
 
+## Conversational input extension boundary
+
+Stable ACP v1 has no portable operation for adding input to an active prompt.
+Ordinary language remains opaque agent input; Voice Activation does not infer
+whether it adds, corrects, pauses, repeats, or replaces anything. Exact local
+stop and pending-permission controls are handled before this transport path.
+
+Safe `_session/steering` is an exact-pin compatibility contract, not a general
+ACP capability. It is enabled only for preset `claude` when that process's
+`initialize` result reports agent name
+`@agentclientprotocol/claude-agent-acp`, version `0.73.0`, and
+`_meta.steering.supported: true`. The request sets
+`idleBehavior: "promptRequired"`. Only `injected` and `promptRequired` are safe
+results; only `promptRequired` permits one later ordinary prompt. Every
+ambiguous result or failure closes the connection and forbids replay.
+
+Cursor and Codex ACP 1.8.0 use the bounded FIFO `session/prompt` fallback.
+Codex advertises steering, but its idle path may start a detached turn that the
+standard client cannot own to completion. Capability advertisement alone is
+therefore insufficient.
+
 ## Project implementation contract
 
 - `ACPLineFramer` rejects frames over 1 MiB.
@@ -55,6 +76,9 @@ gated by the advertised capability before use.
   argument array. Do not introduce a shell.
 - A missing session may be recreated and the prompt retried once only before
   output, permissions, or other observable activity. Activity forbids replay.
+- Pending conversation input is capped at 16 entries and 8,192 UTF-8 bytes per
+  request. Each input keeps a stable transport identity through routing,
+  injection, queueing, prompting, or failure.
 
 The profile system prompt is placed in Codex `CODEX_CONFIG` as
 `developer_instructions`, preserving other object keys. ACP v1 has no portable
@@ -69,3 +93,4 @@ block.
 - [Session setup](https://agentclientprotocol.com/protocol/v1/session-setup)
 - [Prompt turns](https://agentclientprotocol.com/protocol/v1/prompt-turn)
 - [Tool calls and permissions](https://agentclientprotocol.com/protocol/v1/tool-calls)
+- [ACP v1 mid-turn input discussion](https://github.com/orgs/agentclientprotocol/discussions/1220)

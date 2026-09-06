@@ -33,6 +33,22 @@ into an existing JSON-object `CODEX_CONFIG` as `developer_instructions`. It must
 preserve other keys and reject an existing non-object value. Never print the
 full environment during debugging.
 
+## Conversational input routing
+
+Codex ACP 1.8.0 advertises steering, but that advertisement is not enough for
+safe host ownership. Its pinned request parser ignores the host's
+`idleBehavior: "promptRequired"` option and may answer `startedNewTurn` after
+starting a detached turn when the original prompt settles first. Voice
+Activation cannot await or cancel that new turn through the standard prompt
+request it owns.
+
+This pin therefore never receives `_session/steering` from Voice Activation.
+Opaque follow-ups stay in the bounded FIFO and begin as ordinary
+`session/prompt` turns. A future pin remains on FIFO until tagged source,
+deterministic fixtures, and its exact initialize identity prove a host-owned
+idle outcome. The initialize-only probe validates the handshake; it does not
+prove steering or model behavior.
+
 The project pin remains authoritative. The npm `latest` tag was `1.10.0` on the
 validation date, so registry drift already exists. Do not change the pin without
 reviewing release changes, bundled Codex compatibility, tests, and a handshake.
@@ -51,3 +67,4 @@ also reads current registry metadata; it still does not prompt a model.
 
 - [Codex ACP adapter](https://github.com/agentclientprotocol/codex-acp)
 - [Pinned v1.8.0 release](https://github.com/agentclientprotocol/codex-acp/releases/tag/v1.8.0)
+- [Pinned v1.8.0 server implementation](https://github.com/agentclientprotocol/codex-acp/blob/v1.8.0/src/CodexAcpServer.ts)

@@ -32,6 +32,23 @@ standard `session/request_permission` request remains authoritative. Preserve
 option IDs exactly, settle cancellation, and do not infer persistent provider
 effects merely from a label or option kind.
 
+## Host-owned steering contract
+
+The pinned 0.73.0 adapter advertises top-level
+`_meta.steering.supported: true` and accepts `_session/steering`. Voice
+Activation enables that extension only when the current process's `initialize`
+result also reports the exact package name and version and the profile preset is
+Claude. The request supplies `idleBehavior: "promptRequired"`, which keeps idle
+input locally owned instead of starting an unowned turn.
+
+`injected` means the active turn accepted the opaque input. `promptRequired`
+means Voice Activation may retain it for one normal `session/prompt`. A legacy
+`startedNewTurn`, `failed`, unknown or malformed result, cancellation, or
+transport failure is ambiguous: close the connection and never replay the
+utterance automatically. Tagged-source fixtures prove this steering contract;
+an initialize-only probe proves only the current handshake and bounded
+capability shapes, not model behavior.
+
 The project pin remains authoritative. The npm `latest` tag was `0.75.1` on the
 validation date. Its Node requirement and dependency graph can move, so a pin
 upgrade needs release review, tests, and a handshake.
@@ -50,4 +67,5 @@ also reads current registry metadata; it still does not prompt a model.
 
 - [Claude Agent ACP adapter](https://github.com/agentclientprotocol/claude-agent-acp)
 - [Pinned v0.73.0 release](https://github.com/agentclientprotocol/claude-agent-acp/releases/tag/v0.73.0)
+- [Pinned v0.73.0 steering implementation](https://github.com/agentclientprotocol/claude-agent-acp/blob/v0.73.0/src/acp-agent.ts)
 - [Permission extension](https://github.com/agentclientprotocol/claude-agent-acp/blob/main/docs/permission-extension.md)

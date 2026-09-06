@@ -224,12 +224,53 @@ Session identifiers are opaque UTF-8 strings bounded to 4 KiB. An update for a
 different session identifier is ignored and recorded as a bounded diagnostic;
 it never enters the current conversation.
 
+## Route conversational input
+
+Voice Activation does not classify ordinary speech as additive, corrective,
+status, pause, repeat, or replacement language. Complete single-word `stop`,
+`cancel`, and `dismiss` controls remain local, as do exact spoken permission
+choices while a permission is pending. Every other admitted utterance remains
+opaque agent input.
+
+During an active turn, safe steering requires all four runtime facts from that
+process's `initialize` result and profile: preset `claude`, agent name
+`@agentclientprotocol/claude-agent-acp`, version `0.73.0`, and
+`_meta.steering.supported: true`. The client then offers one bounded input with
+`_session/steering` and `idleBehavior: "promptRequired"`. Cursor, Codex ACP
+1.8.0, custom providers, version drift, missing support, and an idle or
+cancelling turn make no extension write and retain the input in a FIFO for the
+next ordinary `session/prompt`.
+
+Only the correlated outcomes `injected` and `promptRequired` prove ownership.
+`injected` means the provider accepted the input into the active turn;
+`promptRequired` means the app still owns it and may send it once as the next
+ordinary prompt. `startedNewTurn`, `failed`, unknown or malformed results,
+cancellation, and transport failure after publication are ambiguous: the app
+cancels and closes that connection, marks the input failed, and never replays
+it automatically.
+
+Each admitted input keeps one stable identity and one visible transport label:
+**Routing…**, **Added to current turn**, **Queued for next turn**, **Started as
+next turn**, or **Delivery failed — say it again**. These labels report
+transport only; they do not claim that Voice Activation understood the
+utterance. At most 16 inputs wait, and each recognized request is limited to
+8,192 UTF-8 bytes. The seventeenth or an oversized request is rejected before
+retention and Mac-context capture.
+
+Interrupting narration stops queued or playing speech before the resulting
+utterance follows this routing path. It does not cancel agent work. Ending the
+conversation clears retained inputs; stopping only the current turn preserves
+them for the next ordinary prompt.
+
 ## Submit prompts and receive updates
 
-Every initial request and follow-up becomes one `session/prompt`. The prompt
-uses the deterministic block order documented above: presentation/profile
-instruction, optional continuity, optional current Mac context and resource
-links, then the untouched recognized request.
+Every initial request and FIFO follow-up becomes one `session/prompt`. An
+injected Claude follow-up remains part of its active prompt turn. Ordinary
+prompts use the deterministic block order documented above:
+presentation/profile instruction, optional continuity, optional current Mac
+context and resource links, then the untouched recognized request. Steering
+reuses that follow-up's already captured context and request blocks; it does
+not recapture or inspect them.
 
 The instruction asks for user-facing GitHub-flavored Markdown, at most one short
 progress sentence per work batch, and no narration of individual tool calls or
@@ -396,6 +437,7 @@ cache.
 | --- | ---: | --- |
 | Profile system prompt | 8 KiB UTF-8 | Reject configuration. |
 | Recognized ACP prompt | 8 KiB UTF-8 | Reject before writing. |
+| Pending conversational inputs | 16 | Reject the seventeenth before retention or context capture. |
 | One newline-delimited frame | 1 MiB | Fail the connection. |
 | Opaque remote identifier | 4 KiB UTF-8 | Reject the event or response. |
 | Remote diagnostic summary | 256 bytes UTF-8 | Retain a bounded prefix. |
@@ -430,6 +472,22 @@ event kinds or identifiers cannot evade the byte and entry caps.
 
 Voice Activation implements stable ACP v1 only. It does not advertise terminal,
 filesystem, MCP, elicitation, or terminal-authentication capabilities.
+
+ACP v1 has no portable mid-turn input method. Voice Activation uses the private
+`_session/steering` extension only for the exact Claude ACP 0.73.0 runtime proof
+described above. Codex ACP 1.8.0 advertises steering but cannot prove local
+ownership when an idle race starts a detached turn, so it deliberately remains
+on FIFO. A future adapter pin remains on FIFO until its tagged source,
+deterministic fixtures, and initialize result prove the same host-owned idle
+contract.
+
+The initialize-only probe was rerun on 2026-09-06 with the exact project launch
+commands. Cursor reported protocol 1, `loadSession: false`, and no resume shape;
+Codex 1.8.0 and Claude 0.73.0 reported protocol 1, `loadSession: true`, and an
+object resume shape. The probe called no authentication, session, prompt, or
+permission method and cannot prove steering or model behavior. See the dated
+[compatibility baseline](../.agents/skills/acp-integration/references/validated-baseline.md)
+for the reproducible command and privacy boundary.
 
 Unknown inbound requests receive JSON-RPC `method not found`. Cursor's blocking
 question and plan-approval extensions receive their documented cancelled result
