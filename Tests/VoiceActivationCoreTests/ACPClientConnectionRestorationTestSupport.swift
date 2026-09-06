@@ -46,7 +46,11 @@ extension ACPClientConnectionTests {
             result: .object([
                 "protocolVersion": .integer(1),
                 "agentCapabilities": .object(capabilities),
-                "agentInfo": .object(["title": .string("Test Agent")]),
+                "agentInfo": .object([
+                    "name": .string("test-agent"),
+                    "title": .string("Test Agent"),
+                    "version": .string("1.0.0"),
+                ]),
             ]))
     }
 

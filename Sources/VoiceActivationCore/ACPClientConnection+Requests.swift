@@ -117,6 +117,9 @@ extension ACPClientConnection {
         }
         sessionRestorationCapabilities = try ACPSessionRestorationCapabilities.decode(
             from: result["agentCapabilities"])
+        capabilities = try ACPAgentCapabilities.decode(
+            initializeResult: value,
+            preset: configuration.preset)
 
         if let agentInfo = result["agentInfo"], agentInfo != .null {
             let information = try requiredObject(agentInfo, named: "agentInfo")

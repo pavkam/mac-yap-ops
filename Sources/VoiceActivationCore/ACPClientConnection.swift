@@ -209,6 +209,7 @@ public actor ACPClientConnection {
     var sessionRestorationCapabilities = ACPSessionRestorationCapabilities(
         loadSession: false,
         resumeSession: false)
+    var capabilities: ACPAgentCapabilities?
     var sessionID: String?
     var agentName: String?
     var activeRestoration: ACPClientRestorationState?
