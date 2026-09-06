@@ -180,7 +180,15 @@ extension AppModel {
             ]) { _, new in new })
         switch event {
         case .started(let runID, let profile, let prompt):
+            prepareAgentPresentation(runID: runID, profile: profile)
             agentRunPresentation.start(runID: runID, profile: profile, prompt: prompt)
+            if interruptedAgentWork.contains(where: {
+                $0.key.profileID == profile.id && $0.providerTaskID != nil
+            }) {
+                agentRunPresentation.receiveNotice(
+                    runID: runID,
+                    message: "Interrupted when Voice Activation exited")
+            }
         case .followUpSubmitted(let runID, let inputID, let prompt, let disposition):
             agentRunPresentation.submitFollowUp(
                 runID: runID,
@@ -200,6 +208,9 @@ extension AppModel {
             _ = agentRunPresentation.beginCancellation(runID: runID)
         case .event(let runID, let event):
             agentRunPresentation.receive(runID: runID, event: event)
+            if case .connected(_, let sessionID) = event {
+                registerAgentSession(runID: runID, sessionID: sessionID)
+            }
         case .historyRestorationStarted(let runID, let token, let sessionID):
             agentRunPresentation.beginHistoryRestoration(
                 runID: runID,

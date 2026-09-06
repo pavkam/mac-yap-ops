@@ -42,6 +42,8 @@ extension AgentRunPresentation {
         case .toolCallUpdate(let update):
             updateTool(update)
             upsertArtifacts(from: update.content)
+        case .backgroundTask(let update):
+            applyBackgroundTaskUpdate(update)
         case .plan(let entries):
             plan = entries
         case .metadata(let kind, let summary):

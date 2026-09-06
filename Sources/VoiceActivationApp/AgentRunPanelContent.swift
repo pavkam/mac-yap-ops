@@ -5,6 +5,63 @@ import SwiftUI
 import VoiceActivationCore
 
 extension AgentRunPanelView {
+    @ViewBuilder
+    func backgroundTasks(_ snapshot: AgentRunSnapshot) -> some View {
+        if !snapshot.backgroundTasks.isEmpty {
+            VStack(alignment: .leading, spacing: 9) {
+                sectionLabel("Background tasks", symbol: "clock.arrow.2.circlepath")
+                ForEach(snapshot.backgroundTasks) { task in
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(task.name)
+                                .font(.callout.weight(.semibold))
+                            Spacer()
+                            Label(task.statusLabel, systemImage: backgroundTaskSymbol(task))
+                                .font(.caption)
+                                .foregroundStyle(
+                                    task.state == .failed ? Color.red : Color.secondary)
+                        }
+                        if !task.description.isEmpty {
+                            Text(task.description)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        if let summary = task.summary, !summary.isEmpty {
+                            Text(summary)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        if task.offersStopAction {
+                            Button("Stop background task", systemImage: "stop.circle") {
+                                model.onAction?(.stopBackgroundTask(
+                                    runID: snapshot.runID,
+                                    taskID: task.id))
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .accessibilityLabel("Stop background task")
+                        }
+                    }
+                    .padding(11)
+                    .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel(task.accessibilityLabel)
+                }
+            }
+        }
+    }
+
+    func backgroundTaskSymbol(_ task: AgentBackgroundTaskPresentation) -> String {
+        if task.stopState == .requested { return "clock" }
+        return switch task.state {
+        case .running: "gearshape.2"
+        case .paused: "pause.circle"
+        case .completed: "checkmark.circle.fill"
+        case .failed: "exclamationmark.circle.fill"
+        case .stopped: "stop.circle.fill"
+        }
+    }
+
     func requestCard(_ snapshot: AgentRunSnapshot) -> some View {
         userBubble(snapshot.prompt, label: "Request")
     }

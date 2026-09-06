@@ -52,6 +52,8 @@ extension AppModel {
         isShutdown = true
         heldHotKeyProfileID = nil
         shortcut.stop()
+        agentSessionHandlerGeneration &+= 1
+        await agentRunner.setSessionEventHandler(nil)
         coordinator.stop()
         overlayPresenter.update(state: .disabled, transcript: "")
         if let runID = agentRunSnapshot?.runID {
@@ -59,6 +61,8 @@ extension AppModel {
         }
         await agentRunPanelPresenter.shutdown()
         agentRunPresentation.shutdown()
+        agentRunSnapshot = nil
+        agentSessionPresentationRegistry.removeAll()
         agentConversationAudioPresenter.shutdown()
         for backendID in Array(textToSpeechVoiceCatalogGenerations.keys) {
             textToSpeechVoiceCatalogGenerations[backendID, default: 0] &+= 1
@@ -179,6 +183,8 @@ extension AppModel {
         refreshMacContextAccessStatus(authorization: authorization)
         guard ownsStartupAttempt(generation) else { return false }
         guard await loadCredential(startupGeneration: generation) else { return false }
+        guard ownsStartupAttempt(generation) else { return false }
+        await installAgentSessionEventHandler()
         guard ownsStartupAttempt(generation) else { return false }
         coordinator.onStateChange = { [weak self] in
             guard let self else { return }

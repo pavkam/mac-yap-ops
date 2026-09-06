@@ -28,6 +28,7 @@ extension AgentRunEvent {
         case .artifact: "artifact"
         case .toolCall: "tool_call"
         case .toolCallUpdate: "tool_call_update"
+        case .backgroundTask: "background_task"
         case .plan: "plan"
         case .permissionRequested: "permission_requested"
         case .metadata: "metadata"
@@ -46,7 +47,8 @@ extension AgentRunEvent {
             message.count
         case .metadata(_, let summary), .unknown(_, let summary):
             summary.count
-        case .connected, .userMessageDelta, .artifact, .toolCall, .toolCallUpdate, .plan,
+        case .connected, .userMessageDelta, .artifact, .toolCall, .toolCallUpdate,
+            .backgroundTask, .plan,
             .permissionRequested, .agentSpokenNarrationReady,
             .agentSpokenNarrationSuppressed,
             .deliveryNotice:
@@ -66,7 +68,8 @@ extension AgentRunEvent {
             request.toolCall.content.artifactMetrics
         case .connected, .userMessageDelta, .agentMessageDelta, .agentSpokenMessageDelta,
             .agentSpokenNarrationReady, .agentSpokenNarrationSuppressed,
-            .agentDisplayMessageDelta, .thoughtDelta, .plan, .metadata, .diagnostic,
+            .agentDisplayMessageDelta, .thoughtDelta, .backgroundTask, .plan,
+            .metadata, .diagnostic,
             .unknown, .deliveryNotice:
             (0, 0)
         }

@@ -133,6 +133,7 @@ extension AppModel {
             fields: ["reset_agent_session_count": String(profileIDsToReset.count)])
         if !profileIDsToReset.isEmpty {
             coordinator.invalidateAgentProfiles(profileIDsToReset)
+            agentSessionPresentationRegistry.remove(profileIDs: profileIDsToReset)
             await agentRunner.reset(profileIDs: profileIDsToReset)
             discardInterruptedAgentWork(profileIDs: profileIDsToReset)
         }

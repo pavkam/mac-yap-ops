@@ -8,6 +8,7 @@ enum AgentRunPanelAction: Equatable {
     case cancel(runID: UUID)
     case endConversation(runID: UUID)
     case permission(runID: UUID, key: AgentPermissionKey, optionID: String)
+    case stopBackgroundTask(runID: UUID, taskID: AgentBackgroundTaskID)
     case copy(runID: UUID)
     case close(runID: UUID)
     case delete(runID: UUID)
@@ -49,6 +50,7 @@ final class AgentRunPanelPresenter {
     var onCancel: ((UUID) -> Void)?
     var onEndConversation: ((UUID) -> Void)?
     var onPermission: ((UUID, AgentPermissionKey, String) -> Void)?
+    var onStopBackgroundTask: ((UUID, AgentBackgroundTaskID) -> Void)?
     var onClose: ((UUID) -> Void)?
     var onDelete: ((UUID) -> Void)?
 
@@ -192,6 +194,17 @@ final class AgentRunPanelPresenter {
             resolvedPermissions.insert(key)
             onPermission?(runID, key, optionID)
             recordApplied(action)
+        case .stopBackgroundTask(let runID, let taskID):
+            guard snapshot.runID == runID,
+                snapshot.backgroundTasks.contains(where: {
+                    $0.id == taskID && $0.offersStopAction
+                })
+            else {
+                recordIgnored(action, reason: "task_not_stoppable")
+                return
+            }
+            onStopBackgroundTask?(runID, taskID)
+            recordApplied(action)
         case .copy(let runID):
             guard snapshot.runID == runID, snapshot.phase.isTerminal else {
                 recordIgnored(action, reason: "output_not_copyable")
@@ -204,7 +217,9 @@ final class AgentRunPanelPresenter {
                     "copied_character_count": String(snapshot.copyText.count)
                 ])
         case .close(let runID):
-            guard snapshot.runID == runID, snapshot.phase.isTerminal else {
+            guard snapshot.runID == runID, snapshot.phase.isTerminal,
+                snapshot.canCloseOrDelete
+            else {
                 recordIgnored(action, reason: "run_not_closable")
                 return
             }
@@ -212,7 +227,9 @@ final class AgentRunPanelPresenter {
             onClose?(runID)
             recordApplied(action)
         case .delete(let runID):
-            guard snapshot.runID == runID, snapshot.phase.isTerminal else {
+            guard snapshot.runID == runID, snapshot.phase.isTerminal,
+                snapshot.canCloseOrDelete
+            else {
                 recordIgnored(action, reason: "run_not_deletable")
                 return
             }
@@ -304,6 +321,7 @@ extension AgentRunPanelAction {
         case .cancel: "stop_turn"
         case .endConversation: "end_conversation"
         case .permission: "permission"
+        case .stopBackgroundTask: "stop_background_task"
         case .copy: "copy"
         case .close: "close"
         case .delete: "delete"
@@ -327,6 +345,8 @@ extension AgentRunPanelAction {
             .restore(let runID):
             runID
         case .permission(let runID, _, _):
+            runID
+        case .stopBackgroundTask(let runID, _):
             runID
         }
     }

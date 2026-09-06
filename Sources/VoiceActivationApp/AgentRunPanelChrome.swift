@@ -41,7 +41,7 @@ extension AgentRunPanelView {
             }
             .buttonStyle(.bordered)
             .transition(actionDockTransition)
-        } else {
+        } else if snapshot.canCloseOrDelete {
             HStack(spacing: 8) {
                 Button {
                     model.onAction?(.delete(runID: snapshot.runID))
@@ -126,6 +126,9 @@ extension AgentRunPanelView {
         if !snapshot.voiceInput.isEmpty {
             return snapshot.voiceInput
         }
+        if snapshot.hasActiveBackgroundTasks {
+            return "Working in background"
+        }
         for item in snapshot.timeline.reversed() {
             switch item {
             case let .message(message):
@@ -149,6 +152,12 @@ extension AgentRunPanelView {
         case let .completed(reason): reason == .cancelled ? "Cancelled" : "Completed"
         case .failed: "Failed"
         }
+    }
+
+    func panelPhaseLabel(_ snapshot: AgentRunSnapshot) -> String {
+        snapshot.hasActiveBackgroundTasks && snapshot.phase != .running
+            ? "Working in background"
+            : phaseLabel(snapshot.phase)
     }
 
     func planSymbol(_ status: AgentPlanStatus) -> String {

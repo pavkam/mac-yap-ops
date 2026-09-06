@@ -63,7 +63,9 @@ final class AgentRunPresentation {
             evictedToolCount: sourceQualifiedEvictedToolCount,
             ignoredToolUpdateCount: sourceQualifiedIgnoredToolUpdateCount,
             artifacts: artifactProjection.artifacts,
-            omittedArtifactCount: artifactProjection.omittedCount)
+            omittedArtifactCount: artifactProjection.omittedCount,
+            backgroundTasks: backgroundTasks,
+            ignoredBackgroundTaskCount: ignoredBackgroundTaskCount)
     }
 
     let startsElapsedTimer: Bool
@@ -113,6 +115,10 @@ final class AgentRunPresentation {
     var elapsedTask: Task<Void, Never>?
     var elapsedTaskGeneration: UInt64 = 0
     var restorationState: AgentRunPresentationRestorationState?
+    var sessionID: String?
+    var sessionAppRunGeneration: UInt64?
+    var backgroundTasks: [AgentBackgroundTaskPresentation] = []
+    var ignoredBackgroundTaskCount: UInt64 = 0
 
     /// Creates the reducer with optional wall-clock updates for deterministic tests.
     ///
@@ -176,6 +182,10 @@ final class AgentRunPresentation {
         evictedToolCount = 0
         ignoredToolUpdateCount = 0
         restorationState = nil
+        sessionID = nil
+        sessionAppRunGeneration = nil
+        backgroundTasks = []
+        ignoredBackgroundTaskCount = 0
         startedAt = clock.now
         lastPublicationAt = nil
         publicationIsPending = false
@@ -501,6 +511,10 @@ final class AgentRunPresentation {
         evictedToolCount = 0
         ignoredToolUpdateCount = 0
         restorationState = nil
+        sessionID = nil
+        sessionAppRunGeneration = nil
+        backgroundTasks.removeAll(keepingCapacity: false)
+        ignoredBackgroundTaskCount = 0
         diagnosticsRecorder.record(
             category: .ui,
             event: "agent_presentation.cleared",

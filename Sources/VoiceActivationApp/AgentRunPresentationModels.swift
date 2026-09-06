@@ -274,6 +274,14 @@ struct AgentRunSnapshot: Equatable, Sendable {
     let ignoredToolUpdateCount: UInt64
     let artifacts: [AgentArtifactPresentation]
     let omittedArtifactCount: UInt64
+    let backgroundTasks: [AgentBackgroundTaskPresentation]
+    let ignoredBackgroundTaskCount: UInt64
+
+    var hasActiveBackgroundTasks: Bool {
+        backgroundTasks.contains(where: \.isActive)
+    }
+
+    var canCloseOrDelete: Bool { !hasActiveBackgroundTasks }
 
     init(
         runID: UUID,
@@ -297,7 +305,9 @@ struct AgentRunSnapshot: Equatable, Sendable {
         evictedToolCount: UInt64,
         ignoredToolUpdateCount: UInt64,
         artifacts: [AgentArtifactPresentation] = [],
-        omittedArtifactCount: UInt64 = 0)
+        omittedArtifactCount: UInt64 = 0,
+        backgroundTasks: [AgentBackgroundTaskPresentation] = [],
+        ignoredBackgroundTaskCount: UInt64 = 0)
     {
         self.runID = runID
         self.profileID = profileID
@@ -321,6 +331,8 @@ struct AgentRunSnapshot: Equatable, Sendable {
         self.ignoredToolUpdateCount = ignoredToolUpdateCount
         self.artifacts = artifacts
         self.omittedArtifactCount = omittedArtifactCount
+        self.backgroundTasks = backgroundTasks
+        self.ignoredBackgroundTaskCount = ignoredBackgroundTaskCount
     }
 
     /// A plain-text export containing only the retained request, response, and diagnostics.

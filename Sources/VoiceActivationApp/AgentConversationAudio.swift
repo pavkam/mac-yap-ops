@@ -417,6 +417,32 @@ final class AgentConversationAudioPresenter {
         player.setWorking(activityIsWorking && playsWorkingSound())
     }
 
+    /// Admits only current live session-authored reply content without changing prompt work audio.
+    func handleSessionEvent(_ event: AgentRunEvent, runID: UUID) {
+        guard self.runID == runID, !rejectsAgentSpeechUntilNextTurn else { return }
+        diagnostics.record(
+            category: .audio,
+            event: "conversation_audio.session_event_received",
+            fields: ["event_kind": event.audioDiagnosticName])
+        switch event {
+        case .agentMessageDelta(let messageID, let text):
+            guard readsActiveReplies else { return }
+            narration.append(messageID: messageID, text: text)
+        case .agentSpokenNarrationReady(_, let text):
+            guard readsActiveReplies else { return }
+            player.speak(
+                text,
+                localeID: localeID(),
+                inputFormat: .agentAuthoredPlainText,
+                admissionPolicy: .agentAuthoredVerbatim)
+        case .connected, .userMessageDelta, .agentSpokenMessageDelta,
+            .agentSpokenNarrationSuppressed, .agentDisplayMessageDelta, .thoughtDelta,
+            .artifact, .toolCall, .toolCallUpdate, .backgroundTask, .plan, .metadata,
+            .diagnostic, .permissionRequested, .unknown, .deliveryNotice:
+            break
+        }
+    }
+
     private func handle(_ event: AgentRunEvent) {
         diagnostics.record(
             category: .audio,
@@ -455,6 +481,8 @@ final class AgentConversationAudioPresenter {
             narration.markSemanticBoundary()
             handleToolSound(id: tool.id, status: tool.status)
             updateWorking(true)
+        case .backgroundTask:
+            break
         case .thoughtDelta, .artifact, .plan, .connected:
             narration.markSemanticBoundary()
             updateWorking(true)
@@ -620,6 +648,7 @@ extension AgentRunEvent {
         case .artifact: "artifact"
         case .toolCall: "tool_call"
         case .toolCallUpdate: "tool_call_update"
+        case .backgroundTask: "background_task"
         case .plan: "plan"
         case .permissionRequested: "permission_requested"
         case .metadata: "metadata"
