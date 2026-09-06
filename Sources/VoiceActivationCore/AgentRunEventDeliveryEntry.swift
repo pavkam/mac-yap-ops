@@ -146,6 +146,10 @@ struct AgentRunEventDeliveryEntry {
             let .agentDisplayMessageDelta(messageID, _),
             let .thoughtDelta(messageID, _):
             return messageID?.utf8.count ?? 0
+        case let .agentSpokenNarrationReady(messageID, text):
+            return saturatingAdd(messageID?.utf8.count ?? 0, text.utf8.count)
+        case let .agentSpokenNarrationSuppressed(messageID, _):
+            return messageID?.utf8.count ?? 0
         case .artifact:
             return 0
         case let .toolCall(toolCall):

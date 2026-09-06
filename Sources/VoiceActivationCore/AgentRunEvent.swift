@@ -339,6 +339,14 @@ public enum AgentRunMetadataKind {
     public static let sessionRecovered = "session_recovered"
 }
 
+/// Explains why an explicitly spoken response was not admitted for narration.
+public enum AgentSpokenSuppressionReason: Equatable, Sendable {
+    /// The complete response exceeded the exact narration-unit character bound.
+    case oversized
+    /// One or more fragments were unavailable, so exact narration was impossible.
+    case incompleteDelivery
+}
+
 /// An ordered, bounded event emitted while an ACP turn runs.
 public enum AgentRunEvent: Equatable, Sendable {
     /// The ACP connection completed initialization and opened a session.
@@ -349,6 +357,11 @@ public enum AgentRunEvent: Equatable, Sendable {
     case agentMessageDelta(messageID: String?, text: String)
     /// A streaming plain-text fragment the agent explicitly authored for speech.
     case agentSpokenMessageDelta(messageID: String?, text: String)
+    /// The complete, exact plain-text response admitted for atomic narration.
+    case agentSpokenNarrationReady(messageID: String?, text: String)
+    /// A content-free notice that an explicitly spoken response must remain silent.
+    case agentSpokenNarrationSuppressed(
+        messageID: String?, reason: AgentSpokenSuppressionReason)
     /// A streaming rich-text fragment the agent explicitly authored for display.
     case agentDisplayMessageDelta(messageID: String?, text: String)
     /// A streaming fragment of agent reasoning that may be collapsed in the UI.

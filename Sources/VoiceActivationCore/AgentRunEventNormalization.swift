@@ -42,6 +42,12 @@ enum AgentRunEventNormalizer {
         case let .agentSpokenMessageDelta(messageID, text):
             try validate(identifier: messageID)
             return textEntries(kind: .agentSpokenMessage(messageID), text: text)
+        case let .agentSpokenNarrationReady(messageID, _):
+            try validate(identifier: messageID)
+            return controlEntries(event: event, discardedBytes: 0, discardedEntries: 0)
+        case let .agentSpokenNarrationSuppressed(messageID, _):
+            try validate(identifier: messageID)
+            return controlEntries(event: event, discardedBytes: 0, discardedEntries: 0)
         case let .agentDisplayMessageDelta(messageID, text):
             try validate(identifier: messageID)
             return textEntries(kind: .agentDisplayMessage(messageID), text: text)

@@ -44,6 +44,8 @@ struct AgentRunPresentationRestorationStage {
             outputBuffer.append(text)
             settleActiveThinkingGroup()
             appendResponseMessage(text, messageID: messageID)
+        case .agentSpokenNarrationReady, .agentSpokenNarrationSuppressed:
+            break
         case .thoughtDelta(let messageID, let text):
             hasVisibleHistory = !text.isEmpty || hasVisibleHistory
             appendThinkingMessage(text, messageID: messageID)

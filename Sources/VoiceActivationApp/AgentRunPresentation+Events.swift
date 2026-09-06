@@ -21,6 +21,8 @@ extension AgentRunPresentation {
             outputBuffer.append(text)
             settleActiveThinkingGroup()
             appendResponseMessage(text, messageID: messageID)
+        case .agentSpokenNarrationReady, .agentSpokenNarrationSuppressed:
+            break
         case .thoughtDelta(let messageID, let text):
             appendThinkingMessage(text, messageID: messageID)
         case .artifact(let artifact):
