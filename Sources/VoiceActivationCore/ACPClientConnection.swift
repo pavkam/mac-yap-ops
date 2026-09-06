@@ -378,6 +378,7 @@ public actor ACPClientConnection {
                     await self.abortAmbiguousMidTurnInput()
                 }
             }
+            try Task.checkCancellation()
             let object = try requiredObject(result, named: "steering result")
             switch try requiredString(object["outcome"], named: "steering outcome") {
             case "injected":

@@ -292,6 +292,43 @@ struct ACPClientConnectionSteeringTests {
         }.count == 1)
     }
 
+    @Test func offerMidTurnInput_WhenSafeResponseCancelsOfferBeforeSettlement_ClosesAsAmbiguous()
+        async throws
+    {
+        let transport = FakeACPTransport()
+        let cancellation = SteeringResponseCancellation()
+        let connection = try await establishClaudeSteeringConnection(
+            transport: transport,
+            diagnostics: cancellation)
+        let recorder = AgentEventRecorder()
+        let promptTask = prompt(connection, text: "Inspect", recorder: recorder)
+        _ = await recorder.nextEvent()
+        _ = await transport.nextSentMessage()
+        let offer = Task(priority: .high) {
+            try await connection.offerMidTurnInput(
+                AgentPrompt(request: "also add tests", context: nil))
+        }
+        cancellation.cancelWhenSteeringResponseArrives(offer)
+        _ = await transport.nextSentMessage()
+
+        try await transport.feed(.response(
+            id: .integer(4),
+            result: .object(["outcome": .string("injected")])))
+
+        do {
+            let result = try await offer.value
+            Issue.record("Cancelled offer returned safe result: \(result)")
+            await connection.close()
+        } catch {
+            #expect(error as? ACPClientError == .ambiguousMidTurnInput)
+        }
+        await #expect(throws: ACPClientError.connectionClosed) {
+            try await promptTask.value
+        }
+        #expect(cancellation.didCancel)
+        #expect(await transport.observedTerminationCount() == 1)
+    }
+
     private func establishConnection(
         transport: FakeACPTransport,
         preset: AgentHarnessPreset
@@ -322,12 +359,14 @@ struct ACPClientConnectionSteeringTests {
     }
 
     private func establishClaudeSteeringConnection(
-        transport: FakeACPTransport
+        transport: FakeACPTransport,
+        diagnostics: any VoiceActivationDiagnosticRecording = VoiceActivationDiagnostics.shared
     ) async throws -> ACPClientConnection {
         let connectionTask = Task {
             try await ACPClientConnection.connect(
                 transport: transport,
-                configuration: try makeConfiguration(preset: .claude)).connection
+                configuration: try makeConfiguration(preset: .claude),
+                diagnostics: diagnostics).connection
         }
         _ = await transport.nextSentMessage()
         try await transport.feed(.response(
@@ -380,5 +419,44 @@ struct ACPClientConnectionSteeringTests {
         .response(
             id: .integer(id),
             result: .object(["stopReason": .string(stopReason)]))
+    }
+
+    private final class SteeringResponseCancellation: VoiceActivationDiagnosticRecording,
+        @unchecked Sendable
+    {
+        private let lock = NSLock()
+        private var cancellation: (@Sendable () -> Void)?
+        private var cancelled = false
+
+        var didCancel: Bool {
+            lock.withLock { cancelled }
+        }
+
+        func cancelWhenSteeringResponseArrives(
+            _ task: Task<AgentMidTurnInputResult, any Error>
+        ) {
+            lock.withLock {
+                cancellation = { task.cancel() }
+            }
+        }
+
+        func record(
+            category: VoiceActivationDiagnosticCategory,
+            event: String,
+            level: VoiceActivationDiagnosticLevel,
+            fields: [String: String]
+        ) {
+            guard event == "acp_client.response_received",
+                  fields["method"] == "_session/steering"
+            else { return }
+            let action = lock.withLock { () -> (@Sendable () -> Void)? in
+                cancelled = true
+                defer { cancellation = nil }
+                return cancellation
+            }
+            action?()
+        }
+
+        func flush() {}
     }
 }
