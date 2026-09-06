@@ -14,6 +14,7 @@ final class AgentRunPresentation {
     static let maximumOutputBytes = 512 * 1_024
     static let maximumDiagnosticBytes = 16 * 1_024
     static let maximumTools = 32
+    static let maximumPlanEntries = 64
     static let maximumTimelineTextBytes = 64 * 1_024
     static let maximumTimelineItems = 256
     static let maximumThinkingDetailsPerGroup = 128
@@ -38,13 +39,13 @@ final class AgentRunPresentation {
             output: outputBuffer.value,
             timeline: timeline,
             diagnostics: diagnosticBuffer.value,
-            plan: plan,
-            tools: tools,
+            plan: sourceQualifiedPlan,
+            tools: sourceQualifiedTools,
             permissions: permissions,
             notices: notices,
             elapsedSeconds: elapsedSeconds,
-            evictedToolCount: evictedToolCount,
-            ignoredToolUpdateCount: ignoredToolUpdateCount)
+            evictedToolCount: sourceQualifiedEvictedToolCount,
+            ignoredToolUpdateCount: sourceQualifiedIgnoredToolUpdateCount)
     }
 
     let startsElapsedTimer: Bool
@@ -67,6 +68,8 @@ final class AgentRunPresentation {
         marker: "… earlier diagnostics omitted …\n")
     var plan: [AgentPlanEntry] = []
     var tools: [AgentToolPresentation] = []
+    var historicalPlan: [AgentPlanEntry] = []
+    var historicalTools: [AgentToolPresentation] = []
     var timeline: [AgentRunTimelineItem] = []
     var timelineHasOmittedActivity = false
     var permissions: [AgentPermissionPresentation] = []
@@ -126,6 +129,8 @@ final class AgentRunPresentation {
         diagnosticBuffer.removeAll()
         plan = []
         tools = []
+        historicalPlan = []
+        historicalTools = []
         timeline = []
         _ = activeThinkingGroup()
         timelineHasOmittedActivity = false
@@ -222,6 +227,7 @@ final class AgentRunPresentation {
         phase = .running
         needsResponseSeparator = !outputBuffer.value.isEmpty
         plan = []
+        historicalPlan = []
         permissions = []
         voiceInput = ""
         _ = activeThinkingGroup()
@@ -393,6 +399,8 @@ final class AgentRunPresentation {
         diagnosticBuffer.removeAll(keepingCapacity: false)
         plan.removeAll(keepingCapacity: false)
         tools.removeAll(keepingCapacity: false)
+        historicalPlan.removeAll(keepingCapacity: false)
+        historicalTools.removeAll(keepingCapacity: false)
         timeline.removeAll(keepingCapacity: false)
         timelineHasOmittedActivity = false
         permissions.removeAll(keepingCapacity: false)

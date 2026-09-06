@@ -45,21 +45,22 @@ extension AgentRunPresentation {
                 self.restorationState = restorationState
                 apply(event)
             case .toolCall(let tool):
-                restorationState.hasVisibleHistory = true
-                restorationState.toolIDs.insert(tool.id)
+                restorationState.hasVisibleHistory = upsertRestoredTool(
+                    tool,
+                    restorationState: &restorationState)
+                    || restorationState.hasVisibleHistory
                 self.restorationState = restorationState
-                apply(event)
             case .toolCallUpdate(let tool):
-                restorationState.hasVisibleHistory = true
-                restorationState.toolIDs.insert(tool.id)
+                restorationState.hasVisibleHistory = updateRestoredTool(
+                    tool,
+                    restorationState: &restorationState)
+                    || restorationState.hasVisibleHistory
                 self.restorationState = restorationState
-                apply(event)
             case .plan(let entries):
                 restorationState.hasVisibleHistory = restorationState.hasVisibleHistory
                     || !entries.isEmpty
-                restorationState.receivedPlan = true
+                restorationState.plan = Array(entries.prefix(Self.maximumPlanEntries))
                 self.restorationState = restorationState
-                apply(event)
             case .connected, .metadata, .diagnostic, .unknown, .deliveryNotice:
                 self.restorationState = restorationState
                 apply(event)
@@ -96,9 +97,18 @@ extension AgentRunPresentation {
 
         switch activation {
         case .loaded:
-            interruptRestoredWork(
-                toolIDs: restorationState.toolIDs,
-                interruptsPlan: restorationState.receivedPlan)
+            var completedRestoration = restorationState
+            interruptRestoredWork(restorationState: &completedRestoration)
+            historicalTools = completedRestoration.tools
+            if let restoredPlan = completedRestoration.plan {
+                historicalPlan = restoredPlan
+            }
+            evictedToolCount = saturatingAdd(
+                evictedToolCount,
+                completedRestoration.evictedToolCount)
+            ignoredToolUpdateCount = saturatingAdd(
+                ignoredToolUpdateCount,
+                completedRestoration.ignoredToolUpdateCount)
             settleActiveThinkingGroup()
             if restorationState.hasVisibleHistory {
                 timeline.append(.historyBoundary)
@@ -107,15 +117,18 @@ extension AgentRunPresentation {
             }
             needsResponseSeparator = !outputBuffer.value.isEmpty
         case .resumed:
-            restore(restorationState.checkpoint)
+            self.restorationState = nil
+            discardRestorationPreservingCurrentSources(restorationState.checkpoint)
             appendNotice(
                 "Previous history is available to the agent but this provider cannot replay it.")
         case .freshBecauseRestorationUnsupported:
-            restore(restorationState.checkpoint)
+            self.restorationState = nil
+            discardRestorationPreservingCurrentSources(restorationState.checkpoint)
             appendNotice(
                 "This provider cannot restore previous history, so a fresh conversation was started.")
         case .new, .freshAfterUnavailableBookmark:
-            restore(restorationState.checkpoint)
+            self.restorationState = nil
+            discardRestorationPreservingCurrentSources(restorationState.checkpoint)
         }
 
         self.restorationState = nil
@@ -136,8 +149,8 @@ extension AgentRunPresentation {
             restorationState.token == token
         else { return }
         flushPendingPublication()
-        restore(restorationState.checkpoint)
         self.restorationState = nil
+        discardRestorationPreservingCurrentSources(restorationState.checkpoint)
         diagnosticsRecorder.record(
             category: .ui,
             event: "agent_presentation.history_aborted",
@@ -163,19 +176,20 @@ extension AgentRunPresentation {
         enforceTimelineBounds()
     }
 
-    private func interruptRestoredWork(toolIDs: Set<String>, interruptsPlan: Bool) {
-        for index in tools.indices where toolIDs.contains(tools[index].id) {
-            switch tools[index].status {
+    private func interruptRestoredWork(
+        restorationState: inout AgentRunPresentationRestorationState
+    ) {
+        for index in restorationState.tools.indices {
+            switch restorationState.tools[index].status {
             case .completed, .failed, .interrupted:
                 continue
             case .pending, .inProgress, nil:
-                tools[index].status = .interrupted
-                tools[index].isSettled = true
-                updateTimelineTool(tools[index])
+                restorationState.tools[index].status = .interrupted
+                restorationState.tools[index].isSettled = true
+                updateTimelineTool(restorationState.tools[index])
             }
         }
-        guard interruptsPlan else { return }
-        plan = plan.map { entry in
+        restorationState.plan = restorationState.plan?.map { entry in
             guard entry.status == .inProgress else { return entry }
             return AgentPlanEntry(
                 content: entry.content,
@@ -192,6 +206,8 @@ extension AgentRunPresentation {
             diagnosticBuffer: diagnosticBuffer,
             plan: plan,
             tools: tools,
+            historicalPlan: historicalPlan,
+            historicalTools: historicalTools,
             timeline: timeline,
             timelineHasOmittedActivity: timelineHasOmittedActivity,
             permissions: permissions,
@@ -207,6 +223,8 @@ extension AgentRunPresentation {
         diagnosticBuffer = checkpoint.diagnosticBuffer
         plan = checkpoint.plan
         tools = checkpoint.tools
+        historicalPlan = checkpoint.historicalPlan
+        historicalTools = checkpoint.historicalTools
         timeline = checkpoint.timeline
         timelineHasOmittedActivity = checkpoint.timelineHasOmittedActivity
         permissions = checkpoint.permissions
@@ -214,14 +232,156 @@ extension AgentRunPresentation {
         evictedToolCount = checkpoint.evictedToolCount
         ignoredToolUpdateCount = checkpoint.ignoredToolUpdateCount
     }
+
+    private func discardRestorationPreservingCurrentSources(
+        _ checkpoint: AgentRunPresentationRestorationCheckpoint
+    ) {
+        let currentPlan = plan
+        let currentTools = tools
+        let currentHistoricalPlan = historicalPlan
+        let currentHistoricalTools = historicalTools
+        let currentEvictedToolCount = evictedToolCount
+        let currentIgnoredToolUpdateCount = ignoredToolUpdateCount
+        restore(checkpoint)
+        plan = currentPlan
+        tools = currentTools
+        historicalPlan = currentHistoricalPlan
+        historicalTools = currentHistoricalTools
+        evictedToolCount = currentEvictedToolCount
+        ignoredToolUpdateCount = currentIgnoredToolUpdateCount
+
+        let retainedTools = historicalTools + tools
+        let retainedIDs = Set(retainedTools.lazy.map(\.presentationID))
+        for checkpointTool in checkpoint.historicalTools + checkpoint.tools
+        where !retainedIDs.contains(checkpointTool.presentationID) {
+            if removeTimelineTool(id: checkpointTool.presentationID) {
+                markTimelineOmitted()
+            }
+        }
+        let checkpointIDs = Set(
+            (checkpoint.historicalTools + checkpoint.tools).lazy.map(\.presentationID))
+        for tool in retainedTools {
+            if checkpointIDs.contains(tool.presentationID) {
+                updateTimelineTool(tool)
+            } else {
+                appendThinkingDetail(.tool(tool))
+            }
+        }
+        enforceTimelineBounds()
+    }
+
+    private func upsertRestoredTool(
+        _ tool: AgentToolCall,
+        restorationState: inout AgentRunPresentationRestorationState
+    ) -> Bool {
+        let presentation = AgentToolPresentation(
+            id: tool.id,
+            source: .restored(restorationState.token),
+            title: tool.title,
+            kind: tool.kind,
+            status: tool.status)
+        if let index = restorationState.tools.firstIndex(where: { $0.id == tool.id }) {
+            restorationState.tools[index] = presentation
+            updateTimelineTool(presentation)
+            return true
+        }
+
+        let capacity = max(
+            0,
+            Self.maximumTools - tools.count - historicalTools.count)
+        guard capacity > 0 else { return false }
+        while restorationState.tools.count >= capacity {
+            let removed = restorationState.tools.removeFirst()
+            if removeTimelineTool(id: removed.presentationID) {
+                markTimelineOmitted()
+            }
+            restorationState.evictedToolCount = saturatingIncrement(
+                restorationState.evictedToolCount)
+        }
+        restorationState.tools.append(presentation)
+        appendThinkingDetail(.tool(presentation))
+        enforceTimelineBounds()
+        return true
+    }
+
+    private func updateRestoredTool(
+        _ update: AgentToolCallUpdate,
+        restorationState: inout AgentRunPresentationRestorationState
+    ) -> Bool {
+        guard let index = restorationState.tools.firstIndex(where: { $0.id == update.id }) else {
+            restorationState.ignoredToolUpdateCount = saturatingIncrement(
+                restorationState.ignoredToolUpdateCount)
+            return false
+        }
+        if let title = update.title {
+            restorationState.tools[index].title = title
+        }
+        if let kind = update.kind {
+            restorationState.tools[index].kind = kind
+        }
+        if let status = update.status {
+            restorationState.tools[index].status = status
+        }
+        updateTimelineTool(restorationState.tools[index])
+        return true
+    }
+
+    var sourceQualifiedPlan: [AgentPlanEntry] {
+        let livePlan = Array(plan.suffix(Self.maximumPlanEntries))
+        let restorationPlan = restorationState?.plan ?? []
+        let history = historicalPlan + restorationPlan
+        let availableHistoryCount = max(0, Self.maximumPlanEntries - livePlan.count)
+        return Array(history.suffix(availableHistoryCount)) + livePlan
+    }
+
+    var sourceQualifiedTools: [AgentToolPresentation] {
+        let history = historicalTools + (restorationState?.tools ?? [])
+        let availableHistoryCount = max(0, Self.maximumTools - tools.count)
+        return Array(history.suffix(availableHistoryCount)) + tools
+    }
+
+    var sourceQualifiedEvictedToolCount: UInt64 {
+        saturatingAdd(evictedToolCount, restorationState?.evictedToolCount ?? 0)
+    }
+
+    var sourceQualifiedIgnoredToolUpdateCount: UInt64 {
+        saturatingAdd(ignoredToolUpdateCount, restorationState?.ignoredToolUpdateCount ?? 0)
+    }
+
+    func enforceSourceQualifiedToolBounds() {
+        let historyCapacity = max(0, Self.maximumTools - tools.count)
+        var restorationState = restorationState
+        while historicalTools.count + (restorationState?.tools.count ?? 0) > historyCapacity {
+            let removed: AgentToolPresentation
+            if !historicalTools.isEmpty {
+                removed = historicalTools.removeFirst()
+                evictedToolCount = saturatingIncrement(evictedToolCount)
+            } else if var currentRestoration = restorationState,
+                !currentRestoration.tools.isEmpty
+            {
+                removed = currentRestoration.tools.removeFirst()
+                currentRestoration.evictedToolCount = saturatingIncrement(
+                    currentRestoration.evictedToolCount)
+                restorationState = currentRestoration
+            } else {
+                break
+            }
+            if removeTimelineTool(id: removed.presentationID) {
+                markTimelineOmitted()
+            }
+        }
+        self.restorationState = restorationState
+    }
 }
 
 struct AgentRunPresentationRestorationState {
     let token: AgentRestorationToken
     let checkpoint: AgentRunPresentationRestorationCheckpoint
-    var toolIDs: Set<String> = []
+    var plan: [AgentPlanEntry]? = nil
+    var tools: [AgentToolPresentation] = []
     var hasVisibleHistory = false
-    var receivedPlan = false
+    var evictedToolCount: UInt64 = 0
+    var ignoredToolUpdateCount: UInt64 = 0
 }
 
 struct AgentRunPresentationRestorationCheckpoint {
@@ -231,6 +391,8 @@ struct AgentRunPresentationRestorationCheckpoint {
     let diagnosticBuffer: AgentRunBoundedTextBuffer
     let plan: [AgentPlanEntry]
     let tools: [AgentToolPresentation]
+    let historicalPlan: [AgentPlanEntry]
+    let historicalTools: [AgentToolPresentation]
     let timeline: [AgentRunTimelineItem]
     let timelineHasOmittedActivity: Bool
     let permissions: [AgentPermissionPresentation]

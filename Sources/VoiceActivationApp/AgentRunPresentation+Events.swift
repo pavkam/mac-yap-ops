@@ -70,25 +70,28 @@ extension AgentRunPresentation {
     }
 
     func upsertTool(_ tool: AgentToolPresentation) {
-        if let index = tools.firstIndex(where: { $0.id == tool.id }) {
+        if let index = tools.firstIndex(where: { $0.presentationID == tool.presentationID }) {
             tools[index] = tool
             updateTimelineTool(tool)
             return
         }
         if tools.count == Self.maximumTools {
             let removedTool = tools.remove(at: tools.startIndex)
-            if removeTimelineTool(id: removedTool.id) {
+            if removeTimelineTool(id: removedTool.presentationID) {
                 markTimelineOmitted()
             }
             evictedToolCount = saturatingIncrement(evictedToolCount)
         }
         tools.append(tool)
         appendThinkingDetail(.tool(tool))
+        enforceSourceQualifiedToolBounds()
         enforceTimelineBounds()
     }
 
     func updateTool(_ update: AgentToolCallUpdate) {
-        guard let index = tools.firstIndex(where: { $0.id == update.id }) else {
+        guard let index = tools.firstIndex(where: {
+            $0.source == .live && $0.id == update.id
+        }) else {
             ignoredToolUpdateCount = saturatingIncrement(ignoredToolUpdateCount)
             return
         }
@@ -197,7 +200,7 @@ extension AgentRunPresentation {
             guard case .thinking(var thinking) = timeline[timelineIndex],
                 let detailIndex = thinking.details.firstIndex(where: { detail in
                     guard case .tool(let candidate) = detail else { return false }
-                    return candidate.id == tool.id
+                    return candidate.presentationID == tool.presentationID
                 })
             else { continue }
             thinking.details[detailIndex] = .tool(tool)
@@ -207,12 +210,12 @@ extension AgentRunPresentation {
     }
 
     @discardableResult
-    func removeTimelineTool(id: String) -> Bool {
+    func removeTimelineTool(id: AgentToolPresentationID) -> Bool {
         for timelineIndex in timeline.indices {
             guard case .thinking(var thinking) = timeline[timelineIndex],
                 let detailIndex = thinking.details.firstIndex(where: { detail in
                     guard case .tool(let tool) = detail else { return false }
-                    return tool.id == id
+                    return tool.presentationID == id
                 })
             else { continue }
             thinking.details.remove(at: detailIndex)

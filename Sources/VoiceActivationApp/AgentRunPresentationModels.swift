@@ -51,13 +51,46 @@ struct AgentPermissionPresentation: Equatable, Identifiable, Sendable {
     var isResolving: Bool
 }
 
+/// A presentation-local tool identity that keeps replay and live provider IDs separate.
+struct AgentToolPresentationID: Equatable, Hashable, Sendable {
+    let source: AgentToolPresentationSource
+    let providerID: String
+}
+
+/// The source that owns one presentation tool row.
+enum AgentToolPresentationSource: Equatable, Hashable, Sendable {
+    case live
+    case restored(AgentRestorationToken)
+}
+
 /// The merged presentation state of a tool call and its partial updates.
-struct AgentToolPresentation: Equatable, Identifiable, Sendable {
+struct AgentToolPresentation: Equatable, Sendable {
     let id: String
+    let source: AgentToolPresentationSource
     var title: String
     var kind: AgentToolKind?
     var status: AgentToolCallStatus?
     var isSettled = false
+
+    init(
+        id: String,
+        source: AgentToolPresentationSource = .live,
+        title: String,
+        kind: AgentToolKind?,
+        status: AgentToolCallStatus?,
+        isSettled: Bool = false
+    ) {
+        self.id = id
+        self.source = source
+        self.title = title
+        self.kind = kind
+        self.status = status
+        self.isSettled = isSettled
+    }
+
+    var presentationID: AgentToolPresentationID {
+        AgentToolPresentationID(source: source, providerID: id)
+    }
 
     var isWorking: Bool {
         !isSettled && (status == nil || status == .pending || status == .inProgress)
@@ -71,7 +104,7 @@ struct AgentToolPresentation: Equatable, Identifiable, Sendable {
 /// A stable identity for heterogeneous reasoning and tool details.
 enum AgentThinkingDetailID: Hashable, Sendable {
     case thought(UUID)
-    case tool(String)
+    case tool(AgentToolPresentationID)
 }
 
 /// One expandable detail retained inside a grouped thinking interval.
@@ -82,7 +115,7 @@ enum AgentThinkingDetail: Equatable, Identifiable, Sendable {
     var id: AgentThinkingDetailID {
         switch self {
         case .thought(let message): .thought(message.id)
-        case .tool(let tool): .tool(tool.id)
+        case .tool(let tool): .tool(tool.presentationID)
         }
     }
 }

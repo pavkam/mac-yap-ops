@@ -148,6 +148,7 @@ extension AgentRunTimelineItem {
             return .userMessage(
                 AgentUserMessagePresentation(
                     id: message.id,
+                    messageID: message.messageID,
                     text: transform(message.text, byteCount)))
         case .thinking(var thinking):
             var remainingBytes = byteCount
