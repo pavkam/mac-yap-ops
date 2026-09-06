@@ -112,6 +112,18 @@ actor RecordingAgentContinuityStore: AgentContinuityStoring {
     }
 }
 
+actor RunnerContinuityAcknowledgementRecorder {
+    private var acknowledgements: [Set<AgentInterruptedWorkKey>] = []
+
+    func record(_ keys: Set<AgentInterruptedWorkKey>) {
+        acknowledgements.append(keys)
+    }
+
+    func snapshot() -> [Set<AgentInterruptedWorkKey>] {
+        acknowledgements
+    }
+}
+
 extension ACPAgentRunnerContinuityTests {
     func matchingBookmark(
         profileID: UUID,

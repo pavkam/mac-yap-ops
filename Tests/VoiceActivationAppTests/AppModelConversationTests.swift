@@ -144,6 +144,7 @@ extension AppModelTests {
     {
         let credentials = AgentSpeechCredentialStoreSpy(apiKey: "saved-key")
         let fixture = try Fixture(agentSpeechCredentialStore: credentials)
+        await fixture.startForExternalActions()
         fixture.model.readsAgentRepliesAloud = false
         fixture.model.playsAgentWorkingSound = false
         fixture.model.agentSpeechProvider = .elevenLabs
@@ -181,6 +182,7 @@ extension AppModelTests {
     {
         let preview = AppModelTextToSpeechVoicePreviewSpy()
         let fixture = try Fixture(textToSpeechVoicePreview: preview)
+        await fixture.startForExternalActions()
         fixture.model.elevenLabsAPIKey = "draft-key"
         let selection = TextToSpeechVoiceSelection(
             backendID: .elevenLabs,
@@ -206,6 +208,7 @@ extension AppModelTests {
         let preview = AppModelTextToSpeechVoicePreviewSpy()
         preview.failure = ElevenLabsSpeechClientError.httpStatus(402)
         let fixture = try Fixture(textToSpeechVoicePreview: preview)
+        await fixture.startForExternalActions()
         fixture.model.elevenLabsAPIKey = "draft-key"
         let context = TextToSpeechVoicePreviewContext.profile(UUID())
         let otherContext = TextToSpeechVoicePreviewContext.profile(UUID())
@@ -268,6 +271,7 @@ extension AppModelTests {
     {
         let credentials = AgentSpeechCredentialStoreSpy(apiKey: "saved-key")
         let fixture = try Fixture(agentSpeechCredentialStore: credentials)
+        await fixture.startForExternalActions()
         fixture.model.agentSpeechProvider = .elevenLabs
         fixture.model.elevenLabsAPIKey = "   "
 

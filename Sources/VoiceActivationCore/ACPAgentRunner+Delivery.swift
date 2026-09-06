@@ -64,7 +64,7 @@ extension ACPAgentRunner {
         profileID: UUID,
         recordID: UUID,
         acknowledgementKeys: Set<AgentInterruptedWorkKey>
-    ) async {
+    ) async -> Set<AgentInterruptedWorkKey> {
         let profileKeys = Set(acknowledgementKeys.filter { $0.profileID == profileID })
         guard let turn = activeTurn,
               turn.token == turnToken,
@@ -72,11 +72,13 @@ extension ACPAgentRunner {
               turn.recordID == recordID,
               records[profileID]?.id == recordID,
               !profileKeys.isEmpty
-        else { return }
+        else { return [] }
         do {
             try await continuityStore.acknowledgeInterruptedWork(profileKeys)
+            return profileKeys
         } catch {
             recordContinuityStoreFailure(operation: "acknowledge")
+            return []
         }
     }
 

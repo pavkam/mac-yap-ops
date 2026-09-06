@@ -74,31 +74,34 @@ extension AgentRunPresentation {
     func appendNotice(_ message: String) {
         guard notices.last != message else { return }
         notices.append(message)
-        if notices.count > 16 {
+        if notices.count > Self.maximumNotices {
             notices.remove(at: notices.startIndex)
         }
     }
 
     func upsertTool(_ tool: AgentToolPresentation) {
-        if let index = tools.firstIndex(where: { $0.id == tool.id }) {
+        if let index = tools.firstIndex(where: { $0.presentationID == tool.presentationID }) {
             tools[index] = tool
             updateTimelineTool(tool)
             return
         }
         if tools.count == Self.maximumTools {
             let removedTool = tools.remove(at: tools.startIndex)
-            if removeTimelineTool(id: removedTool.id) {
-                markTimelineOmitted()
+            if removeTimelineTool(id: removedTool.presentationID) {
+                markLiveTimelineOmitted()
             }
             evictedToolCount = saturatingIncrement(evictedToolCount)
         }
         tools.append(tool)
         appendThinkingDetail(.tool(tool))
+        enforceSourceQualifiedToolBounds()
         enforceTimelineBounds()
     }
 
     func updateTool(_ update: AgentToolCallUpdate) {
-        guard let index = tools.firstIndex(where: { $0.id == update.id }) else {
+        guard let index = tools.firstIndex(where: {
+            $0.source == .live && $0.id == update.id
+        }) else {
             ignoredToolUpdateCount = saturatingIncrement(ignoredToolUpdateCount)
             return
         }
@@ -282,7 +285,7 @@ extension AgentRunPresentation {
             guard case .thinking(var thinking) = timeline[timelineIndex],
                 let detailIndex = thinking.details.firstIndex(where: { detail in
                     guard case .tool(let candidate) = detail else { return false }
-                    return candidate.id == tool.id
+                    return candidate.presentationID == tool.presentationID
                 })
             else { continue }
             thinking.details[detailIndex] = .tool(tool)
@@ -292,12 +295,12 @@ extension AgentRunPresentation {
     }
 
     @discardableResult
-    func removeTimelineTool(id: String) -> Bool {
+    func removeTimelineTool(id: AgentToolPresentationID) -> Bool {
         for timelineIndex in timeline.indices {
             guard case .thinking(var thinking) = timeline[timelineIndex],
                 let detailIndex = thinking.details.firstIndex(where: { detail in
                     guard case .tool(let tool) = detail else { return false }
-                    return tool.id == id
+                    return tool.presentationID == id
                 })
             else { continue }
             thinking.details.remove(at: detailIndex)
@@ -309,54 +312,50 @@ extension AgentRunPresentation {
     }
 
     func enforceTimelineBounds() {
-        var retainedTextBytes = timelineTextByteCount
-        while retainedTextBytes > Self.maximumTimelineTextBytes,
-            let index = timeline.firstIndex(where: \AgentRunTimelineItem.containsText)
-        {
-            let originalByteCount = timeline[index].text.utf8.count
-            let excessByteCount = retainedTextBytes - Self.maximumTimelineTextBytes
-            if originalByteCount <= excessByteCount {
-                timeline.remove(at: index)
-                retainedTextBytes -= originalByteCount
-            } else {
-                timeline[index] = timeline[index].droppingTextPrefix(
-                    atLeast: excessByteCount,
-                    using: droppingUTF8Prefix)
-                retainedTextBytes -= originalByteCount - timeline[index].text.utf8.count
-            }
-            markTimelineOmitted()
+        let historicalIDs: Set<AgentRunTimelineItemID>
+        if let boundaryIndex = timeline.lastIndex(of: .historyBoundary) {
+            historicalIDs = Set(timeline[..<boundaryIndex].map(\.id))
+        } else {
+            historicalIDs = []
         }
-
-        if timelineHasOmittedActivity,
-            !timeline.contains(where: { item in
-                if case .omitted = item { return true }
-                return false
+        var historicalHasOmissions = historicalTimelineHasOmittedActivity
+        var liveHasOmissions = liveTimelineHasOmittedActivity
+        var hasOmissions = historicalHasOmissions || liveHasOmissions
+        enforceAgentRunTimelineBounds(
+            &timeline,
+            hasOmittedActivity: &hasOmissions,
+            maximumTextBytes: Self.maximumTimelineTextBytes,
+            maximumItems: Self.maximumTimelineItems,
+            onOmission: { item in
+                switch item {
+                case .omitted, .historyBoundary:
+                    break
+                case .message, .userMessage, .thinking:
+                    if historicalIDs.contains(item.id) {
+                        historicalHasOmissions = true
+                    } else {
+                        liveHasOmissions = true
+                    }
+                }
             })
-        {
-            timeline.insert(.omitted, at: timeline.startIndex)
-        }
-
-        while timeline.count > Self.maximumTimelineItems,
-            let index = timeline.firstIndex(where: { item in
-                if case .omitted = item { return false }
-                return true
-            })
-        {
-            timeline.remove(at: index)
-            markTimelineOmitted()
-        }
+        historicalTimelineHasOmittedActivity = historicalHasOmissions
+        liveTimelineHasOmittedActivity = liveHasOmissions
+        normalizeAgentRunTimelineOmissionMarker(
+            &timeline,
+            isRequired: historicalHasOmissions || liveHasOmissions)
     }
 
-    var timelineTextByteCount: Int {
-        timeline.reduce(into: 0) { count, item in
-            guard item.containsText else { return }
-            let byteCount = item.text.utf8.count
-            count = count > Int.max - byteCount ? Int.max : count + byteCount
-        }
+    func markLiveTimelineOmitted() {
+        liveTimelineHasOmittedActivity = true
+        ensureTimelineOmissionMarker()
     }
 
-    func markTimelineOmitted() {
-        timelineHasOmittedActivity = true
+    func markHistoricalTimelineOmitted() {
+        historicalTimelineHasOmittedActivity = true
+        ensureTimelineOmissionMarker()
+    }
+
+    private func ensureTimelineOmissionMarker() {
         guard
             !timeline.contains(where: { item in
                 if case .omitted = item { return true }
@@ -364,15 +363,6 @@ extension AgentRunPresentation {
             })
         else { return }
         timeline.insert(.omitted, at: timeline.startIndex)
-    }
-
-    func droppingUTF8Prefix(_ text: String, atLeast byteCount: Int) -> String {
-        let data = Data(text.utf8)
-        var retainedStart = min(max(0, byteCount), data.count)
-        while retainedStart < data.count, data[retainedStart] & 0xC0 == 0x80 {
-            retainedStart += 1
-        }
-        return String(decoding: data[retainedStart...], as: UTF8.self)
     }
 
 }

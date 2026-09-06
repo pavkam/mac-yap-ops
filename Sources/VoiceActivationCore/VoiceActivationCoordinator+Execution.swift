@@ -245,6 +245,7 @@ extension VoiceActivationCoordinator {
         let promptWithoutContext = input.contextCapture == nil
             ? AgentPrompt(request: input.text, context: nil)
             : nil
+        let runContinuity = agentRunContinuity(profile.id)
         let scheduledAtUptime = DispatchTime.now().uptimeNanoseconds
         diagnostics.record(
             category: .agent,
@@ -309,15 +310,12 @@ extension VoiceActivationCoordinator {
                     configuration: configuration,
                     prompt: prompt,
                     restorationNeed: .visibleHistory,
-                    runContinuity: AgentRunContinuityRequest(),
+                    runContinuity: runContinuity,
                     onEvent: { [weak self] streamEvent in
-                        guard case .live(let event) = streamEvent else {
-                            return
-                        }
                         let receivedAtUptime = DispatchTime.now().uptimeNanoseconds
                         await mainRunLoopScheduler.perform { [weak self] in
-                            self?.publishAgentEvent(
-                                event,
+                            self?.publishAgentStreamEvent(
+                                streamEvent,
                                 runID: runID,
                                 generation: generation,
                                 receivedAtUptime: receivedAtUptime)

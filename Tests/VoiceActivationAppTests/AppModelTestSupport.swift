@@ -37,6 +37,7 @@ extension AppModelTests {
         init(
             profiles: [WakeProfile]? = nil,
             agentRunner: any AgentHarnessRunning = AppModelAgentRunnerSpy(),
+            continuityStore: any AgentContinuityStoring = InMemoryAgentContinuityStore(),
             agentRunPanel: AppModelAgentPanelSpy = AppModelAgentPanelSpy(),
             agentConversationAudioPlayer: any AgentConversationAudioPlaying =
                 SilentAgentConversationAudioPlayer(),
@@ -49,6 +50,7 @@ extension AppModelTests {
             textToSpeechBackendRegistry: TextToSpeechBackendRegistry? = nil,
             macContextAccess: MacContextAccessSpy = MacContextAccessSpy(),
             macContextCapturer: MacContextCapturerSpy = MacContextCapturerSpy(),
+            permissionRequest: @escaping @MainActor () async -> Bool = { true },
             isExecutableFile: @escaping @MainActor (String) -> Bool = { path in
                 FileManager.default.isExecutableFile(atPath: path)
             },
@@ -56,7 +58,9 @@ extension AppModelTests {
                 var isDirectory: ObjCBool = false
                 return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
                     && isDirectory.boolValue
-            }
+            },
+            diagnostics: any VoiceActivationDiagnosticRecording =
+                VoiceActivationDiagnostics.shared
         ) throws {
             let suite = "VoiceActivationAppModelTests.\(UUID().uuidString)"
             let defaults = try #require(UserDefaults(suiteName: suite))
@@ -75,7 +79,8 @@ extension AppModelTests {
                 shortcut: shortcut,
                 speechSession: speech,
                 agentRunner: agentRunner,
-                permissionRequest: { true },
+                continuityStore: continuityStore,
+                permissionRequest: permissionRequest,
                 soundPlayer: SilentCaptureSoundPlayer(),
                 agentConversationAudioPlayer: agentConversationAudioPlayer,
                 agentSpeechCredentialStore: agentSpeechCredentialStore,
@@ -86,7 +91,14 @@ extension AppModelTests {
                 macContextCapturer: macContextCapturer,
                 isExecutableFile: isExecutableFile,
                 isDirectory: isDirectory,
-                startsAutomatically: false)
+                startsAutomatically: false,
+                diagnostics: diagnostics)
+        }
+
+        func startForExternalActions() async {
+            #expect(await model.start())
+            shortcut.resetObservations()
+            macContextAccess.resetObservations()
         }
     }
 
@@ -113,6 +125,108 @@ extension AppModelTests {
     }
 }
 
+actor AppModelContinuityStoreSpy: AgentContinuityStoring {
+    enum Call: Equatable, Sendable {
+        case bookmark(UUID)
+        case save(UUID)
+        case remove(Set<UUID>)
+        case mark(AgentInterruptedWorkKey)
+        case clear(AgentInterruptedWorkKey)
+        case reconcile
+        case acknowledge(Set<AgentInterruptedWorkKey>)
+    }
+
+    enum Failure: Error {
+        case reconciliation
+        case removal
+    }
+
+    private var envelope: AgentContinuityEnvelope
+    private var calls: [Call] = []
+    private var reconcileContinuation: CheckedContinuation<Void, Never>?
+    private var reconcileWaiters: [CheckedContinuation<Void, Never>] = []
+    private var delaysReconciliation = false
+    private var failsReconciliation = false
+    private var failsRemoval = false
+    private var reconciledOverride: [AgentInterruptedWorkMarker]?
+
+    init(
+        bookmarks: [AgentSessionBookmark] = [],
+        markers: [AgentInterruptedWorkMarker] = [],
+        reconciledOverride: [AgentInterruptedWorkMarker]? = nil
+    ) {
+        envelope = AgentContinuityEnvelope(
+            schemaVersion: AgentContinuityStorePolicy.schemaVersion,
+            bookmarks: bookmarks,
+            interruptedWork: markers)
+        self.reconciledOverride = reconciledOverride
+    }
+
+    func bookmark(for profileID: UUID) async throws -> AgentSessionBookmark? {
+        calls.append(.bookmark(profileID))
+        return try AgentContinuityStorePolicy.bookmark(for: profileID, in: &envelope)
+    }
+
+    func save(bookmark: AgentSessionBookmark) async throws {
+        calls.append(.save(bookmark.profileID))
+        try AgentContinuityStorePolicy.save(bookmark, in: &envelope)
+    }
+
+    func remove(profileIDs: Set<UUID>) async throws {
+        calls.append(.remove(profileIDs))
+        if failsRemoval { throw Failure.removal }
+        try AgentContinuityStorePolicy.remove(profileIDs: profileIDs, in: &envelope)
+    }
+
+    func markWorkActive(_ marker: AgentInterruptedWorkMarker) async throws {
+        calls.append(.mark(marker.key))
+        try AgentContinuityStorePolicy.markWorkActive(marker, in: &envelope)
+    }
+
+    func clearWork(_ key: AgentInterruptedWorkKey) async throws {
+        calls.append(.clear(key))
+        try AgentContinuityStorePolicy.clearWork(key, in: &envelope)
+    }
+
+    func reconcileInterruptedWork() async throws -> [AgentInterruptedWorkMarker] {
+        calls.append(.reconcile)
+        if delaysReconciliation {
+            await withCheckedContinuation { continuation in
+                reconcileContinuation = continuation
+                let waiters = reconcileWaiters
+                reconcileWaiters.removeAll()
+                waiters.forEach { $0.resume() }
+            }
+        }
+        if failsReconciliation { throw Failure.reconciliation }
+        if let reconciledOverride { return reconciledOverride }
+        return try AgentContinuityStorePolicy.reconcileInterruptedWork(in: &envelope)
+    }
+
+    func acknowledgeInterruptedWork(_ keys: Set<AgentInterruptedWorkKey>) async throws {
+        calls.append(.acknowledge(keys))
+        try AgentContinuityStorePolicy.acknowledgeInterruptedWork(keys, in: &envelope)
+    }
+
+    func delayReconciliation() { delaysReconciliation = true }
+    func failReconciliation() { failsReconciliation = true }
+    func failRemoval() { failsRemoval = true }
+
+    func waitUntilReconciling() async {
+        guard reconcileContinuation == nil else { return }
+        await withCheckedContinuation { reconcileWaiters.append($0) }
+    }
+
+    func releaseReconciliation() {
+        delaysReconciliation = false
+        reconcileContinuation?.resume()
+        reconcileContinuation = nil
+    }
+
+    func recordedCalls() -> [Call] { calls }
+    func snapshot() -> AgentContinuityEnvelope { envelope }
+}
+
 @MainActor
 final class MacContextAccessSpy: MacContextAccessControlling {
     var status: MacContextAccessStatus
@@ -135,6 +249,11 @@ final class MacContextAccessSpy: MacContextAccessControlling {
             status = statusAfterPrompt
         }
     }
+
+    func resetObservations() {
+        statusChecks = 0
+        promptingChecks = 0
+    }
 }
 
 @MainActor
@@ -143,6 +262,11 @@ final class MacContextCapturerSpy: MacContextCapturing {
     var snapshot: MacContextSnapshot?
     var currentTargetCount = 0
     var captureCount = 0
+    private(set) var captureCancellationCount = 0
+    private var delaysCapture = false
+    private var captureContinuation: CheckedContinuation<MacContextSnapshot, Never>?
+    private var delayedResult: MacContextSnapshot?
+    private var captureWaiters: [CheckedContinuation<Void, Never>] = []
 
     init(target: MacContextTarget? = nil, snapshot: MacContextSnapshot? = nil) {
         self.target = target
@@ -156,13 +280,45 @@ final class MacContextCapturerSpy: MacContextCapturing {
 
     func capture(_ target: MacContextTarget) async -> MacContextSnapshot {
         captureCount += 1
-        return snapshot ?? MacContextSnapshot.normalized(
+        let result = snapshot ?? MacContextSnapshot.normalized(
             state: .targetUnavailable,
             target: target,
             windowTitle: nil,
             documentURL: nil,
             selectedText: nil,
             resources: [])
+        let waiters = captureWaiters
+        captureWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+        guard delaysCapture else { return result }
+        delayedResult = result
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { captureContinuation = $0 }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.captureCancellationCount += 1
+                self.releaseCapture(returning: result)
+            }
+        }
+    }
+
+    func delayCapture() { delaysCapture = true }
+
+    func waitUntilCapturing() async {
+        guard captureCount == 0 else { return }
+        await withCheckedContinuation { captureWaiters.append($0) }
+    }
+
+    func releaseCapture(returning result: MacContextSnapshot? = nil) {
+        delaysCapture = false
+        guard let continuation = captureContinuation else { return }
+        captureContinuation = nil
+        guard let resumedResult = result ?? delayedResult else {
+            preconditionFailure("A delayed capture must retain its result")
+        }
+        delayedResult = nil
+        continuation.resume(returning: resumedResult)
     }
 }
 

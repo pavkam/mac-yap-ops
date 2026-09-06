@@ -42,8 +42,9 @@ extension ACPAgentRunner {
             return ACPAgentConnectionAcquisition(record: cached, activation: nil)
         }
 
-        let configurationChanged = records[profileID].map {
-            $0.configuration != configuration
+        let providerFingerprintChanged = records[profileID].map {
+            AgentProviderFingerprint.make(configuration: $0.configuration)
+                != providerFingerprint
         } ?? false
         if let replaced = records.removeValue(forKey: profileID) {
             diagnostics.record(
@@ -56,13 +57,13 @@ extension ACPAgentRunner {
             await dispose(replaced)
             try ensureActiveTurn(token: turnToken)
         }
-        if configurationChanged {
+        if providerFingerprintChanged {
             await removeContinuityRecords(profileIDs: [profileID])
             try ensureActiveTurn(token: turnToken)
         }
 
         var restoration: AgentSessionRestorationRequest?
-        if !skipBookmark && !configurationChanged {
+        if !skipBookmark && !providerFingerprintChanged {
             do {
                 if let bookmark = try await continuityStore.bookmark(for: profileID) {
                     try ensureActiveTurn(token: turnToken)

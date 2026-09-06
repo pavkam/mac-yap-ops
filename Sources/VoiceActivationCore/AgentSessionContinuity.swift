@@ -315,20 +315,45 @@ public struct AgentRunContinuityRequest: Equatable, Sendable {
     public let previousTurnInterrupted: Bool
     /// Exact ordinary-turn keys eligible for acknowledgement after frame publication.
     public let ordinaryInterruptedWorkKeys: Set<AgentInterruptedWorkKey>
+    private let onPublishedAcknowledgement:
+        (@Sendable (Set<AgentInterruptedWorkKey>) async -> Void)?
 
     /// Creates a request by accepting only reconciled ordinary-turn markers.
     ///
     /// - Parameters:
     ///   - previousTurnInterrupted: Whether interruption metadata should be emitted.
     ///   - interruptedWork: Reconciled markers owned by the selected profile.
+    ///   - onPublishedAcknowledgement: Consumes exact ordinary markers only after the
+    ///     runner has published the prompt frame and persisted their acknowledgement.
     public init(
         previousTurnInterrupted: Bool = false,
-        interruptedWork: [AgentInterruptedWorkMarker] = []
+        interruptedWork: [AgentInterruptedWorkMarker] = [],
+        onPublishedAcknowledgement:
+            (@Sendable (Set<AgentInterruptedWorkKey>) async -> Void)? = nil
     ) {
         self.previousTurnInterrupted = previousTurnInterrupted
         ordinaryInterruptedWorkKeys = Set(interruptedWork.lazy.filter {
             $0.state == .interruptedByProcessExit && $0.providerTaskID == nil
         }.map(\.key))
+        self.onPublishedAcknowledgement = onPublishedAcknowledgement
+    }
+
+    /// Confirms the exact eligible markers durably acknowledged after prompt publication.
+    ///
+    /// Keys not carried by this request are ignored, keeping callbacks profile- and
+    /// occurrence-qualified even when a caller is stale.
+    public func confirmPublishedAcknowledgement(
+        _ keys: Set<AgentInterruptedWorkKey>
+    ) async {
+        let eligible = keys.intersection(ordinaryInterruptedWorkKeys)
+        guard !eligible.isEmpty else { return }
+        await onPublishedAcknowledgement?(eligible)
+    }
+
+    /// Compares only interruption metadata; acknowledgement callback identity is operational.
+    public static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.previousTurnInterrupted == rhs.previousTurnInterrupted
+            && lhs.ordinaryInterruptedWorkKeys == rhs.ordinaryInterruptedWorkKeys
     }
 }
 

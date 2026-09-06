@@ -40,6 +40,7 @@ extension AppModelTests {
             AppModelTextToSpeechBackendStub(id: .system, voices: voices)
         ])
         let fixture = try Fixture(textToSpeechBackendRegistry: registry)
+        await fixture.startForExternalActions()
 
         await fixture.model.loadTextToSpeechVoices(for: .system)
 
@@ -51,6 +52,7 @@ extension AppModelTests {
         async throws
     {
         let fixture = try Fixture()
+        await fixture.startForExternalActions()
         let defaultVoice = TextToSpeechVoiceSelection(
             backendID: .system,
             voiceID: "com.apple.voice.compact.en-GB.Daniel")
@@ -69,6 +71,7 @@ extension AppModelTests {
     func saveSettings_WhenProfileUsesElevenLabs_ValidatesTheGlobalCredential() async throws {
         let credentials = AgentSpeechCredentialStoreSpy(apiKey: "saved-key")
         let fixture = try Fixture(agentSpeechCredentialStore: credentials)
+        await fixture.startForExternalActions()
         let selection = TextToSpeechVoiceSelection(
             backendID: .elevenLabs,
             voiceID: "profile-voice")

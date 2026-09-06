@@ -261,6 +261,9 @@ final class AgentConversationAudioPresenter {
         case .event(let runID, let event):
             guard self.runID == runID else { return }
             handle(event)
+        case .historyRestorationStarted, .historyEvent,
+            .historyRestorationCompleted, .historyRestorationAborted:
+            break
         case .turnCompleted(let runID, let result):
             guard self.runID == runID else { return }
             if result.stopReason == .cancelled {
@@ -418,7 +421,7 @@ final class AgentConversationAudioPresenter {
             switch status {
             case .completed:
                 self = .completed
-            case .failed:
+            case .failed, .interrupted:
                 self = .failed
             case .pending, .inProgress, nil:
                 self = .active
@@ -481,6 +484,21 @@ extension AgentRunLifecycleEvent {
                 "kind": "event", "run_id": runID.uuidString,
                 "event_kind": event.audioDiagnosticName,
             ]
+        case .historyRestorationStarted(let runID, _, _):
+            ["kind": "history_restoration_started", "run_id": runID.uuidString]
+        case .historyEvent(let runID, _, let event):
+            [
+                "kind": "history_event", "run_id": runID.uuidString,
+                "event_kind": event.audioDiagnosticName,
+            ]
+        case .historyRestorationCompleted(let runID, _, let activation):
+            [
+                "kind": "history_restoration_completed",
+                "run_id": runID.uuidString,
+                "activation": activation.audioDiagnosticName,
+            ]
+        case .historyRestorationAborted(let runID, _):
+            ["kind": "history_restoration_aborted", "run_id": runID.uuidString]
         case .turnCompleted(let runID, let result):
             [
                 "kind": "turn_completed", "run_id": runID.uuidString,
@@ -515,6 +533,18 @@ extension AgentRunEvent {
         case .diagnostic: "diagnostic"
         case .deliveryNotice: "delivery_notice"
         case .unknown: "unknown"
+        }
+    }
+}
+
+extension AgentSessionActivation {
+    fileprivate var audioDiagnosticName: String {
+        switch self {
+        case .new: "new"
+        case .loaded: "loaded"
+        case .resumed: "resumed"
+        case .freshAfterUnavailableBookmark: "fresh_after_unavailable_bookmark"
+        case .freshBecauseRestorationUnsupported: "fresh_restoration_unsupported"
         }
     }
 }

@@ -153,7 +153,7 @@ extension AgentRunTimelineItem {
                 guard case .thought(let message) = detail else { return false }
                 return !message.text.isEmpty
             }
-        case .omitted:
+        case .historyBoundary, .omitted:
             false
         }
     }
@@ -169,7 +169,7 @@ extension AgentRunTimelineItem {
                 guard case .thought(let message) = detail else { return }
                 text.append(message.text)
             }
-        case .omitted:
+        case .historyBoundary, .omitted:
             ""
         }
     }
@@ -186,6 +186,7 @@ extension AgentRunTimelineItem {
             return .userMessage(
                 AgentUserMessagePresentation(
                     id: message.id,
+                    messageID: message.messageID,
                     text: transform(message.text, byteCount)))
         case .thinking(var thinking):
             var remainingBytes = byteCount
@@ -208,10 +209,83 @@ extension AgentRunTimelineItem {
             }
             thinking.details = retainedDetails
             return .thinking(thinking)
-        case .omitted:
+        case .historyBoundary, .omitted:
             return self
         }
     }
+}
+
+func enforceAgentRunTimelineBounds(
+    _ timeline: inout [AgentRunTimelineItem],
+    hasOmittedActivity: inout Bool,
+    maximumTextBytes: Int,
+    maximumItems: Int,
+    onOmission: (AgentRunTimelineItem) -> Void = { _ in }
+) {
+    var retainedTextBytes = timeline.reduce(into: 0) { count, item in
+        guard item.containsText else { return }
+        let byteCount = item.text.utf8.count
+        count = count > Int.max - byteCount ? Int.max : count + byteCount
+    }
+    while retainedTextBytes > maximumTextBytes,
+        let index = timeline.firstIndex(where: \AgentRunTimelineItem.containsText)
+    {
+        onOmission(timeline[index])
+        let originalByteCount = timeline[index].text.utf8.count
+        let excessByteCount = retainedTextBytes - maximumTextBytes
+        if originalByteCount <= excessByteCount {
+            timeline.remove(at: index)
+            retainedTextBytes -= originalByteCount
+        } else {
+            timeline[index] = timeline[index].droppingTextPrefix(
+                atLeast: excessByteCount,
+                using: droppingAgentRunUTF8Prefix)
+            retainedTextBytes -= originalByteCount - timeline[index].text.utf8.count
+        }
+        hasOmittedActivity = true
+    }
+
+    if hasOmittedActivity,
+        !timeline.contains(where: { item in
+            if case .omitted = item { return true }
+            return false
+        })
+    {
+        timeline.insert(.omitted, at: timeline.startIndex)
+    }
+
+    while timeline.count > maximumItems,
+        let index = timeline.firstIndex(where: { item in
+            if case .omitted = item { return false }
+            return true
+        })
+    {
+        onOmission(timeline[index])
+        timeline.remove(at: index)
+        hasOmittedActivity = true
+        if !timeline.contains(.omitted) {
+            timeline.insert(.omitted, at: timeline.startIndex)
+        }
+    }
+}
+
+func normalizeAgentRunTimelineOmissionMarker(
+    _ timeline: inout [AgentRunTimelineItem],
+    isRequired: Bool
+) {
+    timeline.removeAll { $0 == .omitted }
+    if isRequired {
+        timeline.insert(.omitted, at: timeline.startIndex)
+    }
+}
+
+private func droppingAgentRunUTF8Prefix(_ text: String, atLeast byteCount: Int) -> String {
+    let data = Data(text.utf8)
+    var retainedStart = min(max(0, byteCount), data.count)
+    while retainedStart < data.count, data[retainedStart] & 0xC0 == 0x80 {
+        retainedStart += 1
+    }
+    return String(decoding: data[retainedStart...], as: UTF8.self)
 }
 
 func saturatingIncrement(_ value: UInt64) -> UInt64 {

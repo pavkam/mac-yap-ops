@@ -73,6 +73,7 @@ extension VoiceActivationCoordinator {
         let inputs = pendingAgentPrompts
         pendingAgentPrompts.removeAll()
         for input in inputs {
+            input.invalidateAdmission()
             input.cancelContextCapture()
         }
     }
@@ -85,6 +86,7 @@ extension VoiceActivationCoordinator {
         activeInput?.invalidateAdmission()
         activeInput?.cancelContextCapture()
         for input in pendingInputs {
+            input.invalidateAdmission()
             input.cancelContextCapture()
         }
     }

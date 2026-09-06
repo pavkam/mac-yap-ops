@@ -133,8 +133,36 @@ prompts are stored in the app's `UserDefaults` domain. Provider authentication
 stays in each provider CLI. The optional ElevenLabs API key is stored only as a
 generic password in macOS Keychain.
 
+For ACP profiles, a separate strict schema-1 `UserDefaults` value stores at most
+64 profile/session bookmarks and 64 interrupted-work markers. It contains only
+profile, session, occurrence, optional turn/provider-task identifiers; a
+64-character provider compatibility fingerprint; work state; and bookmark
+access ordinals. Opaque identifiers are nonempty and limited to 4 KiB each; the
+complete encoded value is limited to 512 KiB. Invalid, unknown-schema,
+unknown-field, duplicate, over-limit, or malformed data is quarantined as empty
+until an explicit valid mutation replaces it.
+
+The fingerprint includes exactly a version marker, provider preset, executable
+path, argument count plus every ordered argument (including empty values),
+working folder, and system prompt. Every string is length-prefixed before
+SHA-256 hashing; the system prompt has already been trimmed of leading and
+trailing whitespace and newlines by configuration validation. Display name and
+permission policy are excluded. Wake phrase,
+enabled state, icon, accent, shortcut, speech settings, activity sounds, and the
+focused-Mac-context preference or captured values are outside the fingerprint.
+
+After a successful Settings application, Voice Activation resets one profile's
+live and durable ACP continuity only when that agent profile is removed, changed
+to a direct command, or one of those fingerprint inputs changes. Display,
+permission, wake, shortcut, speech, audio, and Mac-context-only edits preserve
+the bookmark. Validation, shortcut-registration, and credential-storage failures
+happen before reset and preserve existing continuity. Direct-command edits do
+not touch agent continuity.
+
 Voice Activation does not persist conversation prompts, Mac-context snapshot
-values or content, agent output, raw tool payloads, or audio. See
+values or content, agent output, reasoning, raw tool or permission payloads,
+audio, or provider credentials. The provider owns actual conversation content
+and retention. See
 [Privacy and security](privacy-and-security.md) for the complete data and
 retention boundary.
 

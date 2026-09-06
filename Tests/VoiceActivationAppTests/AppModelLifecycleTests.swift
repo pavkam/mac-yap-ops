@@ -185,7 +185,7 @@ extension AppModelTests {
             agentSpeechCredentialStore: SilentAgentSpeechCredentialStore(),
             startsAutomatically: false)
 
-        await Task.detached(priority: .background) {
+        _ = await Task.detached(priority: .background) {
             await model.start()
         }.value
 
@@ -216,12 +216,13 @@ extension AppModelTests {
             agentSpeechCredentialStore: SilentAgentSpeechCredentialStore(),
             startsAutomatically: false)
 
+        #expect(await model.start())
         model.setPassiveEnabled(true)
         await permission.waitUntilWaiting()
         #expect(permission.isWaiting)
         model.setPassiveEnabled(false)
         permission.resolve(true)
-        await Task.yield()
+        await permission.waitUntilCompletionCount(1)
 
         #expect(!model.passiveEnabled)
         #expect(!preferences.passiveEnabled)
@@ -249,11 +250,12 @@ extension AppModelTests {
             agentSpeechCredentialStore: SilentAgentSpeechCredentialStore(),
             startsAutomatically: false)
 
+        #expect(await model.start())
         model.setPassiveEnabled(true)
         await permission.waitUntilWaiting()
         model.setPassiveEnabled(false)
         permission.resolve(false)
-        await waitUntil { permission.completionCount == 1 }
+        await permission.waitUntilCompletionCount(1)
 
         #expect(model.state == .disabled)
     }
@@ -287,7 +289,8 @@ extension AppModelTests {
         }
     }
 
-    @MainActor @Test func permissions_WhenStartupAndPushToTalkOverlap_RequestsOnce() async throws {
+    @MainActor @Test
+    func pushToTalk_WhenStartupIsNotReady_DoesNotStartAnotherPermissionRequest() async throws {
         let suite = "VoiceActivationPermissionCoalescingTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defaults.removePersistentDomain(forName: suite)
@@ -311,13 +314,11 @@ extension AppModelTests {
         let profileID = try #require(shortcut.startedProfiles.first?.first?.id)
 
         shortcut.press(profileID)
-        for _ in 0..<10 {
-            await Task.yield()
-        }
 
         #expect(permission.requestCount == 1)
+        #expect(model.heldHotKeyProfileID == nil)
         permission.resolve(true)
-        await startup.value
+        #expect(await startup.value)
     }
 
     @MainActor @Test func shutdown_WhenStartupPermissionCompletesLate_DoesNotRestartListening()
@@ -345,7 +346,7 @@ extension AppModelTests {
 
         await model.shutdown()
         permission.resolve(true)
-        await startup.value
+        _ = await startup.value
 
         #expect(speech.startCount == 0)
         #expect(model.state == .disabled)
@@ -412,7 +413,7 @@ extension AppModelTests {
 
         model.setPassiveEnabled(false)
         permission.resolve(true)
-        await startup.value
+        _ = await startup.value
 
         #expect(!model.passiveEnabled)
         #expect(speech.startCount == 0)

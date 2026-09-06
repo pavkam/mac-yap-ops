@@ -35,6 +35,11 @@ final class ShortcutSpy: PushToTalkShortcutManaging {
         stopCount += 1
     }
 
+    func resetObservations() {
+        startedProfiles.removeAll()
+        stopCount = 0
+    }
+
     func press(_ profileID: UUID) {
         onPressed?(profileID)
     }
@@ -69,18 +74,40 @@ final class AppModelAgentPanelSpy: AgentRunPanelDisplaying {
     private(set) var shown: [UUID] = []
     private(set) var hidden: [UUID] = []
     private(set) var discarded: [UUID] = []
+    private var phaseWaiters: [(AgentRunPhase, CheckedContinuation<Void, Never>)] = []
+    private var terminalWaiters: [CheckedContinuation<Void, Never>] = []
 
     func begin(_ snapshot: AgentRunSnapshot, from handoff: RecordingOverlayHandoff?) {
         began.append(snapshot)
     }
 
-    func update(_ snapshot: AgentRunSnapshot) { updates.append(snapshot) }
+    func update(_ snapshot: AgentRunSnapshot) {
+        updates.append(snapshot)
+        let ready = phaseWaiters.filter { $0.0 == snapshot.phase }
+        phaseWaiters.removeAll { $0.0 == snapshot.phase }
+        ready.forEach { $0.1.resume() }
+        if snapshot.phase.isTerminal {
+            let waiters = terminalWaiters
+            terminalWaiters.removeAll()
+            waiters.forEach { $0.resume() }
+        }
+    }
     func show(runID: UUID) { shown.append(runID) }
     func hide(runID: UUID) { hidden.append(runID) }
     func discard(runID: UUID) { discarded.append(runID) }
     func shutdown() {}
     func minimize(runID: UUID) {}
     func restore(runID: UUID) {}
+
+    func waitUntilPhase(_ phase: AgentRunPhase) async {
+        guard updates.last?.phase != phase else { return }
+        await withCheckedContinuation { phaseWaiters.append((phase, $0)) }
+    }
+
+    func waitUntilTerminal() async {
+        guard updates.last?.phase.isTerminal != true else { return }
+        await withCheckedContinuation { terminalWaiters.append($0) }
+    }
 }
 
 @MainActor
@@ -127,10 +154,16 @@ final class AppModelSpeechSessionSpy: SpeechSessionProtocol {
 }
 
 actor AppModelAgentRunnerSpy: AgentHarnessRunning {
+    enum PublicationBehavior: Sendable {
+        case confirm
+        case failBeforePublication
+    }
+
     struct Invocation: Equatable, Sendable {
         let profileID: UUID
         let configuration: AgentHarnessConfiguration
         let prompt: AgentPrompt
+        let runContinuity: AgentRunContinuityRequest
     }
 
     private var invocations: [Invocation] = []
@@ -138,10 +171,19 @@ actor AppModelAgentRunnerSpy: AgentHarnessRunning {
     private var shouldDelayReset = false
     private var resetContinuation: CheckedContinuation<Void, Never>?
     private var resetWaiters: [CheckedContinuation<Void, Never>] = []
+    private var invocationWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
     private let events: [AgentRunEvent]
+    private let publicationBehavior: PublicationBehavior
+    private let continuityStore: (any AgentContinuityStoring)?
 
-    init(events: [AgentRunEvent] = []) {
+    init(
+        events: [AgentRunEvent] = [],
+        publicationBehavior: PublicationBehavior = .confirm,
+        continuityStore: (any AgentContinuityStoring)? = nil
+    ) {
         self.events = events
+        self.publicationBehavior = publicationBehavior
+        self.continuityStore = continuityStore
     }
 
     func run(
@@ -158,7 +200,16 @@ actor AppModelAgentRunnerSpy: AgentHarnessRunning {
             Invocation(
                 profileID: profileID,
                 configuration: configuration,
-                prompt: prompt))
+                prompt: prompt,
+                runContinuity: runContinuity))
+        let ready = invocationWaiters.filter { invocations.count >= $0.0 }
+        invocationWaiters.removeAll { invocations.count >= $0.0 }
+        ready.forEach { $0.1.resume() }
+        if publicationBehavior == .failBeforePublication {
+            throw AppModelAgentRunnerError.frameWriteFailed
+        }
+        await runContinuity.confirmPublishedAcknowledgement(
+            runContinuity.ordinaryInterruptedWorkKeys)
         for event in events {
             await onEvent(.live(event))
         }
@@ -175,20 +226,26 @@ actor AppModelAgentRunnerSpy: AgentHarnessRunning {
 
     func reset(profileIDs: Set<UUID>) async {
         resets.append(profileIDs)
-        guard shouldDelayReset else { return }
-        await withCheckedContinuation {
-            resetContinuation = $0
-            let waiters = resetWaiters
-            resetWaiters.removeAll()
-            for waiter in waiters {
-                waiter.resume()
+        if shouldDelayReset {
+            await withCheckedContinuation {
+                resetContinuation = $0
+                let waiters = resetWaiters
+                resetWaiters.removeAll()
+                for waiter in waiters {
+                    waiter.resume()
+                }
             }
         }
+        try? await continuityStore?.remove(profileIDs: profileIDs)
     }
 
     func shutdown() async {}
 
     func recordedInvocations() -> [Invocation] { invocations }
+    func waitUntilInvocationCount(_ count: Int) async {
+        guard invocations.count < count else { return }
+        await withCheckedContinuation { invocationWaiters.append((count, $0)) }
+    }
     func recordedResets() -> [Set<UUID>] { resets }
     func delayReset() { shouldDelayReset = true }
     func resetIsWaiting() -> Bool { resetContinuation != nil }
@@ -201,6 +258,10 @@ actor AppModelAgentRunnerSpy: AgentHarnessRunning {
         resetContinuation?.resume()
         resetContinuation = nil
     }
+}
+
+enum AppModelAgentRunnerError: Error {
+    case frameWriteFailed
 }
 
 actor AppModelPermissionAgentRunnerSpy: AgentHarnessRunning {
@@ -371,6 +432,7 @@ final class AppModelTextToSpeechVoicePreviewSpy: TextToSpeechVoicePreviewing {
 final class PermissionRequestGate {
     private var continuations: [CheckedContinuation<Bool, Never>] = []
     private var waitingContinuations: [CheckedContinuation<Void, Never>] = []
+    private var completionWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
     private(set) var requestCount = 0
     private(set) var completionCount = 0
     var isWaiting: Bool { !continuations.isEmpty }
@@ -386,6 +448,9 @@ final class PermissionRequestGate {
             }
         }
         completionCount += 1
+        let completed = completionWaiters.filter { completionCount >= $0.0 }
+        completionWaiters.removeAll { completionCount >= $0.0 }
+        completed.forEach { $0.1.resume() }
         return granted
     }
 
@@ -400,6 +465,11 @@ final class PermissionRequestGate {
         for continuation in pending {
             continuation.resume(returning: granted)
         }
+    }
+
+    func waitUntilCompletionCount(_ count: Int) async {
+        guard completionCount < count else { return }
+        await withCheckedContinuation { completionWaiters.append((count, $0)) }
     }
 }
 

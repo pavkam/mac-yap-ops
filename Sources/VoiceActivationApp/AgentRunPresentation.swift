@@ -16,6 +16,8 @@ final class AgentRunPresentation {
     static let maximumTools = 32
     static let maximumArtifacts = 32
     static let maximumArtifactBytes = 4 * 1_024 * 1_024
+    static let maximumPlanEntries = 64
+    static let maximumNotices = 16
     static let maximumTimelineTextBytes = 64 * 1_024
     static let maximumTimelineItems = 256
     static let maximumThinkingDetailsPerGroup = 128
@@ -37,6 +39,7 @@ final class AgentRunPresentation {
         else {
             return nil
         }
+        let artifactProjection = sourceQualifiedArtifactProjection
         return AgentRunSnapshot(
             runID: runID,
             profileID: profileID,
@@ -44,21 +47,21 @@ final class AgentRunPresentation {
             profileIcon: profileIcon,
             accent: accent,
             prompt: prompt,
-            providerName: providerName,
+            providerName: sourceQualifiedProviderName ?? providerName,
             phase: phase,
             voiceInput: voiceInput,
-            output: outputBuffer.value,
-            timeline: timeline,
-            diagnostics: diagnosticBuffer.value,
-            plan: plan,
-            tools: tools,
+            output: sourceQualifiedOutput,
+            timeline: sourceQualifiedTimeline,
+            diagnostics: sourceQualifiedDiagnostics,
+            plan: sourceQualifiedPlan,
+            tools: sourceQualifiedTools,
             permissions: permissions,
-            notices: notices,
+            notices: sourceQualifiedNotices,
             elapsedSeconds: elapsedSeconds,
-            evictedToolCount: evictedToolCount,
-            ignoredToolUpdateCount: ignoredToolUpdateCount,
-            artifacts: artifacts,
-            omittedArtifactCount: omittedArtifactCount)
+            evictedToolCount: sourceQualifiedEvictedToolCount,
+            ignoredToolUpdateCount: sourceQualifiedIgnoredToolUpdateCount,
+            artifacts: artifactProjection.artifacts,
+            omittedArtifactCount: artifactProjection.omittedCount)
     }
 
     let startsElapsedTimer: Bool
@@ -86,8 +89,12 @@ final class AgentRunPresentation {
     var artifacts: [AgentArtifactPresentation] = []
     var retainedArtifactBytes = 0
     var omittedArtifactCount: UInt64 = 0
+    var historicalArtifacts: [AgentArtifactPresentation] = []
+    var historicalPlan: [AgentPlanEntry] = []
+    var historicalTools: [AgentToolPresentation] = []
     var timeline: [AgentRunTimelineItem] = []
-    var timelineHasOmittedActivity = false
+    var historicalTimelineHasOmittedActivity = false
+    var liveTimelineHasOmittedActivity = false
     var permissions: [AgentPermissionPresentation] = []
     var notices: [String] = []
     var elapsedSeconds = 0
@@ -100,6 +107,7 @@ final class AgentRunPresentation {
     var trailingPublicationGeneration: UInt64 = 0
     var elapsedTask: Task<Void, Never>?
     var elapsedTaskGeneration: UInt64 = 0
+    var restorationState: AgentRunPresentationRestorationState?
 
     /// Creates the reducer with optional wall-clock updates for deterministic tests.
     ///
@@ -149,14 +157,19 @@ final class AgentRunPresentation {
         artifacts = []
         retainedArtifactBytes = 0
         omittedArtifactCount = 0
+        historicalArtifacts = []
+        historicalPlan = []
+        historicalTools = []
         timeline = []
         _ = activeThinkingGroup()
-        timelineHasOmittedActivity = false
+        historicalTimelineHasOmittedActivity = false
+        liveTimelineHasOmittedActivity = false
         permissions = []
         notices = []
         elapsedSeconds = 0
         evictedToolCount = 0
         ignoredToolUpdateCount = 0
+        restorationState = nil
         startedAt = clock.now
         lastPublicationAt = nil
         publicationIsPending = false
@@ -192,6 +205,9 @@ final class AgentRunPresentation {
                 "artifact_byte_count": String(artifactMetrics.bytes),
                 "task_priority": String(Task.currentPriority.rawValue),
             ])
+        if case .connected = event {
+            restorationState?.hasLiveProviderUpdate = true
+        }
         if event.isTokenDelta {
             apply(event)
             publishTokenUpdate(runID: runID)
@@ -247,6 +263,7 @@ final class AgentRunPresentation {
         phase = .running
         needsResponseSeparator = !outputBuffer.value.isEmpty
         plan = []
+        historicalPlan = []
         permissions = []
         voiceInput = ""
         _ = activeThinkingGroup()
@@ -423,13 +440,18 @@ final class AgentRunPresentation {
         artifacts.removeAll(keepingCapacity: false)
         retainedArtifactBytes = 0
         omittedArtifactCount = 0
+        historicalArtifacts.removeAll(keepingCapacity: false)
+        historicalPlan.removeAll(keepingCapacity: false)
+        historicalTools.removeAll(keepingCapacity: false)
         timeline.removeAll(keepingCapacity: false)
-        timelineHasOmittedActivity = false
+        historicalTimelineHasOmittedActivity = false
+        liveTimelineHasOmittedActivity = false
         permissions.removeAll(keepingCapacity: false)
         notices.removeAll(keepingCapacity: false)
         elapsedSeconds = 0
         evictedToolCount = 0
         ignoredToolUpdateCount = 0
+        restorationState = nil
         diagnosticsRecorder.record(
             category: .ui,
             event: "agent_presentation.cleared",

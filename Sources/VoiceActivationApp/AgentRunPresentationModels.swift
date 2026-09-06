@@ -51,21 +51,56 @@ struct AgentPermissionPresentation: Equatable, Identifiable, Sendable {
     var isResolving: Bool
 }
 
+/// A presentation-local tool identity that keeps replay and live provider IDs separate.
+struct AgentToolPresentationID: Equatable, Hashable, Sendable {
+    let source: AgentToolPresentationSource
+    let providerID: String
+}
+
+/// The source that owns one presentation tool row.
+enum AgentToolPresentationSource: Equatable, Hashable, Sendable {
+    case live
+    case restored(AgentRestorationToken)
+}
+
 /// The merged presentation state of a tool call and its partial updates.
-struct AgentToolPresentation: Equatable, Identifiable, Sendable {
+struct AgentToolPresentation: Equatable, Sendable {
     let id: String
+    let source: AgentToolPresentationSource
     var title: String
     var kind: AgentToolKind?
     var status: AgentToolCallStatus?
     var content: [String] = []
     var isSettled = false
 
+    init(
+        id: String,
+        source: AgentToolPresentationSource = .live,
+        title: String,
+        kind: AgentToolKind?,
+        status: AgentToolCallStatus?,
+        content: [String] = [],
+        isSettled: Bool = false
+    ) {
+        self.id = id
+        self.source = source
+        self.title = title
+        self.kind = kind
+        self.status = status
+        self.content = content
+        self.isSettled = isSettled
+    }
+
+    var presentationID: AgentToolPresentationID {
+        AgentToolPresentationID(source: source, providerID: id)
+    }
+
     var isWorking: Bool {
         !isSettled && (status == nil || status == .pending || status == .inProgress)
     }
 
     var isFinished: Bool {
-        isSettled || status == .completed || status == .failed
+        isSettled || status == .completed || status == .failed || status == .interrupted
     }
 }
 
@@ -89,7 +124,7 @@ struct AgentArtifactPresentation: Equatable, Identifiable, Sendable {
 /// A stable identity for heterogeneous reasoning and tool details.
 enum AgentThinkingDetailID: Hashable, Sendable {
     case thought(UUID)
-    case tool(String)
+    case tool(AgentToolPresentationID)
 }
 
 /// One expandable detail retained inside a grouped thinking interval.
@@ -100,7 +135,7 @@ enum AgentThinkingDetail: Equatable, Identifiable, Sendable {
     var id: AgentThinkingDetailID {
         switch self {
         case .thought(let message): .thought(message.id)
-        case .tool(let tool): .tool(tool.id)
+        case .tool(let tool): .tool(tool.presentationID)
         }
     }
 }
@@ -139,12 +174,20 @@ struct AgentMessagePresentation: Equatable, Identifiable, Sendable {
 /// One submitted user utterance retained in conversation order.
 struct AgentUserMessagePresentation: Equatable, Identifiable, Sendable {
     let id: UUID
-    let text: String
+    let messageID: String?
+    var text: String
+
+    init(id: UUID, messageID: String? = nil, text: String) {
+        self.id = id
+        self.messageID = messageID
+        self.text = text
+    }
 }
 
 /// A stable identity for heterogeneous conversation timeline entries.
 enum AgentRunTimelineItemID: Hashable, Sendable {
     case omitted
+    case historyBoundary
     case message(UUID)
     case userMessage(UUID)
     case thinking(UUID)
@@ -153,6 +196,7 @@ enum AgentRunTimelineItemID: Hashable, Sendable {
 /// One response, user message, thinking group, or bounded-omission marker.
 enum AgentRunTimelineItem: Equatable, Identifiable, Sendable {
     case omitted
+    case historyBoundary
     case message(AgentMessagePresentation)
     case userMessage(AgentUserMessagePresentation)
     case thinking(AgentThinkingPresentation)
@@ -160,6 +204,7 @@ enum AgentRunTimelineItem: Equatable, Identifiable, Sendable {
     var id: AgentRunTimelineItemID {
         switch self {
         case .omitted: .omitted
+        case .historyBoundary: .historyBoundary
         case .message(let message): .message(message.id)
         case .userMessage(let message): .userMessage(message.id)
         case .thinking(let thinking): .thinking(thinking.id)

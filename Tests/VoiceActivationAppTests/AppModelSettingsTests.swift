@@ -34,11 +34,12 @@ extension AppModelTests {
 
     @MainActor @Test
     func macContextSettingsAction_WhenEnableIsInvoked_PromptsOnceWithoutClaimingAuthorization()
-        throws
+        async throws
     {
         let access = MacContextAccessSpy(status: .notAuthorized)
         access.statusAfterPrompt = .authorized
         let fixture = try Fixture(macContextAccess: access)
+        await fixture.startForExternalActions()
         let actions = MacContextSettingsActions(model: fixture.model)
 
         actions.enableAccessibility()
@@ -49,9 +50,12 @@ extension AppModelTests {
     }
 
     @MainActor @Test
-    func macContextSettingsAction_WhenSectionAppears_RefreshesStatusWithoutPrompting() throws {
+    func macContextSettingsAction_WhenSectionAppears_RefreshesStatusWithoutPrompting()
+        async throws
+    {
         let access = MacContextAccessSpy(status: .authorized)
         let fixture = try Fixture(macContextAccess: access)
+        await fixture.startForExternalActions()
         let actions = MacContextSettingsActions(model: fixture.model)
 
         actions.appear()
@@ -89,6 +93,7 @@ extension AppModelTests {
             bundleIdentifier: "com.apple.Safari")
         let capturer = MacContextCapturerSpy(target: target)
         let fixture = try Fixture(macContextCapturer: capturer)
+        await fixture.startForExternalActions()
         fixture.model.capturesMacContext = false
 
         let saved = await fixture.model.saveSettings()
@@ -110,6 +115,7 @@ extension AppModelTests {
             bundleIdentifier: "com.apple.Safari")
         let capturer = MacContextCapturerSpy(target: target)
         let fixture = try Fixture(macContextCapturer: capturer)
+        await fixture.startForExternalActions()
         fixture.model.capturesMacContext = false
         fixture.model.wakeProfiles[0].urlTemplate = "https://example.com/static"
 
@@ -209,6 +215,7 @@ extension AppModelTests {
 
     @MainActor @Test func saveSettings_WhenDraftIsValid_AppliesAndPersistsHotKey() async throws {
         let fixture = try Fixture()
+        await fixture.startForExternalActions()
         let profileID = fixture.model.wakeProfiles[0].id
         let draft = try PushToTalkHotKey(
             keyCode: 40,
@@ -226,6 +233,7 @@ extension AppModelTests {
 
     @MainActor @Test func saveSettings_WhenProfileIsInvalid_DoesNotApplyHotKey() async throws {
         let fixture = try Fixture()
+        await fixture.startForExternalActions()
         let profileID = fixture.model.wakeProfiles[0].id
         let draft = try PushToTalkHotKey(
             keyCode: 40,
@@ -244,6 +252,7 @@ extension AppModelTests {
 
     @MainActor @Test func saveSettings_WhenProfilesAreValid_PersistsEveryProfile() async throws {
         let fixture = try Fixture()
+        await fixture.startForExternalActions()
         let searchHotKey = try PushToTalkHotKey(
             keyCode: 40,
             modifiers: [.command, .shift],
@@ -283,6 +292,7 @@ extension AppModelTests {
         async throws
     {
         let fixture = try Fixture()
+        await fixture.startForExternalActions()
         fixture.model.wakeProfiles = [
             WakeProfileDraft(
                 wakePhrase: "Computer",
@@ -360,6 +370,7 @@ extension AppModelTests {
             agentRunner: runner,
             isExecutableFile: { _ in true },
             isDirectory: { _ in false })
+        await fixture.startForExternalActions()
         let activeProfiles = fixture.model.activeWakeProfiles
 
         let saved = await fixture.model.saveSettings()
@@ -378,6 +389,7 @@ extension AppModelTests {
         let fixture = try Fixture(
             agentRunner: runner,
             isExecutableFile: { _ in false })
+        await fixture.startForExternalActions()
         let activeProfiles = fixture.model.activeWakeProfiles
 
         let saved = await fixture.model.saveSettings()
@@ -456,6 +468,7 @@ extension AppModelTests {
             agentRunner: runner,
             isExecutableFile: { _ in true },
             isDirectory: { _ in true })
+        await fixture.startForExternalActions()
 
         var changedDraft = WakeProfileDraft(profile: changed)
         changedDraft.agentHarness.executablePath = "/agents/changed-new"
@@ -567,6 +580,7 @@ extension AppModelTests {
             agentRunner: runner,
             isExecutableFile: { _ in true },
             isDirectory: { _ in true })
+        await fixture.startForExternalActions()
         await runner.delayReset()
         fixture.model.wakeProfiles[0].agentHarness.executablePath = "/agents/changed"
         let firstSave = Task { @MainActor in await fixture.model.saveSettings() }
@@ -581,8 +595,10 @@ extension AppModelTests {
         #expect(!fixture.model.isSavingSettings)
     }
 
-    @MainActor @Test func shortcutRecording_WhenDraftIsNotSaved_RestoresActiveHotKey() throws {
+    @MainActor @Test
+    func shortcutRecording_WhenDraftIsNotSaved_RestoresActiveHotKey() async throws {
         let fixture = try Fixture()
+        await fixture.startForExternalActions()
         let profileID = fixture.model.wakeProfiles[0].id
         let draft = try PushToTalkHotKey(
             keyCode: 40,

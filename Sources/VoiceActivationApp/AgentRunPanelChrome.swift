@@ -134,7 +134,7 @@ extension AgentRunPanelView {
                 return "You: \(message.text)"
             case let .thinking(thinking):
                 return thinking.isWorking ? "Thinking…" : "Thinking complete"
-            case .omitted:
+            case .historyBoundary, .omitted:
                 continue
             }
         }
@@ -156,6 +156,7 @@ extension AgentRunPanelView {
         case .pending: "circle"
         case .inProgress: "circle.dotted"
         case .completed: "checkmark.circle.fill"
+        case .interrupted: "exclamationmark.circle"
         }
     }
 
@@ -164,6 +165,7 @@ extension AgentRunPanelView {
         case .completed: "checkmark.circle.fill"
         case .failed: "exclamationmark.circle.fill"
         case .inProgress: "gearshape.2"
+        case .interrupted: "exclamationmark.circle"
         case .pending, nil: tool.isSettled ? "checkmark.circle" : "circle.dotted"
         }
     }
@@ -172,6 +174,8 @@ extension AgentRunPanelView {
         switch tool.status {
         case .failed:
             tool.kind.map { "\(toolKindLabel($0)) failed" } ?? "Tool failed"
+        case .interrupted:
+            tool.kind.map { "\(toolKindLabel($0)) interrupted" } ?? "Interrupted"
         case .completed:
             tool.kind.map { "\(toolKindLabel($0)) complete" } ?? "Completed"
         case .pending, .inProgress, nil:

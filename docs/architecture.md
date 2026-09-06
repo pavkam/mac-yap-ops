@@ -52,12 +52,14 @@ of Core policy and tests:
 
 ```text
 VoiceActivationApp
-  └─ AppModel
+  ├─ UserDefaultsAgentContinuityStore
+  └─ AppModel ← shared continuity store
       ├─ VoiceActivationCoordinator
       │   ├─ SpeechSessionProtocol → AppleSpeechSession
       │   ├─ CommandRunning → CommandRunner
       │   └─ AgentHarnessRunning → ACPAgentRunner
-      │       └─ ACPClientConnection → ACPProcessTransport
+      │       ├─ ACPClientConnection → ACPProcessTransport
+      │       └─ same shared continuity store
       ├─ RecordingOverlayPresenter → non-activating NSPanel
       ├─ AgentRunPresentation → AgentRunPanelPresenter
       ├─ AgentConversationAudioPresenter
@@ -70,6 +72,13 @@ VoiceActivationApp
       ├─ LaunchAtLoginSetting
       └─ JSONLVoiceActivationDiagnosticRecorder
 ```
+
+Application startup is an app-wide readiness barrier. `AppModel` reconciles
+persisted active work to interrupted state before it checks Mac-context access,
+loads credentials, registers shortcuts, requests speech permissions, starts
+passive listening, or arms application-activation monitoring. Settings and
+push-to-talk effect paths remain disabled until that generation-owned startup
+attempt reaches ready; cancelled or stale attempts cannot re-arm runtime work.
 
 ## Speech and capture
 
@@ -118,6 +127,13 @@ one active prompt, update decoding, permissions, and connection terminal state.
 lifecycles. A bounded two-stage delivery path preserves order and backpressure
 between transport ingestion and the app.
 
+The runner also compares a saved profile bookmark with a versioned fingerprint
+of the current provider preset, executable, ordered arguments, working folder,
+and validated, trimmed system prompt. Only an exact match may reach
+capability-gated `session/load` or `session/resume`; otherwise the saved opaque
+ID is removed before the provider process starts. The shared continuity store
+persists no conversation content.
+
 `AgentRunPresentation` reduces typed lifecycle and ACP events into one bounded
 conversation timeline plus a deduplicated result collection. The panel
 presenter rejects stale run actions and hosts a result-first layout in a
@@ -150,6 +166,13 @@ optional ElevenLabs credential. `LaunchAtLoginSetting` treats
 `SMAppService.mainApp` as the source of truth rather than duplicating its state
 in preferences.
 
+`UserDefaultsAgentContinuityStore` separately owns strict schema-1,
+identifier-only ACP bookmarks and work markers. Core policy supplies the same
+64-bookmark/64-marker bounds and exact-key lifecycle to durable and in-memory
+adapters. Production composition passes one store actor to both `AppModel` and
+the actual `ACPAgentRunner`, so launch reconciliation and prompt publication
+cannot observe different state.
+
 See [Configuration reference](configuration.md) for fields and persistence.
 
 ## Diagnostics
@@ -158,6 +181,11 @@ Core services depend on `VoiceActivationDiagnosticRecording`, a metadata-only
 interface. The app supplies a bounded rotating JSONL recorder. Call sites emit
 typed lifecycle events, counts, identifiers, outcomes, and timings—not prompts,
 transcripts, credentials, provider content, or audio.
+
+Continuity narrows this further: its store and restoration lifecycle events do
+not emit session, turn, task, occurrence, restoration-token, or fingerprint
+values. They use fixed operations, capability booleans, counts, activation
+categories, error types, and timings.
 
 See [Diagnostics](diagnostics.md) for the trace and investigation workflow.
 

@@ -152,6 +152,7 @@ actor ControlledAgentRunner: AgentHarnessRunning {
     private var permissionResolutions: [PermissionResolution] = []
     private var eventHandlers: [@Sendable (AgentRunStreamEvent) async -> Void] = []
     private var completions: [CheckedContinuation<AgentRunResult, any Error>?] = []
+    private var invocationWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
     private var activeRunIndex: Int?
     private var delaysCancellation = false
     private var completesImmediately = false
@@ -189,6 +190,7 @@ actor ControlledAgentRunner: AgentHarnessRunning {
             prompt: prompt,
             restorationNeed: restorationNeed,
             runContinuity: runContinuity))
+        resumeInvocationWaiters()
         eventHandlers.append(onEvent)
         activeRunIndex = runIndex
         if completesImmediately {
@@ -232,6 +234,13 @@ actor ControlledAgentRunner: AgentHarnessRunning {
         invocations
     }
 
+    func waitForInvocationCount(_ count: Int) async {
+        guard invocations.count < count else { return }
+        await withCheckedContinuation { continuation in
+            invocationWaiters.append((count, continuation))
+        }
+    }
+
     func recordedRunAttemptCount() -> Int {
         runAttempts
     }
@@ -267,6 +276,22 @@ actor ControlledAgentRunner: AgentHarnessRunning {
 
     func emit(_ event: AgentRunEvent, from runIndex: Int) async {
         await eventHandlers[runIndex](.live(event))
+    }
+
+    func emitStream(_ event: AgentRunStreamEvent, from runIndex: Int) async {
+        await eventHandlers[runIndex](event)
+    }
+
+    private func resumeInvocationWaiters() {
+        var remaining: [(Int, CheckedContinuation<Void, Never>)] = []
+        for (count, continuation) in invocationWaiters {
+            if invocations.count >= count {
+                continuation.resume()
+            } else {
+                remaining.append((count, continuation))
+            }
+        }
+        invocationWaiters = remaining
     }
 
     func complete(
@@ -321,6 +346,8 @@ final class ControlledMacContextCapturer: MacContextCapturing {
     private(set) var capturedTargets: [MacContextTarget] = []
     private(set) var cancelledCaptureIndices: [Int] = []
     private var suspendedCaptures: [Int: SuspendedCapture] = [:]
+    private var captureWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
+    private var cancellationWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
 
     init(target: MacContextTarget? = nil, snapshot: MacContextSnapshot? = nil) {
         self.target = target
@@ -335,6 +362,7 @@ final class ControlledMacContextCapturer: MacContextCapturing {
     func capture(_ target: MacContextTarget) async -> MacContextSnapshot {
         let captureIndex = capturedTargets.count
         capturedTargets.append(target)
+        resumeCaptureWaiters()
         let frozenSnapshot = nextSnapshot ?? makeMacContextSnapshot(
             target: target,
             state: .targetUnavailable)
@@ -360,10 +388,33 @@ final class ControlledMacContextCapturer: MacContextCapturing {
         capture.continuation.resume(returning: snapshot ?? capture.snapshot)
     }
 
+    func waitUntilCaptureCount(_ count: Int) async {
+        guard capturedTargets.count < count else { return }
+        await withCheckedContinuation { captureWaiters.append((count, $0)) }
+    }
+
+    func waitUntilCancellationCount(_ count: Int) async {
+        guard cancelledCaptureIndices.count < count else { return }
+        await withCheckedContinuation { cancellationWaiters.append((count, $0)) }
+    }
+
     private func cancelCapture(at index: Int) {
         cancelledCaptureIndices.append(index)
+        let ready = cancellationWaiters.filter {
+            cancelledCaptureIndices.count >= $0.0
+        }
+        cancellationWaiters.removeAll {
+            cancelledCaptureIndices.count >= $0.0
+        }
+        ready.forEach { $0.1.resume() }
         guard resolvesCancellation else { return }
         completeCapture(at: index)
+    }
+
+    private func resumeCaptureWaiters() {
+        let ready = captureWaiters.filter { capturedTargets.count >= $0.0 }
+        captureWaiters.removeAll { capturedTargets.count >= $0.0 }
+        ready.forEach { $0.1.resume() }
     }
 }
 

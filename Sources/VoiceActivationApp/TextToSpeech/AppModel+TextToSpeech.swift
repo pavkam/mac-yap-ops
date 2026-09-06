@@ -20,6 +20,7 @@ extension AppModel {
     }
 
     func loadTextToSpeechVoices(for backendID: TextToSpeechBackendID) async {
+        guard let startupAuthorization = readyEffectAuthorization else { return }
         let generation = (textToSpeechVoiceCatalogGenerations[backendID] ?? 0) &+ 1
         textToSpeechVoiceCatalogGenerations[backendID] = generation
         loadingTextToSpeechBackendIDs.insert(backendID)
@@ -36,7 +37,9 @@ extension AppModel {
                 backendID: backendID,
                 credential: textToSpeechCredential(for: backendID))
             try Task.checkCancellation()
-            guard textToSpeechVoiceCatalogGenerations[backendID] == generation else { return }
+            guard isEffectAuthorized(startupAuthorization),
+                textToSpeechVoiceCatalogGenerations[backendID] == generation
+            else { return }
             textToSpeechVoicesByBackend[backendID] = voices
             diagnostics.record(
                 category: .settings,
@@ -47,12 +50,15 @@ extension AppModel {
                     "voice_count": String(voices.count),
                 ])
         } catch is CancellationError {
+            guard isEffectAuthorized(startupAuthorization) else { return }
             diagnostics.record(
                 category: .settings,
                 event: "app_model.tts_catalog_cancelled",
                 fields: ["backend": backendID.rawValue])
         } catch {
-            guard textToSpeechVoiceCatalogGenerations[backendID] == generation else { return }
+            guard isEffectAuthorized(startupAuthorization),
+                textToSpeechVoiceCatalogGenerations[backendID] == generation
+            else { return }
             textToSpeechVoicesByBackend[backendID] = []
             textToSpeechVoiceErrors[backendID] = error.localizedDescription
             diagnostics.record(
@@ -64,7 +70,9 @@ extension AppModel {
                     "error_type": String(describing: type(of: error)),
                 ])
         }
-        if textToSpeechVoiceCatalogGenerations[backendID] == generation {
+        if isEffectAuthorized(startupAuthorization),
+            textToSpeechVoiceCatalogGenerations[backendID] == generation
+        {
             loadingTextToSpeechBackendIDs.remove(backendID)
         }
     }
@@ -83,6 +91,7 @@ extension AppModel {
         _ selection: TextToSpeechVoiceSelection,
         in context: TextToSpeechVoicePreviewContext
     ) async {
+        guard let startupAuthorization = readyEffectAuthorization else { return }
         textToSpeechVoicePreviewGeneration &+= 1
         let generation = textToSpeechVoicePreviewGeneration
         textToSpeechVoicePreview.stop()
@@ -102,15 +111,21 @@ extension AppModel {
                     selection: selection,
                     credential: textToSpeechCredential(for: selection.backendID),
                     localeID: localeID))
-            guard textToSpeechVoicePreviewGeneration == generation else { return }
+            guard isEffectAuthorized(startupAuthorization),
+                textToSpeechVoicePreviewGeneration == generation
+            else { return }
             textToSpeechVoicePreviewFeedback[context] = .success(
                 backendName: textToSpeechBackendName(selection.backendID))
             diagnostics.record(category: .ui, event: "app_model.voice_preview_finished")
         } catch is CancellationError {
-            guard textToSpeechVoicePreviewGeneration == generation else { return }
+            guard isEffectAuthorized(startupAuthorization),
+                textToSpeechVoicePreviewGeneration == generation
+            else { return }
             diagnostics.record(category: .ui, event: "app_model.voice_preview_cancelled")
         } catch {
-            guard textToSpeechVoicePreviewGeneration == generation else { return }
+            guard isEffectAuthorized(startupAuthorization),
+                textToSpeechVoicePreviewGeneration == generation
+            else { return }
             textToSpeechVoicePreviewFeedback[context] = .failure(error)
             diagnostics.record(
                 category: .ui,
@@ -119,7 +134,9 @@ extension AppModel {
                 fields: ["error_type": String(describing: type(of: error))])
         }
 
-        if textToSpeechVoicePreviewGeneration == generation {
+        if isEffectAuthorized(startupAuthorization),
+            textToSpeechVoicePreviewGeneration == generation
+        {
             activeTextToSpeechVoicePreviewContext = nil
         }
     }

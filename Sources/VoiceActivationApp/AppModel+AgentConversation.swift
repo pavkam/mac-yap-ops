@@ -188,6 +188,25 @@ extension AppModel {
             _ = agentRunPresentation.beginCancellation(runID: runID)
         case .event(let runID, let event):
             agentRunPresentation.receive(runID: runID, event: event)
+        case .historyRestorationStarted(let runID, let token, let sessionID):
+            agentRunPresentation.beginHistoryRestoration(
+                runID: runID,
+                token: token,
+                sessionID: sessionID)
+        case .historyEvent(let runID, let token, let event):
+            agentRunPresentation.receiveRestored(
+                runID: runID,
+                token: token,
+                event: event)
+        case .historyRestorationCompleted(let runID, let token, let activation):
+            agentRunPresentation.completeHistoryRestoration(
+                runID: runID,
+                token: token,
+                activation: activation)
+        case .historyRestorationAborted(let runID, let token):
+            agentRunPresentation.abortHistoryRestoration(
+                runID: runID,
+                token: token)
         case .turnCompleted(let runID, let result):
             agentRunPresentation.completeTurn(runID: runID, result: result)
         case .turnFailed(let runID, let message):

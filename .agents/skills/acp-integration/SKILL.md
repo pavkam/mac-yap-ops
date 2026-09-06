@@ -40,8 +40,9 @@ change needs. Do not preload every client reference.
 5. Run the focused tests, then the relevant verification in
    `references/testing.md`.
 6. If compatibility itself changed, run `scripts/probe-local-clients.sh`. Its
-   default probe sends only `initialize`; it must not create a session, prompt a
-   model, authenticate, or mutate provider state.
+   default probe sends no credentials and calls only `initialize`; it must not
+   call authentication, session, prompt, or permission methods. The provider
+   still inherits its normal ambient configuration.
 7. Update the provider reference, validation date, launch table, and nearby
    tests in the same change when a preset or pin changes.
 

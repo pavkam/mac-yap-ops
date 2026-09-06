@@ -85,6 +85,8 @@ final class AppModel {
     var isSavingSettings = false
     /// The latest immutable conversation snapshot shared by menu and panel presenters.
     var agentRunSnapshot: AgentRunSnapshot?
+    /// Bounded identifier-only work proven interrupted during launch reconciliation.
+    var interruptedAgentWork: [AgentInterruptedWorkMarker] = []
 
     /// The compact status derived from runtime state rather than independently persisted flags.
     var statusPresentation: MenuStatusPresentation {
@@ -99,6 +101,7 @@ final class AppModel {
     @ObservationIgnored let speechSession: any SpeechSessionProtocol
     @ObservationIgnored let commandRunner: any CommandRunning
     @ObservationIgnored let agentRunner: any AgentHarnessRunning
+    @ObservationIgnored let continuityStore: any AgentContinuityStoring
     @ObservationIgnored let isExecutableFile: @MainActor (String) -> Bool
     @ObservationIgnored let isDirectory: @MainActor (String) -> Bool
     @ObservationIgnored let permissionRequest: @MainActor () async -> Bool
@@ -120,21 +123,30 @@ final class AppModel {
         [TextToSpeechBackendID: UInt64] = [:]
     @ObservationIgnored var textToSpeechVoicePreviewGeneration: UInt64 = 0
     @ObservationIgnored var agentLifecycleSequence: UInt64 = 0
-    @ObservationIgnored var started = false
+    @ObservationIgnored var settingsSaveGeneration: UInt64 = 0
+    @ObservationIgnored var startupGeneration: UInt64 = 0
+    var startupPhase: AppModelStartupPhase = .idle
     @ObservationIgnored var isShutdown = false
     @ObservationIgnored var isShutdownComplete = false
     @ObservationIgnored var shutdownWaiters: [CheckedContinuation<Void, Never>] = []
     @ObservationIgnored var permissionGranted = false
     @ObservationIgnored var permissionTask: Task<Bool, Never>?
-    @ObservationIgnored var credentialLoadTask: Task<Void, Never>?
+    @ObservationIgnored var permissionAuthorization: AppModelEffectAuthorization?
+    @ObservationIgnored var credentialLoadTask: Task<String?, any Error>?
+    @ObservationIgnored var credentialLoadGeneration: UInt64?
     @ObservationIgnored var heldHotKeyProfileID: UUID?
     @ObservationIgnored var recordingShortcut = false
     @ObservationIgnored var activeProfile: WakeProfile?
     @ObservationIgnored var pendingAgentHandoff: RecordingOverlayHandoff?
+    @ObservationIgnored var pendingInterruptedAgentWork:
+        [UUID: [AgentInterruptedWorkMarker]] = [:]
     @ObservationIgnored lazy var coordinator = VoiceActivationCoordinator(
         speechSession: speechSession,
         commandRunner: commandRunner,
         agentRunner: agentRunner,
+        agentRunContinuity: { [weak self] profileID in
+            self?.agentRunContinuityRequest(for: profileID) ?? AgentRunContinuityRequest()
+        },
         contextCapturer: macContextCapturer,
         configuration: { [weak self] in
             guard let self else { throw ModelError.unavailable }
@@ -156,6 +168,7 @@ final class AppModel {
         speechSession: any SpeechSessionProtocol = AppleSpeechSession(),
         commandRunner: any CommandRunning = CommandRunner(),
         agentRunner: any AgentHarnessRunning = ACPAgentRunner(),
+        continuityStore: any AgentContinuityStoring = InMemoryAgentContinuityStore(),
         permissionRequest: @escaping @MainActor () async -> Bool = SpeechPermissions.request,
         soundPlayer: any CaptureSoundPlaying = SystemCaptureSoundPlayer(),
         agentConversationAudioPlayer: (any AgentConversationAudioPlaying)? = nil,
@@ -203,6 +216,7 @@ final class AppModel {
         self.speechSession = speechSession
         self.commandRunner = commandRunner
         self.agentRunner = agentRunner
+        self.continuityStore = continuityStore
         self.isExecutableFile = isExecutableFile
         self.isDirectory = isDirectory
         self.permissionRequest = permissionRequest
@@ -314,6 +328,13 @@ final class AppModel {
         }
         passiveEnabled = enabled
         preferences.passiveEnabled = enabled
+        guard isStartupReady else {
+            diagnostics.record(
+                category: .ui,
+                event: "app_model.passive_toggle_deferred",
+                fields: ["enabled": String(enabled)])
+            return
+        }
         if enabled {
             Task(priority: .userInitiated) { @MainActor [weak self] in
                 guard let self, self.passiveEnabled else { return }
@@ -356,122 +377,6 @@ final class AppModel {
             wakeProfiles[draftIndex].isEnabled = enabled
         }
         coordinator.refreshConfiguration()
-    }
-
-    @discardableResult
-    /// Validates all drafts, atomically applies runtime changes, and persists valid settings.
-    ///
-    /// - Returns: `true` when Settings may close; otherwise `settingsError` explains the failure.
-    func saveSettings() async -> Bool {
-        guard !isSavingSettings else {
-            diagnostics.record(
-                category: .settings,
-                event: "settings.save_ignored",
-                fields: ["reason": "already_saving"])
-            return false
-        }
-        isSavingSettings = true
-        defer { isSavingSettings = false }
-        diagnostics.record(
-            category: .settings,
-            event: "settings.save_started",
-            fields: [
-                "profile_count": String(wakeProfiles.count),
-                "speech_backend": defaultSpeechVoice.backendID.rawValue,
-                "reads_replies": String(readsAgentRepliesAloud),
-                "plays_working_sound": String(playsAgentWorkingSound),
-            ])
-
-        let profiles: [WakeProfile]
-        do {
-            profiles = try wakeProfiles.map { try $0.validatedProfile() }
-            try WakeProfileCollectionValidator.validate(profiles)
-            try validateFileSystem(profiles)
-            try validateAgentSpeechSettings(profiles: profiles)
-        } catch {
-            settingsError = error.localizedDescription
-            diagnostics.record(
-                category: .settings,
-                event: "settings.save_failed",
-                level: .error,
-                fields: [
-                    "stage": "validation",
-                    "error_type": String(describing: type(of: error)),
-                ])
-            return false
-        }
-
-        do {
-            try registerShortcuts(profiles)
-        } catch {
-            settingsError = error.localizedDescription
-            diagnostics.record(
-                category: .settings,
-                event: "settings.save_failed",
-                level: .error,
-                fields: [
-                    "stage": "hot_key_registration",
-                    "error_type": String(describing: type(of: error)),
-                ])
-            return false
-        }
-
-        let normalizedAPIKey = elevenLabsAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        credentialLoadTask?.cancel()
-        do {
-            try agentSpeechCredentialStore.saveElevenLabsAPIKey(
-                normalizedAPIKey.isEmpty ? nil : normalizedAPIKey)
-        } catch {
-            try? registerShortcuts(activeWakeProfiles)
-            settingsError = error.localizedDescription
-            diagnostics.record(
-                category: .settings,
-                event: "settings.save_failed",
-                level: .error,
-                fields: [
-                    "stage": "credential_storage",
-                    "error_type": String(describing: type(of: error)),
-                ])
-            return false
-        }
-
-        let profileIDsToReset = agentProfileIDsToReset(
-            oldProfiles: activeWakeProfiles,
-            newProfiles: profiles)
-        preferences.wakeProfiles = profiles
-        preferences.localeID = localeID
-        preferences.readsAgentRepliesAloud = readsAgentRepliesAloud
-        preferences.playsAgentWorkingSound = playsAgentWorkingSound
-        preferences.agentSpeechProvider = agentSpeechProvider
-        preferences.elevenLabsVoiceID = elevenLabsVoiceID
-        preferences.defaultSpeechVoice = defaultSpeechVoice
-        elevenLabsAPIKey = normalizedAPIKey
-        elevenLabsVoiceID = preferences.elevenLabsVoiceID
-        let previousSpeechConfiguration = agentSpeechSettingsState.configuration
-        agentSpeechSettingsState.update(
-            defaultSelection: defaultSpeechVoice,
-            elevenLabsAPIKey: normalizedAPIKey)
-        agentConversationAudioPresenter.refreshSettings()
-        activeWakeProfiles = profiles
-        wakeProfiles = activeWakeProfiles.map(WakeProfileDraft.init)
-        localeID = preferences.localeID
-        if !profileIDsToReset.isEmpty {
-            await agentRunner.reset(profileIDs: profileIDsToReset)
-        }
-        preferences.capturesMacContext = capturesMacContext
-        macContextCapturer.setEnabled(capturesMacContext)
-        settingsError = nil
-        coordinator.refreshConfiguration()
-        diagnostics.record(
-            category: .settings,
-            event: "settings.save_finished",
-            fields: [
-                "profile_count": String(profiles.count),
-                "reset_agent_session_count": String(profileIDsToReset.count),
-                "speech_configuration_changed": String(
-                    previousSpeechConfiguration != agentSpeechSettingsState.configuration),
-            ])
-        return true
     }
 
 }
@@ -527,6 +432,21 @@ extension AgentRunLifecycleEvent {
                 "kind": "event", "run_id": runID.uuidString,
                 "event_kind": AppModel.eventKind(event),
             ]
+        case .historyRestorationStarted(let runID, _, _):
+            ["kind": "history_restoration_started", "run_id": runID.uuidString]
+        case .historyEvent(let runID, _, let event):
+            [
+                "kind": "history_event", "run_id": runID.uuidString,
+                "event_kind": AppModel.eventKind(event),
+            ]
+        case .historyRestorationCompleted(let runID, _, let activation):
+            [
+                "kind": "history_restoration_completed",
+                "run_id": runID.uuidString,
+                "activation": activation.appModelDiagnosticName,
+            ]
+        case .historyRestorationAborted(let runID, _):
+            ["kind": "history_restoration_aborted", "run_id": runID.uuidString]
         case .turnCompleted(let runID, let result):
             [
                 "kind": "turn_completed", "run_id": runID.uuidString,
@@ -541,6 +461,18 @@ extension AgentRunLifecycleEvent {
             ]
         case .failed(let runID, _):
             ["kind": "failed", "run_id": runID.uuidString]
+        }
+    }
+}
+
+extension AgentSessionActivation {
+    fileprivate var appModelDiagnosticName: String {
+        switch self {
+        case .new: "new"
+        case .loaded: "loaded"
+        case .resumed: "resumed"
+        case .freshAfterUnavailableBookmark: "fresh_after_unavailable_bookmark"
+        case .freshBecauseRestorationUnsupported: "fresh_restoration_unsupported"
         }
     }
 }

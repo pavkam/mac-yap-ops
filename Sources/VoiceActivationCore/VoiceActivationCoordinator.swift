@@ -17,6 +17,23 @@ public enum AgentRunLifecycleEvent: Equatable, Sendable {
     case turnCancellationStarted(runID: UUID)
     /// A streaming ACP event belongs to the identified conversation.
     case event(runID: UUID, event: AgentRunEvent)
+    /// Provider history restoration began for the identified conversation and caller token.
+    case historyRestorationStarted(
+        runID: UUID,
+        token: AgentRestorationToken,
+        sessionID: String)
+    /// A bounded provider-history event belongs to the identified restoration attempt.
+    case historyEvent(
+        runID: UUID,
+        token: AgentRestorationToken,
+        event: AgentRunEvent)
+    /// Provider history restoration completed with the selected activation path.
+    case historyRestorationCompleted(
+        runID: UUID,
+        token: AgentRestorationToken,
+        activation: AgentSessionActivation)
+    /// Provider history restoration ended without safely completing its replay.
+    case historyRestorationAborted(runID: UUID, token: AgentRestorationToken)
     /// One turn completed while the conversation remains available for follow-up.
     case turnCompleted(runID: UUID, result: AgentRunResult)
     /// One turn failed while the conversation presentation remains available.
@@ -102,6 +119,7 @@ public final class VoiceActivationCoordinator {
     let speechSession: any SpeechSessionProtocol
     let commandRunner: any CommandRunning
     let agentRunner: any AgentHarnessRunning
+    let agentRunContinuity: @MainActor @Sendable (UUID) -> AgentRunContinuityRequest
     let macContextCapturer: any MacContextCapturing
     let configuration: () throws -> ActivationConfiguration
     let timing: ActivationTiming
@@ -114,6 +132,7 @@ public final class VoiceActivationCoordinator {
     var activeAgentRunID: UUID? {
         didSet {
             guard oldValue != nil, activeAgentRunID != oldValue else { return }
+            activeAgentRestorationToken = nil
             activeAgentInput?.invalidateAdmission()
         }
     }
@@ -123,6 +142,7 @@ public final class VoiceActivationCoordinator {
     var executionGeneration = 0 {
         didSet {
             guard executionGeneration != oldValue else { return }
+            activeAgentRestorationToken = nil
             activeAgentInput?.invalidateAdmission()
         }
     }
@@ -150,6 +170,7 @@ public final class VoiceActivationCoordinator {
     var agentConversationEndResult: AgentRunResult?
     var agentSpeechOutputActive = false
     var agentTurnHadActivity = false
+    var activeAgentRestorationToken: AgentRestorationToken?
 
     /// Creates a coordinator with production timing and replaceable execution boundaries.
     ///
@@ -157,6 +178,7 @@ public final class VoiceActivationCoordinator {
     ///   - speechSession: Owns the current microphone recognition session.
     ///   - commandRunner: Executes direct-command profiles.
     ///   - agentRunner: Runs and caches ACP agent sessions.
+    ///   - agentRunContinuity: Supplies exact consume-on-publication markers by profile.
     ///   - contextCapturer: Freezes bounded native context for admitted ACP turns.
     ///   - configuration: Supplies a fresh immutable settings snapshot when needed.
     ///   - diagnostics: Records privacy-safe lifecycle metadata.
@@ -164,6 +186,8 @@ public final class VoiceActivationCoordinator {
         speechSession: any SpeechSessionProtocol,
         commandRunner: any CommandRunning,
         agentRunner: any AgentHarnessRunning = ACPAgentRunner(),
+        agentRunContinuity: @escaping @MainActor @Sendable (UUID) ->
+            AgentRunContinuityRequest = { _ in AgentRunContinuityRequest() },
         contextCapturer: any MacContextCapturing = EmptyMacContextCapturer(),
         configuration: @escaping () throws -> ActivationConfiguration,
         diagnostics: any VoiceActivationDiagnosticRecording = VoiceActivationDiagnostics.shared
@@ -172,6 +196,7 @@ public final class VoiceActivationCoordinator {
             speechSession: speechSession,
             commandRunner: commandRunner,
             agentRunner: agentRunner,
+            agentRunContinuity: agentRunContinuity,
             contextCapturer: contextCapturer,
             configuration: configuration,
             timing: .standard,
@@ -182,6 +207,8 @@ public final class VoiceActivationCoordinator {
         speechSession: any SpeechSessionProtocol,
         commandRunner: any CommandRunning,
         agentRunner: any AgentHarnessRunning = ACPAgentRunner(),
+        agentRunContinuity: @escaping @MainActor @Sendable (UUID) ->
+            AgentRunContinuityRequest = { _ in AgentRunContinuityRequest() },
         contextCapturer: any MacContextCapturing = EmptyMacContextCapturer(),
         configuration: @escaping () throws -> ActivationConfiguration,
         timing: ActivationTiming,
@@ -190,6 +217,7 @@ public final class VoiceActivationCoordinator {
         self.speechSession = speechSession
         self.commandRunner = commandRunner
         self.agentRunner = agentRunner
+        self.agentRunContinuity = agentRunContinuity
         self.macContextCapturer = contextCapturer
         self.configuration = configuration
         self.timing = timing

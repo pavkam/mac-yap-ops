@@ -135,6 +135,49 @@ struct ACPAgentRunnerContinuityTests {
         #expect((await store.snapshot()).bookmarks.map(\.sessionID) == ["fresh-session"])
     }
 
+    @Test func run_WhenOnlyDisplayAndPermissionChange_ReopensSavedSession() async throws {
+        let profileID = UUID()
+        let original = try makeConfiguration()
+        let updated = try AgentHarnessConfiguration(
+            preset: original.preset,
+            displayName: "Renamed agent",
+            executablePath: original.executablePath,
+            arguments: original.arguments,
+            workingDirectory: original.workingDirectory,
+            permissionPolicy: .rejectAlways,
+            systemPrompt: original.systemPrompt)
+        let firstTransport = FakeACPTransport()
+        let secondTransport = FakeACPTransport()
+        let factory = RunnerTransportFactory(transports: [firstTransport, secondTransport])
+        let store = RecordingAgentContinuityStore()
+        let runner = ACPAgentRunner(transportFactory: factory, continuityStore: store)
+        let firstRun = startRun(runner, profileID: profileID, configuration: original)
+
+        try await establishNewSession(
+            firstTransport,
+            workingDirectory: original.workingDirectory,
+            sessionID: "saved-session")
+        _ = await firstTransport.nextSentMessage()
+        try await firstTransport.feed(promptResponse(id: 3))
+        _ = try await firstRun.value
+
+        let secondRun = startRun(runner, profileID: profileID, configuration: updated)
+        #expect(await requestMethod(secondTransport.nextSentMessage()) == "initialize")
+        #expect(await firstTransport.observedTerminationCount() == 1)
+        try await secondTransport.feed(initializeResponse(loadSession: true))
+        let restoration = await secondTransport.nextSentMessage()
+        #expect(requestMethod(restoration) == "session/load")
+        guard case .request(_, _, .object(let parameters)) = restoration else {
+            Issue.record("Expected session/load request")
+            return
+        }
+        #expect(parameters["sessionId"] == .string("saved-session"))
+        try await secondTransport.feed(.response(id: .integer(2), result: .object([:])))
+        _ = await secondTransport.nextSentMessage()
+        try await secondTransport.feed(promptResponse(id: 3))
+        _ = try await secondRun.value
+    }
+
     @Test func run_WhenRestoreUnsupported_ClearsBookmarkAndStartsNewSession() async throws {
         try await assertUnsupportedRestorationStartsFreshWithContinuity()
     }
@@ -431,6 +474,7 @@ struct ACPAgentRunnerContinuityTests {
             providerTaskID: "provider-task",
             state: .interruptedByProcessExit)
         let acknowledgementGate = RunnerEventGate()
+        let acknowledgementRecorder = RunnerContinuityAcknowledgementRecorder()
         let store = RecordingAgentContinuityStore(
             markers: [marker, unrelatedMarker, providerMarker],
             acknowledgeGate: acknowledgementGate)
@@ -444,7 +488,10 @@ struct ACPAgentRunnerContinuityTests {
                 restorationNeed: .visibleHistory,
                 runContinuity: AgentRunContinuityRequest(
                     previousTurnInterrupted: true,
-                    interruptedWork: [marker, unrelatedMarker, providerMarker]),
+                    interruptedWork: [marker, unrelatedMarker, providerMarker],
+                    onPublishedAcknowledgement: {
+                        await acknowledgementRecorder.record($0)
+                    }),
                 onEvent: { _ in })
         }
 
@@ -460,6 +507,7 @@ struct ACPAgentRunnerContinuityTests {
                 && $0.contains("\"previousTurnInterrupted\":true")
         })
         #expect(await store.recordedCalls().contains(.acknowledge([oldKey])))
+        #expect(await acknowledgementRecorder.snapshot().isEmpty)
         await acknowledgementGate.open()
         try await transport.feed(promptResponse(id: 3))
         _ = try await run.value
@@ -467,6 +515,7 @@ struct ACPAgentRunnerContinuityTests {
             unrelatedMarker.key,
             providerMarker.key,
         ])
+        #expect(await acknowledgementRecorder.snapshot() == [[oldKey]])
     }
 
     @Test func reset_RemovesOnlySpecifiedBookmarksAndMarkers() async throws {

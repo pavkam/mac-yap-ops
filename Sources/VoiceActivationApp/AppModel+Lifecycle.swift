@@ -4,7 +4,40 @@
 import Foundation
 import VoiceActivationCore
 
+enum AppModelStartupPhase {
+    case idle
+    case starting
+    case ready
+}
+
+enum AppModelEffectAuthorization: Equatable {
+    case startup(UInt64)
+    case ready(UInt64)
+}
+
 extension AppModel {
+    var isStartupReady: Bool { startupPhase == .ready }
+
+    var readyEffectAuthorization: AppModelEffectAuthorization? {
+        guard startupPhase == .ready, !isShutdown else { return nil }
+        return .ready(startupGeneration)
+    }
+
+    func isEffectAuthorized(_ authorization: AppModelEffectAuthorization) -> Bool {
+        guard !isShutdown else { return false }
+        switch authorization {
+        case .startup(let generation):
+            return startupPhase == .starting && startupGeneration == generation
+        case .ready(let generation):
+            return startupPhase == .ready && startupGeneration == generation
+        }
+    }
+
+    func cancelStartupAttempt() {
+        guard startupPhase == .starting else { return }
+        invalidateStartupAttempt(generation: startupGeneration)
+    }
+
     /// Idempotently stops every adapter and flushes diagnostics before application exit.
     func shutdown() async {
         guard !isShutdown else {
@@ -15,6 +48,7 @@ extension AppModel {
             return
         }
         diagnostics.record(category: .app, event: "app_model.shutdown_started")
+        invalidateStartupAttempt(generation: startupGeneration, force: true)
         isShutdown = true
         heldHotKeyProfileID = nil
         shortcut.stop()
@@ -31,6 +65,8 @@ extension AppModel {
         }
         loadingTextToSpeechBackendIDs.removeAll()
         credentialLoadTask?.cancel()
+        textToSpeechVoicePreviewGeneration &+= 1
+        activeTextToSpeechVoicePreviewContext = nil
         textToSpeechVoicePreview.stop()
         diagnostics.record(category: .app, event: "app_model.shutdown_finished")
         diagnostics.flush()
@@ -59,6 +95,7 @@ extension AppModel {
 
     /// Suspends global shortcut registration while Settings captures a replacement binding.
     func setPushToTalkShortcutRecording(_ recording: Bool) {
+        guard isStartupReady else { return }
         guard recording != recordingShortcut else { return }
         recordingShortcut = recording
         diagnostics.record(
@@ -83,21 +120,66 @@ extension AppModel {
     }
 
     /// Wires coordinator callbacks, restores shortcuts, and starts permitted passive listening.
-    func start() async {
-        guard !started, !isShutdown else {
+    @discardableResult
+    func start() async -> Bool {
+        guard !isShutdown else {
             diagnostics.record(
                 category: .app,
                 event: "app_model.start_ignored",
-                fields: [
-                    "already_started": String(started),
-                    "shutdown": String(isShutdown),
-                ])
-            return
+                fields: ["reason": "shutdown"])
+            return false
         }
-        started = true
+        switch startupPhase {
+        case .ready:
+            diagnostics.record(
+                category: .app,
+                event: "app_model.start_ignored",
+                fields: ["reason": "already_ready"])
+            return true
+        case .starting:
+            diagnostics.record(
+                category: .app,
+                event: "app_model.start_ignored",
+                fields: ["reason": "already_starting"])
+            return false
+        case .idle:
+            break
+        }
+        startupGeneration &+= 1
+        let generation = startupGeneration
+        startupPhase = .starting
         diagnostics.record(category: .app, event: "app_model.start_started")
-        refreshMacContextAccessStatus()
-        startCredentialLoad()
+        return await withTaskCancellationHandler {
+            await performStart(generation: generation)
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                self?.invalidateStartupAttempt(generation: generation)
+            }
+        }
+    }
+
+    private func performStart(generation: UInt64) async -> Bool {
+        let authorization = AppModelEffectAuthorization.startup(generation)
+        do {
+            let interrupted = try await continuityStore.reconcileInterruptedWork()
+            guard ownsStartupAttempt(generation) else { return false }
+            publishInterruptedAgentWork(interrupted)
+        } catch is CancellationError {
+            invalidateStartupAttempt(generation: generation)
+            return false
+        } catch {
+            guard ownsStartupAttempt(generation) else { return false }
+            diagnostics.record(
+                category: .app,
+                event: "continuity_store.read_failed",
+                level: .error,
+                fields: ["failure_category": "launch_reconcile"])
+        }
+        guard ownsStartupAttempt(generation) else { return false }
+        refreshMacContextAccessStatus(authorization: authorization)
+        guard ownsStartupAttempt(generation) else { return false }
+        guard await loadCredential(startupGeneration: generation) else { return false }
+        guard ownsStartupAttempt(generation) else { return false }
         coordinator.onStateChange = { [weak self] in
             guard let self else { return }
             if $0 == .capturing {
@@ -143,8 +225,9 @@ extension AppModel {
             self?.handleAgentVoiceUtterance(utterance) ?? false
         }
         do {
-            try registerShortcuts(activeWakeProfiles)
+            try registerShortcuts(activeWakeProfiles, authorization: authorization)
         } catch {
+            guard ownsStartupAttempt(generation) else { return false }
             settingsError = error.localizedDescription
             diagnostics.record(
                 category: .hotKey,
@@ -154,85 +237,181 @@ extension AppModel {
         }
 
         guard passiveEnabled else {
+            guard markStartupReady(generation) else { return false }
             diagnostics.record(
                 category: .app,
                 event: "app_model.start_finished",
                 fields: ["passive_listening_started": "false"])
-            return
+            return true
         }
-        guard await ensurePermissions(), passiveEnabled, !isShutdown else {
+        guard await ensurePermissions(authorization: authorization) else {
+            guard ownsStartupAttempt(generation) else { return false }
+            guard markStartupReady(generation) else { return false }
             diagnostics.record(
                 category: .app,
                 event: "app_model.start_finished",
                 fields: ["passive_listening_started": "false"])
-            return
+            return true
+        }
+        guard ownsStartupAttempt(generation) else { return false }
+        guard passiveEnabled else {
+            guard markStartupReady(generation) else { return false }
+            diagnostics.record(
+                category: .app,
+                event: "app_model.start_finished",
+                fields: ["passive_listening_started": "false"])
+            return true
         }
         coordinator.setPassiveEnabled(true)
+        guard markStartupReady(generation) else {
+            coordinator.setPassiveEnabled(false)
+            return false
+        }
         diagnostics.record(
             category: .app,
             event: "app_model.start_finished",
             fields: ["passive_listening_started": "true"])
+        return true
     }
 
-    /// Loads the Keychain credential off the launch path and publishes it when available.
-    func startCredentialLoad() {
-        guard credentialLoadTask == nil else {
-            diagnostics.record(
-                category: .settings,
-                event: "credential_load.ignored",
-                fields: ["reason": "already_started"])
+    private func ownsStartupAttempt(_ generation: UInt64) -> Bool {
+        !Task.isCancelled
+            && isEffectAuthorized(.startup(generation))
+    }
+
+    private func markStartupReady(_ generation: UInt64) -> Bool {
+        guard ownsStartupAttempt(generation) else { return false }
+        startupPhase = .ready
+        return true
+    }
+
+    private func invalidateStartupAttempt(generation: UInt64, force: Bool = false) {
+        guard force || (startupPhase == .starting && startupGeneration == generation) else {
             return
         }
+        startupGeneration &+= 1
+        startupPhase = .idle
+        heldHotKeyProfileID = nil
+        permissionTask?.cancel()
+        permissionTask = nil
+        permissionAuthorization = nil
+        credentialLoadTask?.cancel()
+        credentialLoadTask = nil
+        credentialLoadGeneration = nil
+    }
 
+    /// Replaces launch interruption state with a deterministic bounded snapshot.
+    func publishInterruptedAgentWork(_ markers: [AgentInterruptedWorkMarker]) {
+        let bounded = Array(markers.lazy.filter {
+            $0.state == .interruptedByProcessExit
+        }.prefix(AgentContinuityStorePolicy.maximumRecords))
+        interruptedAgentWork = bounded
+        pendingInterruptedAgentWork = Dictionary(grouping: bounded.lazy.filter {
+            $0.providerTaskID == nil
+        }, by: { $0.key.profileID })
+    }
+
+    /// Supplies exact ordinary interruption markers for the selected profile.
+    func agentRunContinuityRequest(for profileID: UUID) -> AgentRunContinuityRequest {
+        let markers = pendingInterruptedAgentWork[profileID] ?? []
+        return AgentRunContinuityRequest(
+            previousTurnInterrupted: !markers.isEmpty,
+            interruptedWork: markers,
+            onPublishedAcknowledgement: { [weak self] acknowledgedKeys in
+                await self?.consumeInterruptedAgentWork(
+                    acknowledgedKeys,
+                    profileID: profileID)
+            })
+    }
+
+    private func consumeInterruptedAgentWork(
+        _ acknowledgedKeys: Set<AgentInterruptedWorkKey>,
+        profileID: UUID
+    ) {
+        let exactKeys = Set(acknowledgedKeys.filter { $0.profileID == profileID })
+        guard !exactKeys.isEmpty,
+            let pending = pendingInterruptedAgentWork[profileID]
+        else { return }
+        let retained = pending.filter { !exactKeys.contains($0.key) }
+        if retained.isEmpty {
+            pendingInterruptedAgentWork.removeValue(forKey: profileID)
+        } else {
+            pendingInterruptedAgentWork[profileID] = retained
+        }
+        interruptedAgentWork.removeAll {
+            $0.providerTaskID == nil && exactKeys.contains($0.key)
+        }
+    }
+
+    func discardInterruptedAgentWork(profileIDs: Set<UUID>) {
+        for profileID in profileIDs {
+            pendingInterruptedAgentWork.removeValue(forKey: profileID)
+        }
+        interruptedAgentWork.removeAll { profileIDs.contains($0.key.profileID) }
+    }
+
+    private func loadCredential(startupGeneration generation: UInt64) async -> Bool {
+        guard ownsStartupAttempt(generation) else { return false }
         let initialDraft = elevenLabsAPIKey
         let startedAtUptime = DispatchTime.now().uptimeNanoseconds
         diagnostics.record(
             category: .settings,
             event: "credential_load.started",
             fields: ["task_priority": String(Task.currentPriority.rawValue)])
-        credentialLoadTask = Task(priority: .userInitiated) {
-            @MainActor [weak self, agentSpeechCredentialStore, diagnostics] in
-            do {
-                let storedAPIKey = try await agentSpeechCredentialStore.loadElevenLabsAPIKey() ?? ""
-                try Task.checkCancellation()
-                guard let self, !self.isShutdown else { return }
-
-                let applied = self.elevenLabsAPIKey == initialDraft
-                if applied {
-                    self.elevenLabsAPIKey = storedAPIKey
-                    self.agentSpeechSettingsState.update(
-                        defaultSelection: self.defaultSpeechVoice,
-                        elevenLabsAPIKey: storedAPIKey)
-                }
-                diagnostics.record(
-                    category: .settings,
-                    event: "credential_load.finished",
-                    fields: [
-                        "cloud_api_configured": String(!storedAPIKey.isEmpty),
-                        "applied_to_draft": String(applied),
-                        "duration_ms": String(Self.elapsedMilliseconds(since: startedAtUptime)),
-                        "task_priority": String(Task.currentPriority.rawValue),
-                    ])
-            } catch is CancellationError {
-                diagnostics.record(
-                    category: .settings,
-                    event: "credential_load.cancelled",
-                    fields: [
-                        "duration_ms": String(Self.elapsedMilliseconds(since: startedAtUptime)),
-                        "task_priority": String(Task.currentPriority.rawValue),
-                    ])
-            } catch {
-                diagnostics.record(
-                    category: .settings,
-                    event: "credential_load.failed",
-                    level: .error,
-                    fields: [
-                        "duration_ms": String(Self.elapsedMilliseconds(since: startedAtUptime)),
-                        "error_type": String(describing: type(of: error)),
-                        "task_priority": String(Task.currentPriority.rawValue),
-                    ])
-            }
+        let task = Task(priority: .userInitiated) { @MainActor [weak self, agentSpeechCredentialStore] in
+            guard let self,
+                self.ownsStartupAttempt(generation)
+            else { throw CancellationError() }
+            let value = try await agentSpeechCredentialStore.loadElevenLabsAPIKey()
+            try Task.checkCancellation()
+            return value
         }
+        credentialLoadTask = task
+        credentialLoadGeneration = generation
+        do {
+            let storedAPIKey = try await task.value ?? ""
+            guard ownsStartupAttempt(generation) else { return false }
+            clearCredentialLoad(generation: generation)
+            let applied = elevenLabsAPIKey == initialDraft
+            if applied {
+                elevenLabsAPIKey = storedAPIKey
+                agentSpeechSettingsState.update(
+                    defaultSelection: defaultSpeechVoice,
+                    elevenLabsAPIKey: storedAPIKey)
+            }
+            diagnostics.record(
+                category: .settings,
+                event: "credential_load.finished",
+                fields: [
+                    "cloud_api_configured": String(!storedAPIKey.isEmpty),
+                    "applied_to_draft": String(applied),
+                    "duration_ms": String(Self.elapsedMilliseconds(since: startedAtUptime)),
+                    "task_priority": String(Task.currentPriority.rawValue),
+                ])
+            return true
+        } catch is CancellationError {
+            clearCredentialLoad(generation: generation)
+            return false
+        } catch {
+            guard ownsStartupAttempt(generation) else { return false }
+            clearCredentialLoad(generation: generation)
+            diagnostics.record(
+                category: .settings,
+                event: "credential_load.failed",
+                level: .error,
+                fields: [
+                    "duration_ms": String(Self.elapsedMilliseconds(since: startedAtUptime)),
+                    "error_type": String(describing: type(of: error)),
+                    "task_priority": String(Task.currentPriority.rawValue),
+                ])
+            return true
+        }
+    }
+
+    private func clearCredentialLoad(generation: UInt64) {
+        guard credentialLoadGeneration == generation else { return }
+        credentialLoadTask = nil
+        credentialLoadGeneration = nil
     }
 
     static func elapsedMilliseconds(since startedAt: UInt64) -> UInt64 {
@@ -242,6 +421,17 @@ extension AppModel {
 
     /// Replaces the active Carbon registrations with the validated profile shortcut set.
     func registerShortcuts(_ profiles: [WakeProfile]) throws {
+        guard let authorization = readyEffectAuthorization else {
+            throw ModelError.unavailable
+        }
+        try registerShortcuts(profiles, authorization: authorization)
+    }
+
+    func registerShortcuts(
+        _ profiles: [WakeProfile],
+        authorization: AppModelEffectAuthorization
+    ) throws {
+        guard isEffectAuthorized(authorization) else { throw CancellationError() }
         try shortcut.start(
             profiles: profiles,
             onPressed: { [weak self] in self?.pushToTalkPressed(profileID: $0) },
@@ -272,6 +462,19 @@ extension AppModel {
 
     /// Ensures every inherited or profile-specific speech selection can run.
     func validateAgentSpeechSettings(profiles: [WakeProfile]) throws {
+        try validateAgentSpeechSettings(
+            profiles: profiles,
+            readsAgentRepliesAloud: readsAgentRepliesAloud,
+            defaultSpeechVoice: defaultSpeechVoice,
+            elevenLabsAPIKey: elevenLabsAPIKey)
+    }
+
+    func validateAgentSpeechSettings(
+        profiles: [WakeProfile],
+        readsAgentRepliesAloud: Bool,
+        defaultSpeechVoice: TextToSpeechVoiceSelection,
+        elevenLabsAPIKey: String
+    ) throws {
         var selections: [TextToSpeechVoiceSelection] = []
         if readsAgentRepliesAloud {
             selections.append(defaultSpeechVoice)
@@ -310,7 +513,11 @@ extension AppModel {
                 case .command:
                     return oldProfile.id
                 case .agent(let newConfiguration):
-                    return oldConfiguration == newConfiguration ? nil : oldProfile.id
+                    let oldFingerprint = AgentProviderFingerprint.make(
+                        configuration: oldConfiguration)
+                    let newFingerprint = AgentProviderFingerprint.make(
+                        configuration: newConfiguration)
+                    return oldFingerprint == newFingerprint ? nil : oldProfile.id
                 }
             })
     }
@@ -321,11 +528,15 @@ extension AppModel {
             category: .hotKey,
             event: "app_model.push_to_talk_pressed",
             fields: ["profile_id": profileID.uuidString])
-        guard !isShutdown, heldHotKeyProfileID == nil else {
+        guard isStartupReady, !isShutdown, heldHotKeyProfileID == nil else {
             diagnostics.record(
                 category: .hotKey,
                 event: "app_model.push_to_talk_ignored",
-                fields: ["reason": isShutdown ? "shutdown" : "another_binding_held"])
+                fields: [
+                    "reason": !isStartupReady
+                        ? "startup_not_ready"
+                        : isShutdown ? "shutdown" : "another_binding_held",
+                ])
             return
         }
         heldHotKeyProfileID = profileID

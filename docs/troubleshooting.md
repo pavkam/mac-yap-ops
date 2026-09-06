@@ -32,10 +32,16 @@ open .build/VoiceActivation.app
 
 ## The status remains Starting
 
-**Starting** means listening is enabled but speech recognition is not ready.
-Complete both the Microphone and Speech Recognition prompts. If access was
-denied, enable it in **System Settings > Privacy & Security**, quit Voice
-Activation, and launch it again.
+At application launch, startup first reconciles identifier-only interrupted
+agent work. Until that bounded step finishes, shortcuts, Settings effects,
+Mac-context access, credential loading, privacy prompts, passive listening, and
+activation monitoring remain unavailable. If reconciliation storage is invalid,
+it is quarantined and startup continues with empty continuity state.
+
+After startup becomes ready, **Starting** means listening is enabled but speech
+recognition is not ready. Complete both the Microphone and Speech Recognition
+prompts. If access was denied, enable it in **System Settings > Privacy &
+Security**, quit Voice Activation, and launch it again.
 
 ## Passive listening reports an on-device error
 
@@ -143,6 +149,58 @@ apply.
 
 See [Agent conversations](agent-conversations.md) for panel controls, recovery,
 and retention.
+
+## A previous agent conversation starts fresh
+
+Restoration is negotiated on every provider process. Voice Activation does not
+assume that Cursor, Codex, Claude, or a custom adapter supports an optional ACP
+method because its preset did before. Missing or `null` capabilities mean
+unsupported; malformed capability shapes fail the connection.
+
+Run the safe probe from the repository root:
+
+```bash
+.agents/skills/acp-integration/scripts/probe-local-clients.sh all
+```
+
+It sends no credentials and calls only `initialize`; it does not call
+authenticate, `session/new`, `session/load`, `session/resume`, `session/prompt`,
+or a permission method. The provider process still inherits its normal ambient
+configuration. The 2026-09-06 local run found protocol 1 on every configured
+adapter: Cursor `2026.01.23-916f423` returned `loadSession: false` with no resume
+capability, while Codex adapter `1.8.0` and Claude adapter `0.73.0` returned
+`loadSession: true` and `resume: object`. Those are dated local results, not an
+allowlist; inspect the current run.
+
+For visible history, load is preferred and resume preserves context without
+replaying history. When neither is supported, Voice Activation starts a fresh
+session with a bounded notice. A stale saved ID or restoration replay overflow
+can fall back to one fresh process only before the prompt frame. Once
+`session/prompt` is written, the utterance is never retried, even when the
+response says the session is missing.
+
+Changing the provider preset, executable, ordered arguments, working folder, or
+system prompt intentionally invalidates that profile's bookmark. Renaming the
+provider or changing permission, wake phrase, shortcut, appearance, reply voice,
+activity sounds, or Mac-context settings does not.
+
+## A turn is marked interrupted after relaunch
+
+The marker means active state was persisted immediately before Voice Activation
+attempted to publish the prompt and was never successfully cleared. The frame
+may or may not have reached the provider, so the app conservatively calls the
+work interrupted and never replays it automatically. It does not mean the
+ordinary ACP work is still running. The app converts active markers to
+interrupted during launch, then reports ordinary interruption metadata once on
+the next successfully published prompt for that profile. A failed frame or
+durable acknowledgement keeps the marker for a later attempt.
+
+Restored history is bounded and silent. It cannot recreate permission choices,
+active historical controls, tool execution, narration, sounds, or
+notifications. A complete later load replaces the older historical slice rather
+than appending duplicate replay. Provider-task markers are reserved for the
+separate, not-yet-implemented Background Task Continuity feature; current
+ordinary work never survives process death.
 
 ## An agent is waiting for permission
 

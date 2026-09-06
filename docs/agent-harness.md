@@ -16,11 +16,13 @@ user-visible panel and voice workflow belong in
 ## Contract and ownership
 
 `ACPAgentRunner` owns reusable provider processes, initialized sessions, active
-turn serialization, cancellation deadlines, recovery, and least-recently-used
-cache eviction. `ACPClientConnection` owns JSON-RPC request identity, one ACP
-session, one active prompt, permission settlement, update decoding, and terminal
-connection state. `ACPProcessTransport` owns direct process launch and the three
-standard streams.
+turn serialization, cancellation deadlines, recovery, continuity markers, and
+least-recently-used cache eviction. `ACPClientConnection` owns JSON-RPC request
+identity, one ACP session, one active prompt, permission settlement, strict
+runtime capability decoding, update decoding, and terminal connection state.
+`ACPProcessTransport` owns direct process launch and the three standard streams.
+One shared `UserDefaultsAgentContinuityStore` supplies the runner and application
+lifecycle with bounded identifier-only state.
 
 One unchanged profile configuration maps to one cached process and session. A
 conversation may submit several sequential prompts to that session, but a
@@ -38,7 +40,8 @@ running a direct-command profile leaves this payload out.
 The prompt content order is deterministic:
 
 1. client or profile instruction (`instruction`);
-2. a future continuity block, if its owning feature supplies one (`continuity`);
+2. the fixed-schema continuity block, when restoration or an interrupted prior
+   turn needs one (`continuity`);
 3. the Mac-context JSON text block (`mac_context`), when present;
 4. one selected-resource `resource_link` block per retained resource
    (`mac_resource`); and
@@ -47,8 +50,9 @@ The prompt content order is deterministic:
 Every outbound block carries advisory
 `_meta.ciobanu.org.voiceActivation.promptBlockRole` provenance metadata. ACP
 providers may preserve or discard it; it does not establish an ACP role. This
-release does not filter inbound restored user chunks by that metadata; durable
-continuity owns that future behavior.
+metadata is the only way a restored `user_message_chunk` can re-enter visible
+history: the nested role must be exactly `request`. Missing, null, malformed, or
+different roles suppress that historical user chunk.
 
 The context text starts exactly with:
 
@@ -154,11 +158,49 @@ Startup sends `initialize` with:
 The provider must select version 1. Any other version closes the connection and
 fails with an incompatibility error.
 
-Voice Activation then sends `session/new` with the profile's absolute working
-directory and an empty MCP server list. If session creation returns
-`auth_required`, the client retains at most eight bounded advertised method
-names, closes cleanly, and directs the user to authenticate with the provider
-CLI. It does not select a method or emulate an interactive terminal.
+The client strictly decodes restoration support from that process's current
+`initialize` result. An absent or `null` capability is unsupported.
+`agentCapabilities.loadSession` must be Boolean when present;
+`agentCapabilities.sessionCapabilities` and a present `resume` member must be
+objects. An empty `resume` object means supported. Any other shape closes the
+connection as malformed. Provider presets never supply or override this answer.
+
+When no compatible saved bookmark exists, Voice Activation sends `session/new`
+with the profile's absolute working directory and an empty MCP server list. If
+session creation returns `auth_required`, the client retains at most eight
+bounded advertised method names, closes cleanly, and directs the user to
+authenticate with the provider CLI. It does not select a method or emulate an
+interactive terminal.
+
+## Select load, resume, or a fresh session
+
+The policy is entirely capability-gated. `visible history` is the application's
+current request; `context only` is a supported runner contract for consumers
+that do not want historical presentation.
+
+| Restoration need | `loadSession` | `sessionCapabilities.resume` | Operation |
+| --- | --- | --- | --- |
+| Visible history | false | absent | `session/new` |
+| Visible history | false | object | `session/resume` |
+| Visible history | true | absent | `session/load` with replay |
+| Visible history | true | object | `session/load` with replay |
+| Context only | false | absent | `session/new` |
+| Context only | false | object | `session/resume` |
+| Context only | true | absent | `session/load`, validate and discard replay |
+| Context only | true | object | `session/resume` |
+
+`session/load` and `session/resume` both send the saved opaque `sessionId`, the
+current absolute `cwd`, and `mcpServers: []`. Load stages bounded replay before
+the response, then drains it in wire order after success. Resume does not replay
+history: it silently validates only command, configuration, mode, session-info,
+and usage setup updates. Historical user, agent, thought, tool, plan, unknown,
+or permission traffic during resume is malformed. Any permission request during
+either restoration path fails without creating permission UI.
+
+Load replay is source-qualified with one caller-owned restoration token. It is
+lossless within the existing 256-entry, 512 KiB output, 512 KiB control, and
+16 KiB diagnostic delivery limits. Overflow rejects the complete attempt rather
+than showing a partial restored prefix.
 
 ## Create and cache sessions
 
@@ -166,6 +208,13 @@ The runner caches at most four idle profile sessions. Reusing a profile moves
 its record to the most-recently-used end. When a fifth profile needs a session,
 the least recently used idle record is closed before the new connection is
 retained. An active record is never evicted underneath its turn.
+
+Separately, the continuity store retains at most 64 profile bookmarks and 64
+work markers. A bookmark contains the profile UUID, opaque session ID, provider
+fingerprint, and local access ordinal. A 65th bookmark evicts the deterministic
+least-recently-used bookmark; a 65th unique work marker fails atomically because
+work has no safe access-based eviction rule. The four-process live cache and the
+64-bookmark durable policy are independent.
 
 Changing a profile's agent configuration discards only that profile's cached
 record. Application shutdown closes every connection and terminates every
@@ -178,10 +227,9 @@ it never enters the current conversation.
 ## Submit prompts and receive updates
 
 Every initial request and follow-up becomes one `session/prompt`. The prompt
-contains two text blocks in order:
-
-1. Voice Activation's Markdown presentation instruction.
-2. The untouched recognized request.
+uses the deterministic block order documented above: presentation/profile
+instruction, optional continuity, optional current Mac context and resource
+links, then the untouched recognized request.
 
 The instruction asks for user-facing GitHub-flavored Markdown, at most one short
 progress sentence per work batch, and no narration of individual tool calls or
@@ -235,6 +283,18 @@ only local files can be revealed in Finder. Opening embedded data creates an
 owner-only temporary file. Delete, run replacement, and app shutdown remove the
 app-owned temporary files; closing the panel keeps them with retained output.
 
+When present, the continuity block is sorted-key JSON no larger than 512 bytes:
+
+```json
+{"previousTurnInterrupted":true,"schema":"voice-activation.agent-continuity.v1","sessionState":"loaded"}
+```
+
+`sessionState` is `loaded`, `resumed_without_history`,
+`fresh_after_unavailable_bookmark`, or
+`fresh_because_restoration_unsupported`. An otherwise normal session uses
+`null` only when `previousTurnInterrupted` is true. The block contains no
+provider, profile, session, turn, task, prompt, or Mac-context identifier.
+
 ## Resolve permissions
 
 `session/request_permission` is an inbound JSON-RPC request. Each decoded
@@ -279,16 +339,42 @@ Forced cancellation discards queued delivery after invalidation. Natural prompt
 completion drains delivery. At most a callback already in flight can finish
 after forced discard, and downstream run and turn identities reject it.
 
-## Recover or discard a session
+## Restore, recover, or discard a session
 
-A cached session is revocable provider state, not durable application state. A
-typed missing-session error may create a fresh process and replay the prompt
-once only when the provider has emitted no session activity and requested no
-permission. The conversation receives a context-loss notice.
+On launch, every persisted `.active` ordinary-work marker becomes
+`interruptedByProcessExit` before shortcuts, permissions, speech, Mac-context
+capture, credentials, or activation monitoring can start. The next prompt for
+that exact profile receives `previousTurnInterrupted: true`. The marker is
+consumed once only after the prompt frame is published and its acknowledgement
+is durably stored. Failure before either boundary retains it for a later prompt.
+`providerTaskID` markers are deliberately excluded from this handoff; the
+unimplemented Background Task Continuity feature owns them. Ordinary prompts
+never create a provider-task marker.
 
-Ambiguous errors, a second missing-session failure, and failures after observable
-activity are never replayed. The failed record is discarded. Output already
-delivered remains visible, and the next turn starts a fresh connection.
+Before every ordinary prompt frame, the runner stores a fresh exact work
+occurrence as `.active`. A failed marker write suppresses the prompt. A proven
+pre-publication write failure clears that exact marker. A confirmed terminal
+response clears it only after ordered delivery drains. Ambiguous loss after
+frame publication, process exit, and application shutdown leave it active so
+the next launch can report an interruption honestly.
+
+A compatible durable bookmark is provider state, not a local transcript. Load
+can rebuild bounded visible history; resume keeps provider context without
+history. Every successful load replay is authoritative: it replaces the prior
+historical slice, preserves newer live rows, and emits at most one history
+boundary and one omission marker. Unresolved historical tools and plan entries
+settle as interrupted. Restored history never creates permission choices,
+active historical controls, speech, activity sounds, tool execution, or
+notifications. Only a later live answer is eligible for narration.
+
+A missing saved session or lossless replay overflow may create one fresh
+process and send the utterance once, but only before any `session/prompt` frame.
+This consumes the single recovery budget and removes only that profile's stale
+bookmark. Once a prompt frame is written, even a missing-session response is
+authoritative proof of publication: the client never retries or replays that
+utterance. Ambiguous errors and a second missing-session failure are also never
+replayed. Output already delivered remains visible, and the next turn can start
+a fresh connection.
 
 Connection initialization has a 12-second deadline. A stall terminates that
 process and retries startup once with a new process. A second stall fails with a
@@ -330,6 +416,10 @@ cache.
 | Retained process standard error | 16 KiB UTF-8 | Keep the newest valid tail. |
 | Retained presentation artifacts | 32 entries / 4 MiB | Keep the newest complete results and publish a typed notice. |
 | Cached idle profile sessions | 4 | Close the least recently used idle record. |
+| Durable session bookmarks | 64 | Evict the deterministic least recently used bookmark. |
+| Durable work markers | 64 | Reject a 65th unique marker atomically. |
+| One persisted opaque identifier | 4 KiB UTF-8 | Reject the replacement. |
+| Continuity envelope | 512 KiB encoded JSON | Quarantine on load or reject the replacement. |
 
 The frame limit bounds parser input. Decoding one accepted frame may
 transiently allocate its JSON representation before typed normalization applies
@@ -348,6 +438,55 @@ notifications are ignored after bounded metadata is recorded.
 
 The app does not claim to expose private chain-of-thought. It presents only
 typed content that the provider emits through ACP.
+
+## Persistence and diagnostic privacy
+
+The strict schema-1 value at `voiceActivation.agentContinuity.v1` contains only
+profile, session, occurrence, optional turn/provider-task identifiers; provider
+fingerprints; work state; and bookmark access ordinals. Unknown schema versions,
+unknown fields, malformed JSON, duplicate records, invalid identifiers or
+fingerprints, excessive counts, and oversized data are quarantined as empty in
+memory. Reads do not rewrite quarantined bytes; the next explicit valid mutation
+replaces them.
+
+Continuity and restoration diagnostics record fixed operations, capability
+booleans, activation categories, counts, error types, and timings. They never
+record the stored session, turn, task, occurrence, restoration token, or
+fingerprint, nor prompts, transcripts, restored content, permission content,
+Mac-context values, audio, credentials, authorization, or raw ACP payloads.
+
+This feature does not keep ordinary turns running after the Voice Activation or
+adapter process dies. It does not interpret phrases such as “continue”, “again”,
+or “start over”, persist an old Mac-context snapshot, discover provider sessions,
+monitor provider tasks, or reconstruct a conversation locally. It also does not
+add the planned agent-authored conversation-control contract, spoken restoration
+confirmation contract, or typed voice-first response-channel router.
+Direct-command profiles never create, restore, or reset ACP continuity.
+
+The provider fingerprint hashes exactly the version marker, preset, executable,
+argument count and every ordered argument including empty values, working
+directory, and the validated system prompt after leading and trailing whitespace
+and newlines are trimmed. Every string is length-prefixed before SHA-256. It
+excludes display name and permission policy; wake, icon, accent, shortcut,
+speech, activity-sound, and focused-Mac-context settings and values are outside
+the agent harness configuration and therefore outside the fingerprint.
+
+## Dated local capability evidence
+
+The safe initialize-only probe was run on 2026-09-06. All configured adapters
+were available; none were skipped. It sent no credentials and called no
+authenticate, session, prompt, or permission method. Provider processes still
+inherited their normal ambient configuration.
+
+| Adapter | Version observed | Protocol | `loadSession` | `resume` | Current visible-history result |
+| --- | --- | ---: | --- | --- | --- |
+| Cursor | CLI `2026.01.23-916f423` | 1 | false | absent | Fresh `session/new` |
+| Codex | adapter `1.8.0` | 1 | true | object | `session/load` |
+| Claude | adapter `0.73.0` | 1 | true | object | `session/load` |
+
+This is environment-dated evidence, not a production allowlist. Every process's
+current `initialize` result remains authoritative. The probe reports only these
+three bounded shapes; it does not print raw capabilities or provider metadata.
 
 ## Protocol references
 
