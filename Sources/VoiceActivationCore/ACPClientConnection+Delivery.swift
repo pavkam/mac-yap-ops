@@ -127,17 +127,25 @@ extension ACPClientConnection {
 
     private func deliverRouted(_ inputEvent: AgentRunEvent) async throws {
         var event = inputEvent
-        if case .agentSpokenMessageDelta = event, activeEventDelivery == nil {
-            responseChannelVisibleFragmentWasDropped = true
-        } else if case let .agentSpokenNarrationReady(messageID, _) = event,
-                  responseChannelVisibleFragmentWasDropped
+        if case let .agentSpokenMessageDelta(messageID, text) = event,
+           !text.isEmpty,
+           activeEventDelivery == nil
         {
-            responseChannelVisibleFragmentWasDropped = false
+            responseChannelDroppedSpokenMessage = AgentRunEventDeliverySpokenIdentity(
+                messageID: messageID)
+        } else if case let .agentSpokenNarrationReady(messageID, _) = event,
+                  responseChannelDroppedSpokenMessage
+                    == AgentRunEventDeliverySpokenIdentity(messageID: messageID)
+        {
+            responseChannelDroppedSpokenMessage = nil
             event = .agentSpokenNarrationSuppressed(
                 messageID: messageID,
                 reason: .incompleteDelivery)
-        } else if case .agentSpokenNarrationSuppressed = event {
-            responseChannelVisibleFragmentWasDropped = false
+        } else if case let .agentSpokenNarrationSuppressed(messageID, _) = event,
+                  responseChannelDroppedSpokenMessage
+                    == AgentRunEventDeliverySpokenIdentity(messageID: messageID)
+        {
+            responseChannelDroppedSpokenMessage = nil
         }
         guard let delivery = activeEventDelivery else {
             diagnostics.record(
@@ -162,9 +170,23 @@ extension ACPClientConnection {
                     "event_kind": event.clientDiagnosticName,
                 ])
             return
-        case .ignored, .stopped:
-            if case .agentSpokenMessageDelta = event {
-                responseChannelVisibleFragmentWasDropped = true
+        case .ignored:
+            diagnostics.record(
+                category: .agent,
+                event: "acp_client.event_dropped",
+                level: .debug,
+                fields: [
+                    "connection_id": connectionID.uuidString,
+                    "event_kind": event.clientDiagnosticName,
+                    "reason": "ignored",
+                ])
+            return
+        case .stopped:
+            if case let .agentSpokenMessageDelta(messageID, text) = event,
+               !text.isEmpty
+            {
+                responseChannelDroppedSpokenMessage = AgentRunEventDeliverySpokenIdentity(
+                    messageID: messageID)
             }
             diagnostics.record(
                 category: .agent,
@@ -173,7 +195,7 @@ extension ACPClientConnection {
                 fields: [
                     "connection_id": connectionID.uuidString,
                     "event_kind": event.clientDiagnosticName,
-                    "reason": "ignored_or_stopped",
+                    "reason": "stopped",
                 ])
             return
         case .capacityExceeded, .invalid:

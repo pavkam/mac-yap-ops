@@ -197,6 +197,13 @@ extension ACPClientConnectionTests {
 
         await connection.cancel()
         _ = await transport.nextSentMessage()
+        try await transport.feed(agentMessageUpdate(
+            text: String(AgentResponseChannelRouter.spokenMarker.dropFirst(12)) + "Late"))
+        try await transport.feed(sessionUpdate(.object([
+            "sessionUpdate": .string("usage_update"),
+            "used": .integer(1),
+            "size": .integer(10),
+        ])))
         try await transport.feed(promptResponse(id: 3, stopReason: "cancelled"))
         _ = try await task.value
 
@@ -227,6 +234,26 @@ extension ACPClientConnectionTests {
         await result.connection.close()
     }
 
+    @Test func emptyTypedSpokenDelta_DoesNotSuppressNextValidMessage() async throws {
+        let transport = FakeACPTransport()
+        let connection = try await establishConnection(transport: transport)
+        let recorder = AgentEventRecorder()
+        let task = prompt(connection, text: "Answer", recorder: recorder)
+        _ = await recorder.nextEvent()
+        _ = await transport.nextSentMessage()
+
+        try await transport.feed(typedSpokenUpdate(messageID: "empty", text: ""))
+        try await transport.feed(typedSpokenUpdate(messageID: "valid", text: "Speak exactly"))
+        try await transport.feed(promptResponse(id: 3, stopReason: "end_turn"))
+        _ = try await task.value
+
+        #expect(await recorder.recordedEvents() == [
+            .agentSpokenMessageDelta(messageID: "valid", text: "Speak exactly"),
+            .agentSpokenNarrationReady(messageID: "valid", text: "Speak exactly"),
+        ])
+        await connection.close()
+    }
+
     private func agentMessageUpdate(text: String) -> ACPMessage {
         sessionUpdate(.object([
             "sessionUpdate": .string("agent_message_chunk"),
@@ -234,6 +261,25 @@ extension ACPClientConnectionTests {
             "content": .object([
                 "type": .string("text"),
                 "text": .string(text),
+            ]),
+        ]))
+    }
+
+    private func typedSpokenUpdate(messageID: String, text: String) -> ACPMessage {
+        sessionUpdate(.object([
+            "sessionUpdate": .string("agent_message_chunk"),
+            "messageId": .string(messageID),
+            "content": .object([
+                "type": .string("text"),
+                "text": .string(text),
+                "_meta": .object([
+                    "ciobanu.org.voiceActivation": .object([
+                        "responseChannel": .object([
+                            "version": .integer(1),
+                            "channel": .string("spoken"),
+                        ]),
+                    ]),
+                ]),
             ]),
         ]))
     }

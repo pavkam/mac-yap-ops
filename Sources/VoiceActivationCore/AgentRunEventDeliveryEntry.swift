@@ -62,6 +62,11 @@ struct AgentRunEventDeliveryEntry {
         return AgentRunEventDeliverySpokenIdentity(messageID: messageID)
     }
 
+    var spokenNarrationReadyIdentity: AgentRunEventDeliverySpokenIdentity? {
+        guard case let .agentSpokenNarrationReady(messageID, _) = storedEvent else { return nil }
+        return AgentRunEventDeliverySpokenIdentity(messageID: messageID)
+    }
+
     init(event: AgentRunEvent) {
         storedEvent = event
         textKind = nil

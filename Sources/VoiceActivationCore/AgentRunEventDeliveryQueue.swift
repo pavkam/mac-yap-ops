@@ -463,7 +463,20 @@ final class AgentRunEventDeliveryQueue: @unchecked Sendable {
     }
 
     private func markSpokenIncomplete(_ identity: AgentRunEventDeliverySpokenIdentity?) {
-        guard let identity, !suppressAllNarration else { return }
+        guard let identity else { return }
+        if let index = entries.firstIndex(where: {
+            $0.spokenNarrationReadyIdentity == identity
+        }) {
+            let replacement = AgentRunEventDeliveryEntry(event: .agentSpokenNarrationSuppressed(
+                messageID: identity.messageID,
+                reason: .incompleteDelivery))
+            subtractCounters(for: entries[index])
+            entries[index] = replacement
+            addCounters(for: replacement)
+            incompleteSpokenMessages.remove(identity)
+            return
+        }
+        guard !suppressAllNarration else { return }
         guard incompleteSpokenMessages.count < AgentRunEventDelivery.maximumPendingEntries else {
             incompleteSpokenMessages.removeAll()
             suppressAllNarration = true

@@ -182,8 +182,7 @@ public actor ACPClientConnection {
     static let maximumAdvertisedAuthenticationMethods = 8
     static let resumeSetupUpdateAllowlist: Set<String> = [
         "available_commands_update", "config_option_update",
-        "current_mode_update", "session_info_update",
-        "usage_update",
+        "current_mode_update", "session_info_update", "usage_update",
     ]
     static let clientName = "voice-activation"
     static let clientTitle = "Voice Activation"
@@ -202,7 +201,7 @@ public actor ACPClientConnection {
     let connectionID = UUID()
     let eventDecoder = ACPEventDecoder()
     var responseChannelRouter = AgentResponseChannelRouter()
-    var responseChannelVisibleFragmentWasDropped = false
+    var responseChannelDroppedSpokenMessage: AgentRunEventDeliverySpokenIdentity?
     var receiveTask: Task<Void, Never>?
     var nextRequestID: Int64 = 1
     var pendingRequests: [ACPRequestID: PendingClientRequest] = [:]
@@ -622,6 +621,7 @@ public actor ACPClientConnection {
 
         isPromptCancelling = true
         responseChannelRouter.reset()
+        responseChannelDroppedSpokenMessage = nil
         diagnostics.record(
             category: .acp,
             event: "acp_client.cancel_started",
@@ -660,7 +660,7 @@ public actor ACPClientConnection {
         let restoration = detachRestoration()
         let eventDelivery = activeEventDelivery
         responseChannelRouter.reset()
-        responseChannelVisibleFragmentWasDropped = false
+        responseChannelDroppedSpokenMessage = nil
         restoration?.responseChannelRouter.reset()
         activeEventDelivery = nil
         activeTurnToken = nil

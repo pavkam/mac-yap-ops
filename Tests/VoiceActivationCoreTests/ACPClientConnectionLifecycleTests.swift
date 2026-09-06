@@ -34,11 +34,9 @@ extension ACPClientConnectionTests {
                 "text": .string("Final update"),
             ]),
         ])))
-        #expect(await recorder.nextEvent() == .agentMessageDelta(
-            messageID: nil,
-            text: "Final update"))
         try await transport.feed(promptResponse(id: 3, stopReason: "cancelled"))
         #expect(try await promptTask.value == AgentRunResult(stopReason: .cancelled))
+        #expect(await recorder.recordedEvents().isEmpty)
         await connection.close()
     }
 

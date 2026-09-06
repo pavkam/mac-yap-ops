@@ -136,6 +136,10 @@ extension ACPClientConnection {
                                 maximumBytes: Self.maximumDiagnosticBytes)))
                     return
                 }
+                if isPromptCancelling {
+                    _ = try eventDecoder.event(from: message)
+                    return
+                }
                 if activeTurnToken != nil, !promptResponseWasReceived {
                     promptHadActivity = true
                 }

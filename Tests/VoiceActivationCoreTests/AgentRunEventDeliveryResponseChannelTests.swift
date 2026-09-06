@@ -85,6 +85,28 @@ struct AgentRunEventDeliveryResponseChannelTests {
             text: "complete original narration")))
     }
 
+    @Test func pressureAfterNarrationReady_ReplacesQueuedReadyWithSuppression() async {
+        let queue = AgentRunEventDeliveryQueue()
+        #expect(queue.send(.agentSpokenMessageDelta(
+            messageID: "m",
+            text: String(repeating: "a", count: 400 * 1_024))) == .accepted)
+        #expect(queue.send(.agentSpokenNarrationReady(
+            messageID: "m",
+            text: "complete original narration")) == .accepted)
+
+        #expect(queue.send(.agentMessageDelta(
+            messageID: "later",
+            text: String(repeating: "b", count: 200 * 1_024))) == .accepted)
+
+        let events = await drain(queue)
+        #expect(events.contains(.agentSpokenNarrationSuppressed(
+            messageID: "m",
+            reason: .incompleteDelivery)))
+        #expect(!events.contains(.agentSpokenNarrationReady(
+            messageID: "m",
+            text: "complete original narration")))
+    }
+
     private func drain(_ queue: AgentRunEventDeliveryQueue) async -> [AgentRunEvent] {
         queue.startDraining()
         var events: [AgentRunEvent] = []
