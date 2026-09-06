@@ -206,10 +206,11 @@ than showing a partial restored prefix.
 
 ## Create and cache sessions
 
-The runner caches at most four idle profile sessions. Reusing a profile moves
+The runner caches at most four profile sessions. Reusing a profile moves
 its record to the most-recently-used end. When a fifth profile needs a session,
 the least recently used idle record is closed before the new connection is
-retained. An active record is never evicted underneath its turn.
+retained. A session with an active prompt or provider task is pinned. If all
+four records are pinned, a fifth session fails before process launch.
 
 Separately, the continuity store retains at most 64 profile bookmarks and 64
 work markers. A bookmark contains the profile UUID, opaque session ID, provider
@@ -225,6 +226,39 @@ retained process.
 Session identifiers are opaque UTF-8 strings bounded to 4 KiB. An update for a
 different session identifier is ignored and recorded as a bounded diagnostic;
 it never enters the current conversation.
+
+## Keep background work honest
+
+Stable ACP v1 owns one prompt until response or cancellation; it has no standard
+detached-task stream. Voice Activation adds task UI only for preset `claude`
+when the live initialize result proves the exact 0.73.0 adapter identity and
+both peers negotiate JetBrains AIR version 1 with `asyncTasks`.
+
+| Provider path | While Voice Activation runs | Between turns | After its process exits |
+| --- | --- | --- | --- |
+| Stable ACP v1 prompt | Prompt stays owned until response or cancel | No standard detached task stream | Mark interrupted; optionally restore session context; never replay the prompt |
+| Claude Agent ACP 0.73.0 with AIR | Typed spawn, progress, state, and stop | Persistent session consumer accepts negotiated typed events | Mark interrupted; do not claim adapter-owned task survival |
+| Codex ACP 1.8.0 | Standard prompt only | No AIR task lifecycle | Mark interrupted; restore context only when restoration succeeds |
+| Cursor 2026.01.23 | Standard prompt only | No proven AIR task lifecycle | Mark interrupted; restore context only when restoration succeeds |
+| Unknown or custom provider | Negotiated stable capabilities only | Bound and ignore unknown extensions | Never claim work resumed |
+
+Task rows keep provider-authored names, descriptions, summaries, states, usage,
+and paths exactly as bounded display content. They do not open or execute paths.
+At most 32 rows are retained per session in first-spawn order. A 33rd task evicts
+the oldest terminal row; if all 32 are active, it is ignored with content-free
+diagnostics.
+
+Minimizing or hiding the non-activating panel does not cancel work. **Stop turn**
+cancels only the current prompt. **End conversation** retains sessions with
+active tasks, and close/delete stays disabled until those tasks are terminal.
+Only **Stop background task** sends `_session/async_task/stop` with the exact
+opaque session and task IDs. A true response shows **Stop requested** until the
+provider sends a terminal state; false or failure shows **Couldn’t stop task**
+and restores the button. Spoken language remains ordinary agent input.
+
+Only a current live agent message can enter narration. Task names, descriptions,
+progress, summaries, usage, paths, notices, restored content, and native status
+copy remain silent.
 
 ## Route conversational input
 
@@ -521,9 +555,10 @@ capture, credentials, or activation monitoring can start. The next prompt for
 that exact profile receives `previousTurnInterrupted: true`. The marker is
 consumed once only after the prompt frame is published and its acknowledgement
 is durably stored. Failure before either boundary retains it for a later prompt.
-`providerTaskID` markers are deliberately excluded from this handoff; the
-unimplemented Background Task Continuity feature owns them. Ordinary prompts
-never create a provider-task marker.
+`providerTaskID` markers remain separate from the ordinary-turn handoff. They
+produce only **Interrupted when Voice Activation exited** and no active control.
+A later live task event starts a fresh current occurrence; it does not resurrect
+the historical marker.
 
 Before every ordinary prompt frame, the runner stores a fresh exact work
 occurrence as `.active`. A failed marker write suppresses the prompt. A proven
@@ -597,6 +632,8 @@ cache.
 | Retained process standard error | 16 KiB UTF-8 | Keep the newest valid tail. |
 | Retained presentation artifacts | 32 entries / 4 MiB | Keep the newest complete results and publish a typed notice. |
 | Cached idle profile sessions | 4 | Close the least recently used idle record. |
+| Live provider sessions | 4 | Refuse a fifth when all four contain active work. |
+| Retained background tasks per session | 32 | Evict the oldest terminal row, or ignore when all are active. |
 | Durable session bookmarks | 64 | Evict the deterministic least recently used bookmark. |
 | Durable work markers | 64 | Reject a 65th unique marker atomically. |
 | One persisted opaque identifier | 4 KiB UTF-8 | Reject the replacement. |
@@ -615,6 +652,11 @@ filesystem, MCP, elicitation, or terminal-authentication capabilities.
 The response-channel advertisement is an optional namespaced extension, not an
 ACP v1 spoken-channel claim. Providers that ignore it remain fully compatible
 through the exact marker contract or the untouched legacy path.
+
+AIR async-task support is another nonstandard extension. It is allowlisted only
+for Claude Agent ACP 0.73.0 after exact runtime identity and bidirectional AIR
+version-1 negotiation. Codex ACP 1.8.0, Cursor 2026.01.23, custom providers, and
+version drift stay on stable prompt behavior.
 
 ACP v1 has no portable mid-turn input method. Voice Activation uses the private
 `_session/steering` extension only for the exact Claude ACP 0.73.0 runtime proof
@@ -663,13 +705,14 @@ record `agent_message_delta`, `agent_spoken_message_delta`,
 they never retain response text, surrounding marker content, extension metadata,
 or synthesized bytes.
 
-This feature does not keep ordinary turns running after the Voice Activation or
-adapter process dies. It does not interpret phrases such as “continue”, “again”,
-or “start over”, persist an old Mac-context snapshot, discover provider sessions,
-monitor provider tasks, or reconstruct a conversation locally. It also does not
-add the planned agent-authored conversation-control contract, spoken restoration
-confirmation contract, or make response channels durable conversation content.
-Direct-command profiles never create, restore, or reset ACP continuity.
+This feature does not keep ordinary turns or adapter-owned tasks running after
+the Voice Activation or adapter process dies. It does not interpret phrases such
+as “continue”, “again”, or “start over”, persist an old Mac-context snapshot,
+discover provider sessions, or reconstruct a conversation locally. It also does
+not add the planned agent-authored conversation-control contract, spoken
+restoration confirmation contract, or make response channels durable
+conversation content. Direct-command profiles never create, restore, or reset
+ACP continuity.
 
 The provider fingerprint hashes exactly the version marker, preset, executable,
 argument count and every ordered argument including empty values, working

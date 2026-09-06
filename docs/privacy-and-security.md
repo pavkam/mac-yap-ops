@@ -26,9 +26,10 @@ Voice Activation does not proxy, inspect, or replace those provider policies.
 
 Only user-facing agent reply text is eligible for speech synthesis. Thoughts,
 plans, tool payloads, permissions, diagnostics, code-block contents, prompts,
-and raw ACP messages are excluded. macOS speech stays local to the system speech
-synthesizer; selecting ElevenLabs sends the eligible spoken segment to that
-service.
+raw ACP messages, and provider task names, descriptions, progress, summaries,
+usage, paths, and native status labels are excluded. macOS speech stays local to
+the system speech synthesizer; selecting ElevenLabs sends the eligible spoken
+segment to that service.
 
 ## Direct-process trust
 
@@ -66,8 +67,9 @@ working-folder path.
 ## What remains in memory
 
 Live transcripts, queued follow-ups, agent output, reasoning exposed by the
-provider, tool state, permission requests, narration text, synthesized audio,
-reusable ACP processes, and Mac-context snapshot values are held only for the
+provider, tool state, permission requests, background-task display content,
+narration text, synthesized audio, reusable ACP processes, and Mac-context
+snapshot values are held only for the
 active application process. Opaque ACP bookmarks can restore provider-owned
 context or bounded replay, but Voice Activation does not maintain a durable
 conversation-history database or write captured audio to disk. The provider
@@ -87,8 +89,14 @@ An initial request begins only after an explicit matched wake phrase or a
 profile's push-to-talk release. An active ACP conversation may accept its own
 follow-ups; Voice Activation does not continuously observe the Mac.
 
+Minimizing or hiding the non-activating panel does not cancel provider work.
+Sessions with active tasks remain listed, and close/delete stays disabled until
+their tasks are terminal. Ending a conversation does not erase an active task.
+After process exit, the app shows only **Interrupted when Voice Activation
+exited**; it does not claim the task survived or resumed.
+
 Closing a completed panel hides its retained presentation. Deleting it releases
-that presentation; starting another conversation replaces it. **Copy output**
+that presentation after all tasks are terminal. **Copy output**
 writes the bounded request, response, and diagnostics to the system clipboard,
 after which clipboard retention is owned by macOS and any clipboard manager.
 
@@ -107,6 +115,8 @@ User-visible conversation state is bounded in memory:
 | Timeline text | 64 KiB |
 | Timeline entries | 256 |
 | Current tools | 32 |
+| Live provider sessions | 4 |
+| Background task rows per session | 32 |
 | Details in one thinking group | 128 |
 | Lifecycle notices | 16 |
 | Pending recognized follow-ups | 16 |

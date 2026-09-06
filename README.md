@@ -54,6 +54,10 @@ push-to-talk details, see [Getting started](docs/getting-started.md).
   bounded voice follow-ups, per-input delivery state, provider-exposed thinking
   and tools, spoken permission choices, cancellation, retained output controls,
   and capability-gated ACP session restoration across application launches.
+- Bounded background-task continuity for the exact Claude Agent ACP 0.73.0 AIR
+  contract: up to four live sessions and 32 task rows per session, with exact
+  typed stop controls. Minimizing keeps work visible without stealing focus;
+  process exit is interruption, never proof that a task survived.
 - Ordinary follow-up speech stays opaque agent input. The exact validated
   Claude ACP pin can add it to an active turn; Cursor, Codex, and unsupported
   providers retain it in a bounded FIFO for the next ordinary turn.
@@ -89,6 +93,8 @@ never synthesizes raw tool input or output, tool content, locations, plans,
 thoughts, diagnostics, or ACP frames. The macOS backend uses the local system
 synthesizer. Selecting ElevenLabs sends only admitted response or confirmation
 text to ElevenLabs. Typed spoken text remains visible without being rewritten.
+Provider task names, descriptions, progress, paths, summaries, and native task
+status labels remain visual only.
 
 The app does not maintain a conversation-history database or audio archive. It
 persists only bounded ACP session identifiers, compatibility fingerprints, and

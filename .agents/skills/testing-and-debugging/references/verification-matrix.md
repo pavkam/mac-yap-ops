@@ -16,6 +16,7 @@ output is evidence; remembered output is nostalgia.
 | Actor, callback, lock, queue, pipe, timer, cancellation, audio delegate, delivery | Above plus `swift test --sanitize=thread` |
 | Memory/lifetime corruption | Focused reproduction plus `swift test --sanitize=address`; use Allocations/Leaks when runtime-only |
 | ACP | This matrix plus the required `acp-integration` matrix; local client probe only for compatibility/preset/pin/startup changes |
+| Background task continuity | Capability/decoder/connection/runner fixtures, App registry/panel/audio suites, then sanitizer and isolated non-activating focus lane |
 | UX, layout, animation, sound feedback, accessibility | This matrix plus `ux`; report unexercised manual rows |
 | Resources, plist, signing, bundle, permissions, Keychain identity, login item | `make app`, plist/signature verification, real bundled flow from a stable path when relevant |
 | Public Core API or Swift file structure | `make check` |
@@ -37,6 +38,12 @@ CI runs repository quality, build/test, Thread Sanitizer, and package-app jobs.
 The package job verifies the executable, icon, capture sounds, `Info.plist`, and
 code signature. Use `swift test --skip-build` only immediately after the
 matching successful build above.
+
+For background-task UI, a deterministic local ACP fixture may prove typed event
+flow and exact stop frames without authentication or a model call. It does not
+prove real-provider task survival. The manual bundle row separately verifies
+minimize without focus theft, silent task metadata, live agent-message narration,
+and **Interrupted when Voice Activation exited** after relaunch.
 
 ## Completion report
 

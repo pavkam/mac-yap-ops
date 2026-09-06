@@ -57,6 +57,21 @@ Codex advertises steering, but its idle path may start a detached turn that the
 standard client cannot own to completion. Capability advertisement alone is
 therefore insufficient.
 
+## Async-task extension boundary
+
+Stable ACP v1 has no detached-task lifecycle. The project enables JetBrains AIR
+async tasks only for preset `claude` when the current initialize exchange proves
+adapter `@agentclientprotocol/claude-agent-acp` version `0.73.0` and both peers
+advertise AIR version 1 with `asyncTasks`. Only then may the client retain typed
+spawn/progress/state events between turns or send `_session/async_task/stop`.
+
+The stop response is transport acknowledgement, not terminal task state. Keep
+the exact session/task identities, wait for the provider state update, retain no
+more than 32 task rows per session, and pin at most four active sessions. Process
+exit marks opaque work interrupted; never replay a prompt or claim a task resumed.
+Codex ACP 1.8.0, Cursor 2026.01.23, custom providers, and version drift do not
+enter this path.
+
 ## Project implementation contract
 
 - `ACPLineFramer` rejects frames over 1 MiB.
@@ -68,6 +83,8 @@ therefore insufficient.
   `agent_thought_chunk`, `tool_call`, `tool_call_update`, `plan`,
   `available_commands_update`, `current_mode_update`, `config_option_update`,
   `session_info_update`, and `usage_update`.
+- Negotiated Claude AIR additionally decodes bounded `async_task_spawned`,
+  `async_task_progress`, and `async_task_state_update` events.
 - Unknown updates become bounded diagnostics. Unknown inbound requests receive
   JSON-RPC method-not-found.
 - Cursor blocking requests `cursor/ask_question` and `cursor/create_plan`
@@ -94,3 +111,5 @@ block.
 - [Prompt turns](https://agentclientprotocol.com/protocol/v1/prompt-turn)
 - [Tool calls and permissions](https://agentclientprotocol.com/protocol/v1/tool-calls)
 - [ACP v1 mid-turn input discussion](https://github.com/orgs/agentclientprotocol/discussions/1220)
+- [Claude 0.73.0 AIR implementation](https://github.com/agentclientprotocol/claude-agent-acp/blob/v0.73.0/src/air-extension.ts)
+- [Claude 0.73.0 async tasks](https://github.com/agentclientprotocol/claude-agent-acp/blob/v0.73.0/src/async-tasks.ts)
