@@ -152,7 +152,9 @@ provider instead of converting large integers through floating point.
 Startup sends `initialize` with:
 
 - `protocolVersion: 1`;
-- Voice Activation implementation metadata; and
+- Voice Activation implementation metadata;
+- the optional namespaced version-1 response-channel capability described below;
+  and
 - no filesystem, terminal, terminal-authentication, or elicitation capability.
 
 The provider must select version 1. Any other version closes the connection and
@@ -305,6 +307,97 @@ Prompt completion does not publish success until every accepted event has
 drained through both delivery stages. This preserves wire order even when the
 consumer is slower than the provider.
 
+## Route spoken and display responses
+
+ACP v1 has no standard spoken-response channel. Its `agent_message_chunk`
+contains a content block and optional message identity, but standard annotations
+do not distinguish speech from display. Voice Activation therefore supports
+three compatible levels:
+
+| Level | Contract | Result |
+| --- | --- | --- |
+| Standard ACP legacy | Ordinary unmarked text content | Display unchanged and use the existing Markdown narration path. |
+| Current-adapter compatibility | Exact in-band version-1 markers in ordinary agent text | Separate agent-authored spoken and display text. |
+| Optional provider extension | Exact namespaced version-1 metadata on a text content block | Decode the block directly as spoken or display text. |
+
+Every initialize request advertises the optional extension exactly as:
+
+```json
+{
+  "clientCapabilities": {
+    "_meta": {
+      "ciobanu.org.voiceActivation": {
+        "responseChannels": {
+          "version": 1,
+          "channels": ["spoken", "display"]
+        }
+      }
+    }
+  }
+}
+```
+
+A supporting provider attaches the channel to the text content block, not the
+update object:
+
+```json
+{
+  "sessionUpdate": "agent_message_chunk",
+  "messageId": "answer-7",
+  "content": {
+    "type": "text",
+    "text": "Done — I moved 18 screenshots into Archive.",
+    "_meta": {
+      "ciobanu.org.voiceActivation": {
+        "responseChannel": {
+          "version": 1,
+          "channel": "spoken"
+        }
+      }
+    }
+  }
+}
+```
+
+Only integer `version: 1` and exact channel strings `spoken` and `display` are
+typed. A wrong namespace, placement, version, shape, missing member, or unknown
+channel does not reject the message: the original text takes the legacy path,
+and arbitrary metadata is neither surfaced nor retained. Typed text is literal
+and bypasses marker parsing; providers must not combine typed metadata and the
+marker contract.
+
+The currently configured adapters cannot be assumed to emit the optional
+metadata. Voice Activation instead instructs the agent to begin an ordinary
+message with these exact ASCII strings:
+
+```text
+spoken marker: "[[voice-activation:spoken:v1]]\n"
+display marker: "\n[[voice-activation:display:v1]]\n"
+```
+
+Here `\n` denotes one LF byte; it is not the two literal characters backslash
+and `n`.
+
+The spoken marker must be the first bytes of the message. The display delimiter
+and display section are optional. Markers may be split across JSON-RPC chunks;
+the router retains only bounded undecided marker lookahead and never exposes a
+valid marker. Model compliance is not assumed. An unmarked reply, any first-byte
+mismatch, an unknown marker, or a partial marker at a semantic boundary preserves
+the original bytes as legacy text. Once display mode starts, marker-looking text
+is literal.
+
+Spoken and display fragments both remain visible. Spoken text has its own
+labelled, copyable panel row; display text uses rich Markdown. A complete spoken
+unit is admitted atomically for narration, and an oversized or incompletely
+delivered unit remains visible but silent. Legacy text retains the existing
+Markdown-to-speech formatter. Profile reply-speech policy and the saved inherited
+reply-reading setting gate both paths.
+
+The chosen text-to-speech backend receives only admitted response text. The
+macOS backend uses the local system synthesizer; selecting ElevenLabs sends that
+spoken text to ElevenLabs. Raw tools, plans, thoughts, permissions, diagnostics,
+ACP payloads, code contents, and display-only text never enter synthesis.
+
 ## Deliver generated results
 
 Image, `resource_link`, and embedded resource content blocks become typed result
@@ -451,6 +544,9 @@ cache.
 | One embedded artifact payload | 768 KiB | Reject the artifact. |
 | Tool display content | 32 entries / 64 KiB UTF-8 | Retain a bounded prefix and publish a typed notice. |
 | Pending output delivery | 512 KiB UTF-8 | Discard oldest valid UTF-8 and publish a typed notice. |
+| Response-marker lookahead | Longest exact marker | Fall back to the original legacy bytes on mismatch or boundary. |
+| One exact spoken narration unit | 20,000 characters | Keep it visible and suppress narration atomically. |
+| Retained visible spoken output | 64 KiB UTF-8 | Keep the newest valid suffix behind one omission marker. |
 | Pending diagnostic delivery | 16 KiB UTF-8 | Discard oldest valid UTF-8 and publish a typed notice. |
 | Pending artifact delivery | 4 MiB | Discard oldest complete artifacts and publish a typed notice. |
 | Pending control delivery | 512 KiB | Fail explicitly rather than lose required control. |
@@ -472,6 +568,10 @@ event kinds or identifiers cannot evade the byte and entry caps.
 
 Voice Activation implements stable ACP v1 only. It does not advertise terminal,
 filesystem, MCP, elicitation, or terminal-authentication capabilities.
+
+The response-channel advertisement is an optional namespaced extension, not an
+ACP v1 spoken-channel claim. Providers that ignore it remain fully compatible
+through the exact marker contract or the untouched legacy path.
 
 ACP v1 has no portable mid-turn input method. Voice Activation uses the private
 `_session/steering` extension only for the exact Claude ACP 0.73.0 runtime proof
@@ -513,12 +613,19 @@ record the stored session, turn, task, occurrence, restoration token, or
 fingerprint, nor prompts, transcripts, restored content, permission content,
 Mac-context values, audio, credentials, authorization, or raw ACP payloads.
 
+Response routing adds only content-free event kinds and outcomes. Diagnostics may
+record `agent_message_delta`, `agent_spoken_message_delta`,
+`agent_display_message_delta`, `agent_spoken_narration_ready`, or
+`agent_spoken_narration_suppressed` alongside delivered or dropped outcomes, but
+they never retain response text, surrounding marker content, extension metadata,
+or synthesized bytes.
+
 This feature does not keep ordinary turns running after the Voice Activation or
 adapter process dies. It does not interpret phrases such as “continue”, “again”,
 or “start over”, persist an old Mac-context snapshot, discover provider sessions,
 monitor provider tasks, or reconstruct a conversation locally. It also does not
 add the planned agent-authored conversation-control contract, spoken restoration
-confirmation contract, or typed voice-first response-channel router.
+confirmation contract, or make response channels durable conversation content.
 Direct-command profiles never create, restore, or reset ACP continuity.
 
 The provider fingerprint hashes exactly the version marker, preset, executable,

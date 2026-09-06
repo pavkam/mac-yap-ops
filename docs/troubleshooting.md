@@ -150,6 +150,30 @@ apply.
 See [Agent conversations](agent-conversations.md) for panel controls, recovery,
 and retention.
 
+## An agent ignores the spoken-response contract
+
+ACP v1 has no standard spoken channel, and the current marker contract is an
+agent instruction rather than a provider guarantee. If an agent returns an
+ordinary unmarked `agent_message_chunk`, Voice Activation preserves the response
+as legacy text: it remains visible and, when reply reading is enabled, follows
+the existing Markdown narration path. A malformed metadata extension, unknown
+marker, or partial marker at a semantic boundary also falls back without dropping
+or rewriting the original response.
+
+Inspect only content-free event-kind counts:
+
+```bash
+jq -r 'select(.event == "conversation_audio.agent_event_received") |
+  .fields.event_kind' "$voice_log_path" | sort | uniq -c
+```
+
+`agent_message_delta` is the legacy path. Typed or valid marker-routed responses
+produce `agent_spoken_message_delta`, `agent_spoken_narration_ready`, and optional
+`agent_display_message_delta` events. `agent_spoken_narration_suppressed` means
+the spoken unit stayed visible but was not safe to narrate completely. Do not
+capture the response, marker-adjacent text, `_meta` object, or speech bytes while
+diagnosing this path.
+
 ## A previous agent conversation starts fresh
 
 Restoration is negotiated on every provider process. Voice Activation does not
@@ -211,18 +235,21 @@ turn settles all pending permission requests.
 
 ## Conversation speech or sounds do not play
 
-Confirm the profile's reply-speech setting and **Agent activity sounds** are
-enabled, then save. macOS speech uses a system voice for the selected locale.
-For ElevenLabs, check the Keychain-backed API key, Voice ID, network access, and
-**Test voice**. A 401 preview failure means the global API key was not accepted;
-a 402 means the account needs available credits or payment, not that the app
-lost the credential. A failed cloud synthesis during a conversation falls back
-to macOS speech.
+Confirm the profile's reply-speech setting and, for inherited speech,
+**Read inherited replies aloud**; then save. Also enable **Agent activity
+sounds** if those cues are missing. macOS speech uses a system voice for the
+selected locale. For ElevenLabs, check the Keychain-backed API key, Voice ID,
+network access, and **Test voice**. A 401 preview failure means the global API
+key was not accepted; a 402 means the account needs available credits or
+payment, not that the app lost the credential. A failed cloud synthesis during
+a conversation falls back to macOS speech.
 
-Narration starts from streamed user-facing reply text; code blocks, thought,
-tool, permission, and diagnostic content are not spoken. Speaking during reply
-audio stops playback and becomes a follow-up. Activity sounds yield to
-permissions and audible narration.
+Typed spoken content always remains visible. When speech is enabled, the selected
+backend receives only the admitted spoken unit; choosing ElevenLabs sends that
+text to ElevenLabs. Legacy replies use the existing Markdown formatter. Raw tool
+payloads, plans, thoughts, permissions, diagnostics, ACP frames, and display-only
+text are never synthesized. Speaking during reply audio stops playback and
+becomes a follow-up. Activity sounds yield to permissions and audible narration.
 
 See [Agent conversations](agent-conversations.md) and
 [Sound design](sound-design.md) for the complete behavior.
