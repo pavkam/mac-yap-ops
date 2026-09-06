@@ -18,7 +18,8 @@ struct SpeechSettingsContent: View {
                 Divider()
                 TextToSpeechVoiceSelectionEditor(
                     model: model,
-                    selection: $model.defaultSpeechVoice)
+                    selection: $model.defaultSpeechVoice,
+                    previewContext: .defaultVoice)
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
 

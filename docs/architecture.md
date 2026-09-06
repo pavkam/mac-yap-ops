@@ -61,7 +61,8 @@ VoiceActivationApp
       ├─ RecordingOverlayPresenter → non-activating NSPanel
       ├─ AgentRunPresentation → AgentRunPanelPresenter
       ├─ AgentConversationAudioPresenter
-      │   ├─ AgentSpeechQueue → TextToSpeechBackendRegistry
+      │   ├─ AgentSpeechQueue ─┐
+      │   ├─ Voice preview ────┴→ TextToSpeechBackendRegistry
       │   │   ├─ SystemTextToSpeechBackend
       │   │   └─ ElevenLabsTextToSpeechBackend
       │   └─ AgentActivitySoundLoop
@@ -87,6 +88,10 @@ Agent conversation audio resolves the selected profile's inherited, disabled,
 or explicit speech preference once when the conversation starts. Follow-up
 turns retain that backend, voice, and global backend credential snapshot even
 when Settings changes.
+
+Settings voice previews use that same backend registry and preparation contract,
+including the global credential lookup. The preview player owns only the sample,
+cancellation generation, and playback of the prepared system voice or audio.
 
 The recording overlay is a retained, non-activating AppKit panel hosting one
 SwiftUI hierarchy. It follows the active screen, shows only capture state, and

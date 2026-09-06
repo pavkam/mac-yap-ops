@@ -31,7 +31,7 @@ extension AppModel {
         }
         loadingTextToSpeechBackendIDs.removeAll()
         credentialLoadTask?.cancel()
-        elevenLabsVoicePreview.stop()
+        textToSpeechVoicePreview.stop()
         diagnostics.record(category: .app, event: "app_model.shutdown_finished")
         diagnostics.flush()
         isShutdownComplete = true

@@ -18,7 +18,7 @@ authoritative workflow to spoken replies.
 | Order, lookahead, fallback, bounds, stop | `AgentSpeechQueueTests` |
 | ElevenLabs HTTP shape/errors | `ElevenLabsSpeechClientTests` |
 | Catalog pagination/filtering | `ElevenLabsVoiceCatalogClientTests` |
-| Preview generation/cancellation | `ElevenLabsVoicePreviewPlayerTests` |
+| Backend-neutral preview generation/cancellation | `TextToSpeechVoicePreviewPlayerTests` |
 | Keychain scheduling/bootstrap policy | `AgentSpeechCredentialStoreTests`, `AgentSpeechCredentialBootstrapTests` |
 | Settings/save behavior | `AppModelConversationTests`, `AppModelSettingsTests` |
 | Barge-in/recognition lifecycle | `VoiceActivationCoordinatorConversationTests` and cancellation/capture suites |
@@ -57,6 +57,7 @@ network availability in automated tests.
 | Stop cancels the provider but speech continues or a late phrase starts | Provider cancellation and narration cancellation used different ownership or stale completions remained valid | Increment the speech generation first, cancel synthesis and both players, clear pending requests, and ignore late callbacks. |
 | Follow-up speech is ignored after a reply while the conversation remains active | Conversation recognition starts with a multichannel format after enabling voice processing and emits no transcript updates | Voice processing is usable only when its microphone uplink remains mono; disable it and retain ordinary capture when the processed output exposes multiple channels. Guard with `SpeechVoiceProcessingPolicyTests`. |
 | A picture request reads a URL aloud | Markdown image alt text reached the shared spoken formatter | Remove every attributed run carrying `imageURL`; image labels and destinations are visual content, not narration. Guard with `AgentMarkdownFormatterTests`. |
+| A profile voice test shows raw HTTP 402 and suggests replacing the API key | Credential load and catalog succeed, but one synthesis request returns 402 | Treat 401 as authentication and 402 as credits/payment. Route preview through the common backend registry and show context-scoped actionable feedback. Guard with `AppModelTests` and `TextToSpeechVoicePreviewPlayerTests`. |
 | Tests produce beeps or contact ElevenLabs | A production default adapter escaped the composition boundary | Inject silent players, controlled synthesizers, inert credentials, and URL-session fakes; assert requested effects instead of hearing them. |
 
 Do not label the API “slow” until `speech.synthesis_started`,
@@ -73,7 +74,7 @@ swift test --filter AgentSpeechQueueTests
 swift test --filter AgentConversationAudioLifecycleTests
 swift test --filter ElevenLabsSpeechClientTests
 swift test --filter ElevenLabsVoiceCatalogClientTests
-swift test --filter ElevenLabsVoicePreviewPlayerTests
+swift test --filter TextToSpeechVoicePreviewPlayerTests
 swift test --filter AgentSpeechCredentialStoreTests
 ```
 

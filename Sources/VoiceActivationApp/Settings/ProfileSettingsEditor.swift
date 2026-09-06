@@ -158,7 +158,8 @@ struct ProfileSettingsEditor: View {
             if speechMode == .voice {
                 TextToSpeechVoiceSelectionEditor(
                     model: model,
-                    selection: explicitSpeechSelection)
+                    selection: explicitSpeechSelection,
+                    previewContext: .profile(profile.id))
                     .padding(.leading, 8)
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }

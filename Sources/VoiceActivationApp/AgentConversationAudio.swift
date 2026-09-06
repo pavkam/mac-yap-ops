@@ -45,6 +45,7 @@ final class AgentConversationAudioOrchestrator: AgentConversationAudioPlaying {
                 AgentSpeechConfiguration(selection: selection, credential: nil)
             }
         },
+        backendRegistry: TextToSpeechBackendRegistry? = nil,
         elevenLabsSynthesizer: any ElevenLabsSpeechSynthesizing = ElevenLabsSpeechClient(),
         elevenLabsAudioPlayer: any AgentAudioDataPlaying = SystemAgentAudioDataPlayer(),
         systemSpeechPlayer: any AgentSystemSpeechPlaying = SystemAgentSpeechPlayer(),
@@ -56,6 +57,7 @@ final class AgentConversationAudioOrchestrator: AgentConversationAudioPlaying {
         self.speechConfiguration = speechConfiguration
         self.diagnostics = diagnostics
         speechQueue = AgentSpeechQueue(
+            backendRegistry: backendRegistry,
             synthesizer: elevenLabsSynthesizer,
             audioPlayer: elevenLabsAudioPlayer,
             systemSpeechPlayer: systemSpeechPlayer,

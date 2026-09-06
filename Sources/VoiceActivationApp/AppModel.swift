@@ -75,9 +75,9 @@ final class AppModel {
     }
     /// The in-memory ElevenLabs credential draft; persistence is Keychain-only.
     var elevenLabsAPIKey: String
-    var isPreviewingElevenLabsVoice = false
-    var elevenLabsVoiceStatus: String?
-    var elevenLabsVoiceError: String?
+    var activeTextToSpeechVoicePreviewContext: TextToSpeechVoicePreviewContext?
+    var textToSpeechVoicePreviewFeedback:
+        [TextToSpeechVoicePreviewContext: TextToSpeechVoicePreviewFeedback] = [:]
     var textToSpeechVoicesByBackend: [TextToSpeechBackendID: [TextToSpeechVoice]] = [:]
     var loadingTextToSpeechBackendIDs: Set<TextToSpeechBackendID> = []
     var textToSpeechVoiceErrors: [TextToSpeechBackendID: String] = [:]
@@ -112,12 +112,13 @@ final class AppModel {
     @ObservationIgnored let agentConversationAudioPlayer: any AgentConversationAudioPlaying
     @ObservationIgnored let agentConversationAudioPresenter: AgentConversationAudioPresenter
     @ObservationIgnored let agentSpeechCredentialStore: any AgentSpeechCredentialStoring
-    @ObservationIgnored let elevenLabsVoicePreview: any ElevenLabsVoicePreviewing
+    @ObservationIgnored let textToSpeechVoicePreview: any TextToSpeechVoicePreviewing
     @ObservationIgnored let textToSpeechBackendRegistry: TextToSpeechBackendRegistry
     @ObservationIgnored let agentSpeechSettingsState: AgentSpeechSettingsState
     @ObservationIgnored let diagnostics: any VoiceActivationDiagnosticRecording
     @ObservationIgnored var textToSpeechVoiceCatalogGenerations:
         [TextToSpeechBackendID: UInt64] = [:]
+    @ObservationIgnored var textToSpeechVoicePreviewGeneration: UInt64 = 0
     @ObservationIgnored var agentLifecycleSequence: UInt64 = 0
     @ObservationIgnored var started = false
     @ObservationIgnored var isShutdown = false
@@ -162,8 +163,7 @@ final class AppModel {
             KeychainAgentSpeechCredentialStore(),
         elevenLabsVoiceCatalog: any ElevenLabsVoiceCatalogLoading =
             ElevenLabsVoiceCatalogClient(),
-        elevenLabsVoicePreview: any ElevenLabsVoicePreviewing =
-            ElevenLabsVoicePreviewPlayer(),
+        textToSpeechVoicePreview: (any TextToSpeechVoicePreviewing)? = nil,
         textToSpeechBackendRegistry: TextToSpeechBackendRegistry? = nil,
         macContextAccess: any MacContextAccessControlling =
             UnavailableMacContextAccessController(),
@@ -181,6 +181,8 @@ final class AppModel {
         let agentSpeechSettingsState = AgentSpeechSettingsState(
             defaultSelection: defaultSpeechVoice,
             elevenLabsAPIKey: storedElevenLabsAPIKey)
+        let resolvedTextToSpeechBackendRegistry = textToSpeechBackendRegistry ?? .live(
+            elevenLabsCatalog: elevenLabsVoiceCatalog)
         let resolvedAgentConversationAudioPlayer =
             agentConversationAudioPlayer
             ?? AgentConversationAudioOrchestrator(
@@ -188,7 +190,13 @@ final class AppModel {
                     agentSpeechSettingsState.configuration(
                         for: profile.speechPreference,
                         readsInheritedReplies: readsInheritedReplies)
-                }, diagnostics: diagnostics)
+                },
+                backendRegistry: resolvedTextToSpeechBackendRegistry,
+                diagnostics: diagnostics)
+        let resolvedTextToSpeechVoicePreview = textToSpeechVoicePreview
+            ?? TextToSpeechVoicePreviewPlayer(
+                backendRegistry: resolvedTextToSpeechBackendRegistry,
+                diagnostics: diagnostics)
 
         self.preferences = preferences
         self.shortcut = shortcut
@@ -203,9 +211,8 @@ final class AppModel {
             capturer: macContextCapturer,
             enabled: preferences.capturesMacContext)
         self.agentSpeechCredentialStore = agentSpeechCredentialStore
-        self.elevenLabsVoicePreview = elevenLabsVoicePreview
-        self.textToSpeechBackendRegistry = textToSpeechBackendRegistry ?? .live(
-            elevenLabsCatalog: elevenLabsVoiceCatalog)
+        self.textToSpeechVoicePreview = resolvedTextToSpeechVoicePreview
+        self.textToSpeechBackendRegistry = resolvedTextToSpeechBackendRegistry
         self.agentSpeechSettingsState = agentSpeechSettingsState
         self.diagnostics = diagnostics
         overlayPresenter = RecordingOverlayPresenter(display: recordingOverlay)
@@ -326,61 +333,6 @@ final class AppModel {
     /// Toggles passive listening from the menu without changing individual profile states.
     func togglePassiveListening() {
         setPassiveEnabled(!passiveEnabled)
-    }
-
-    /// Synthesizes and plays a short sample for the currently selected cloud voice.
-    func previewElevenLabsVoice() async {
-        await previewElevenLabsVoice(voiceID: elevenLabsVoiceID)
-    }
-
-    /// Synthesizes and plays a short sample for one profile or default cloud voice.
-    func previewElevenLabsVoice(voiceID requestedVoiceID: String) async {
-        diagnostics.record(category: .ui, event: "app_model.voice_preview_requested")
-        guard !isPreviewingElevenLabsVoice else {
-            diagnostics.record(
-                category: .ui,
-                event: "app_model.voice_preview_ignored",
-                fields: ["reason": "already_previewing"])
-            return
-        }
-        let apiKey = elevenLabsAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        let voiceID = requestedVoiceID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !apiKey.isEmpty else {
-            elevenLabsVoiceError = "Enter an ElevenLabs API key to test a voice."
-            diagnostics.record(
-                category: .ui,
-                event: "app_model.voice_preview_rejected",
-                fields: ["reason": "api_key_missing"])
-            return
-        }
-        guard !voiceID.isEmpty else {
-            elevenLabsVoiceError = "Select an ElevenLabs voice to test it."
-            diagnostics.record(
-                category: .ui,
-                event: "app_model.voice_preview_rejected",
-                fields: ["reason": "voice_missing"])
-            return
-        }
-
-        isPreviewingElevenLabsVoice = true
-        elevenLabsVoiceStatus = nil
-        elevenLabsVoiceError = nil
-        defer { isPreviewingElevenLabsVoice = false }
-        do {
-            try await elevenLabsVoicePreview.play(apiKey: apiKey, voiceID: voiceID)
-            elevenLabsVoiceStatus = "Voice preview finished."
-            diagnostics.record(category: .ui, event: "app_model.voice_preview_finished")
-        } catch is CancellationError {
-            elevenLabsVoicePreview.stop()
-            diagnostics.record(category: .ui, event: "app_model.voice_preview_cancelled")
-        } catch {
-            elevenLabsVoiceError = error.localizedDescription
-            diagnostics.record(
-                category: .ui,
-                event: "app_model.voice_preview_failed",
-                level: .error,
-                fields: ["error_type": String(describing: type(of: error))])
-        }
     }
 
     /// Applies one profile's passive-listening toggle immediately and persists it safely.

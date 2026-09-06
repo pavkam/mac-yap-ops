@@ -7,6 +7,7 @@ import VoiceActivationCore
 struct TextToSpeechVoiceSelectionEditor: View {
     @Bindable var model: AppModel
     @Binding var selection: TextToSpeechVoiceSelection
+    let previewContext: TextToSpeechVoicePreviewContext
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -24,56 +25,74 @@ struct TextToSpeechVoiceSelectionEditor: View {
                 .frame(width: 180)
             }
 
-            HStack(spacing: 8) {
+            HStack(spacing: 10) {
                 Text("Voice")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
                 Spacer()
                 voiceControl
                 if model.isLoadingTextToSpeechVoices(selection.backendID) {
-                    ProgressView().controlSize(.small)
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel("Loading voices")
                 }
                 Button {
                     Task { await model.loadTextToSpeechVoices(for: selection.backendID) }
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
-                .buttonStyle(.borderless)
-                .help("Refresh voices")
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .accessibilityLabel("Refresh voices")
+                .help("Refresh \(selectedBackendName) voices")
                 .disabled(model.isLoadingTextToSpeechVoices(selection.backendID))
-                if selection.backendID == .elevenLabs {
-                    Button {
+
+                Button {
+                    if isPreviewing {
+                        model.stopTextToSpeechVoicePreview()
+                    } else {
                         Task {
-                            await model.previewElevenLabsVoice(
-                                voiceID: selection.voiceID ?? "")
+                            await model.previewTextToSpeechVoice(
+                                selection,
+                                in: previewContext)
                         }
-                    } label: {
-                        Image(systemName: model.isPreviewingElevenLabsVoice
-                            ? "waveform"
-                            : "play.fill")
                     }
-                    .buttonStyle(.borderless)
-                    .help("Test voice")
-                    .disabled(
-                        model.isPreviewingElevenLabsVoice
-                            || selection.voiceID == nil
-                            || model.elevenLabsAPIKey.trimmingCharacters(
-                                in: .whitespacesAndNewlines).isEmpty)
+                } label: {
+                    Label(
+                        isPreviewing ? "Stop" : "Test voice",
+                        systemImage: isPreviewing ? "stop.fill" : "play.fill")
                 }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(isPreviewing ? .secondary : .accentColor)
+                .frame(minWidth: 88)
+                .help(isPreviewing ? "Stop voice preview" : "Play a short voice preview")
             }
 
-            if let error = model.textToSpeechVoiceErrors[selection.backendID]
-                ?? (selection.backendID == .elevenLabs ? model.elevenLabsVoiceError : nil)
-            {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            } else if selection.backendID == .elevenLabs,
-                let status = model.elevenLabsVoiceStatus
-            {
-                Text(status).font(.caption).foregroundStyle(.secondary)
+            if let error = model.textToSpeechVoiceErrors[selection.backendID] {
+                VoiceSelectionStatus(
+                    kind: .failure,
+                    title: "Voices could not load",
+                    detail: error)
+                    .transition(.opacity)
+            } else if isPreviewing {
+                VoiceSelectionStatus(
+                    kind: .progress,
+                    title: "Testing \(selectedBackendName) voice",
+                    detail: "Preparing a short sample, then playing it through the current output.")
+                    .transition(.opacity)
+            } else if let feedback = model.textToSpeechVoicePreviewFeedback[previewContext] {
+                VoiceSelectionStatus(
+                    kind: feedback.kind == .success ? .success : .failure,
+                    title: feedback.title,
+                    detail: feedback.detail)
+                    .transition(.opacity)
             }
         }
+        .animation(.easeOut(duration: 0.16), value: isPreviewing)
+        .animation(
+            .easeOut(duration: 0.16),
+            value: model.textToSpeechVoicePreviewFeedback[previewContext])
     }
 
     @ViewBuilder
@@ -99,7 +118,7 @@ struct TextToSpeechVoiceSelectionEditor: View {
                 }
             }
             .labelsHidden()
-            .frame(maxWidth: 300)
+            .frame(minWidth: 220, maxWidth: 340)
         }
     }
 
@@ -107,6 +126,7 @@ struct TextToSpeechVoiceSelectionEditor: View {
         Binding(
             get: { selection.backendID },
             set: { backendID in
+                model.clearTextToSpeechVoicePreviewFeedback(in: previewContext)
                 let rememberedVoiceID = backendID == .elevenLabs
                     ? model.elevenLabsVoiceID
                     : nil
@@ -120,6 +140,7 @@ struct TextToSpeechVoiceSelectionEditor: View {
         Binding(
             get: { selection.voiceID ?? "" },
             set: {
+                model.clearTextToSpeechVoicePreviewFeedback(in: previewContext)
                 selection = TextToSpeechVoiceSelection(
                     backendID: selection.backendID,
                     voiceID: $0)
@@ -129,5 +150,74 @@ struct TextToSpeechVoiceSelectionEditor: View {
     private func voiceLabel(_ voice: TextToSpeechVoice) -> String {
         guard let localeID = voice.localeID else { return voice.name }
         return "\(voice.name) · \(localeID)"
+    }
+
+    private var isPreviewing: Bool {
+        model.isPreviewingTextToSpeechVoice(in: previewContext)
+    }
+
+    private var selectedBackendName: String {
+        model.textToSpeechBackends.first(where: { $0.id == selection.backendID })?.displayName
+            ?? selection.backendID.rawValue
+    }
+}
+
+private struct VoiceSelectionStatus: View {
+    enum Kind {
+        case progress
+        case success
+        case failure
+    }
+
+    let kind: Kind
+    let title: String
+    let detail: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 9) {
+            statusSymbol
+                .frame(width: 16, height: 16)
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(titleColor)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(backgroundColor, in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var statusSymbol: some View {
+        switch kind {
+        case .progress:
+            ProgressView().controlSize(.small)
+        case .success:
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+        case .failure:
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
+        }
+    }
+
+    private var titleColor: Color {
+        kind == .failure ? .red : .primary
+    }
+
+    private var backgroundColor: Color {
+        switch kind {
+        case .progress: .secondary.opacity(0.08)
+        case .success: .green.opacity(0.08)
+        case .failure: .red.opacity(0.08)
+        }
     }
 }

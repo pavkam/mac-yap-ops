@@ -138,6 +138,12 @@ explicit macOS or ElevenLabs voice. The resolved backend and voice are pinned at
 conversation start. An explicit profile voice remains enabled even when global
 inherited narration is off. ElevenLabs credentials are global and Keychain-backed.
 
+**Test voice** in either the global default or an individual profile uses the
+same backend and credential path as conversation narration. The control shows
+preparing, stop, success, and actionable failure states only on the row that
+started the preview. A 402 response means ElevenLabs needs credits or payment;
+an invalid or missing API key is a 401 response.
+
 When narration is active, Voice Activation removes Markdown formatting and
 queues user-facing agent text while it streams. Complete sentences start
 immediately. An unfinished progress message is flushed when work moves to

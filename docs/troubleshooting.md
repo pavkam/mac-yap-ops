@@ -156,7 +156,10 @@ turn settles all pending permission requests.
 Confirm the profile's reply-speech setting and **Agent activity sounds** are
 enabled, then save. macOS speech uses a system voice for the selected locale.
 For ElevenLabs, check the Keychain-backed API key, Voice ID, network access, and
-**Test voice**. A failed cloud synthesis falls back to macOS speech.
+**Test voice**. A 401 preview failure means the global API key was not accepted;
+a 402 means the account needs available credits or payment, not that the app
+lost the credential. A failed cloud synthesis during a conversation falls back
+to macOS speech.
 
 Narration starts from streamed user-facing reply text; code blocks, thought,
 tool, permission, and diagnostic content are not spoken. Speaking during reply
