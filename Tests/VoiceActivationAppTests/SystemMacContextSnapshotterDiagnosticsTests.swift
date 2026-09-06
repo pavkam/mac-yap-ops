@@ -103,6 +103,64 @@ struct SystemMacContextSnapshotterDiagnosticsTests {
         #expect(!entries.flatMap(\.fields.values).contains("late diagnostic sentinel"))
     }
 
+    @MainActor @Test func capture_WhenDeadlineWinsWhileWorkerIsInFlight_RecordsOnlyWinningTimeout()
+        async
+    {
+        let diagnostics = AppDiagnosticRecorderSpy()
+        let accessibility = InFlightMacContextAccessibilityReader(result: .init(
+            status: .complete,
+            windowTitle: "late title sentinel",
+            documentURL: "file:///late-uri-sentinel",
+            selectedText: "late selection sentinel",
+            resources: [.init(
+                uri: "file:///late-resource-sentinel",
+                name: "late resource-name sentinel")]))
+        let executor = InFlightMacContextExecutor()
+        let clock = ControlledDiagnosticDeadlineClock()
+        let subject = SystemMacContextSnapshotter(
+            workspace: MacContextWorkspaceStub(target: .editor),
+            accessibility: accessibility,
+            executor: executor,
+            clock: clock,
+            diagnostics: diagnostics,
+            now: MacContextNowStub(values: [300, 308, 999]))
+        let capture = Task { await subject.capture(.editor) }
+
+        await accessibility.waitUntilReadEntered()
+        await clock.waitUntilArmed()
+        await clock.fireDeadline()
+        let timedOut = await capture.value
+
+        #expect(timedOut.captureState == .timedOut)
+        let expectedFields = [
+            "capture_state": "timed_out",
+            "terminal_state": "timed_out",
+            "duration_ms": "8",
+            "has_window_title": "false",
+            "has_document_url": "false",
+            "has_selection": "false",
+            "selection_byte_count": "0",
+            "resource_count": "0",
+        ]
+        #expect(diagnostics.snapshot().map(\.event) == [
+            "mac_context.capture_started",
+            "mac_context.capture_finished",
+        ])
+        #expect(diagnostics.snapshot()[1].fields == expectedFields)
+
+        accessibility.release()
+        await executor.waitUntilOperationFinished()
+
+        let entries = diagnostics.snapshot()
+        #expect(entries.count == 2)
+        #expect(entries[1].fields == expectedFields)
+        #expect(!entries.flatMap(\.fields.values).contains("late title sentinel"))
+        #expect(!entries.flatMap(\.fields.values).contains("file:///late-uri-sentinel"))
+        #expect(!entries.flatMap(\.fields.values).contains("late selection sentinel"))
+        #expect(!entries.flatMap(\.fields.values).contains("late resource-name sentinel"))
+        #expect(!entries.flatMap(\.fields.values).contains("file:///late-resource-sentinel"))
+    }
+
     @MainActor @Test func capture_WhenCancelledBeforeWorkerStarts_RecordsCancelledMetadataOnce()
         async
     {
@@ -209,6 +267,126 @@ private struct ImmediateDiagnosticClock: MacContextClock {
 private struct WaitingDiagnosticClock: MacContextClock {
     func sleep(for duration: Duration) async {
         try? await ContinuousClock().sleep(for: .seconds(3_600))
+    }
+}
+
+private actor ControlledDiagnosticDeadlineClock: MacContextClock {
+    private var deadlineContinuation: CheckedContinuation<Void, Never>?
+    private var armedWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func sleep(for duration: Duration) async {
+        await withCheckedContinuation { continuation in
+            deadlineContinuation = continuation
+            let waiters = armedWaiters
+            armedWaiters.removeAll()
+            for waiter in waiters {
+                waiter.resume()
+            }
+        }
+    }
+
+    func waitUntilArmed() async {
+        await withCheckedContinuation { continuation in
+            if deadlineContinuation != nil {
+                continuation.resume()
+            } else {
+                armedWaiters.append(continuation)
+            }
+        }
+    }
+
+    func fireDeadline() {
+        let continuation = deadlineContinuation
+        deadlineContinuation = nil
+        continuation?.resume()
+    }
+}
+
+private final class InFlightMacContextAccessibilityReader: AccessibilityContextReading,
+    @unchecked Sendable
+{
+    private let condition = NSCondition()
+    private let result: AccessibilityContextReadResult
+    private var hasEnteredRead = false
+    private var isReleased = false
+    private var enteredWaiters: [CheckedContinuation<Void, Never>] = []
+
+    init(result: AccessibilityContextReadResult) {
+        self.result = result
+    }
+
+    func readContext(processIdentifier: Int32) -> AccessibilityContextReadResult {
+        let waiters = condition.withLock { () -> [CheckedContinuation<Void, Never>] in
+            hasEnteredRead = true
+            let waiters = enteredWaiters
+            enteredWaiters.removeAll()
+            return waiters
+        }
+        for waiter in waiters {
+            waiter.resume()
+        }
+
+        condition.lock()
+        while !isReleased {
+            condition.wait()
+        }
+        condition.unlock()
+        return result
+    }
+
+    func waitUntilReadEntered() async {
+        await withCheckedContinuation { continuation in
+            let shouldResume = condition.withLock { () -> Bool in
+                guard !hasEnteredRead else { return true }
+                enteredWaiters.append(continuation)
+                return false
+            }
+            if shouldResume {
+                continuation.resume()
+            }
+        }
+    }
+
+    func release() {
+        condition.lock()
+        isReleased = true
+        condition.broadcast()
+        condition.unlock()
+    }
+}
+
+private final class InFlightMacContextExecutor: MacContextExecuting, @unchecked Sendable {
+    private let condition = NSCondition()
+    private let queue = DispatchQueue(label: "voice-activation.tests.in-flight-mac-context")
+    private var hasFinishedOperation = false
+    private var finishedWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func execute(_ operation: @escaping @Sendable () -> Void) {
+        queue.async { [self] in
+            operation()
+            let waiters = condition.withLock { () -> [CheckedContinuation<Void, Never>] in
+                hasFinishedOperation = true
+                let waiters = finishedWaiters
+                finishedWaiters.removeAll()
+                return waiters
+            }
+            for waiter in waiters {
+                waiter.resume()
+            }
+        }
+    }
+
+    func waitUntilOperationFinished() async {
+        await withCheckedContinuation { continuation in
+            let shouldResume = condition.withLock { () -> Bool in
+                guard !hasFinishedOperation else { return true }
+                finishedWaiters.append(continuation)
+                return false
+            }
+            if shouldResume {
+                continuation.resume()
+            }
+        }
     }
 }
 
