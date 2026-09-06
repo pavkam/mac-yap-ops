@@ -31,7 +31,7 @@ extension AppModelTests {
         await store.releaseReconciliation()
         await permission.waitUntilWaiting()
         permission.resolve(true)
-        await start.value
+        _ = await start.value
 
         let interrupted = AgentInterruptedWorkMarker(
             key: marker.key,
@@ -75,6 +75,81 @@ extension AppModelTests {
         }
         #expect(failures.count == 1)
         #expect(failures.first?.fields == ["failure_category": "launch_reconcile"])
+    }
+
+    @MainActor @Test
+    func start_WhenCancelledDuringReconciliation_StopsWithoutEffectsAndCanRetry()
+        async throws
+    {
+        let store = AppModelContinuityStoreSpy()
+        await store.delayReconciliation()
+        let diagnostics = AppDiagnosticRecorderSpy()
+        let credentials = AgentSpeechCredentialStoreSpy(apiKey: "configured")
+        let fixture = try Fixture(
+            continuityStore: store,
+            agentSpeechCredentialStore: credentials,
+            diagnostics: diagnostics)
+        let startup = Task { @MainActor in await fixture.model.start() }
+        await store.waitUntilReconciling()
+
+        startup.cancel()
+        await store.releaseReconciliation()
+        let firstResult = await startup.value
+
+        #expect(!firstResult)
+        #expect(!fixture.model.isStartupReady)
+        #expect(fixture.macContextAccess.statusChecks == 0)
+        #expect(credentials.loadCount == 0)
+        #expect(fixture.shortcut.startedProfiles.isEmpty)
+        #expect(fixture.speech.startCount == 0)
+        #expect(diagnostics.snapshot().allSatisfy {
+            $0.event != "continuity_store.read_failed"
+        })
+
+        let secondResult = await fixture.model.start()
+
+        #expect(secondResult)
+        #expect(fixture.model.isStartupReady)
+        #expect(await store.recordedCalls().filter { $0 == .reconcile }.count == 2)
+        #expect(fixture.speech.startCount == 1)
+    }
+
+    @MainActor @Test
+    func externalActivationToggleAndPushToTalk_BeforeReconciliation_HaveNoRuntimeEffects()
+        async throws
+    {
+        let profile = try makeAgentProfile(pushToTalkHotKey: .defaultValue)
+        let store = AppModelContinuityStoreSpy()
+        await store.delayReconciliation()
+        let permission = PermissionRequestGate()
+        let fixture = try Fixture(
+            profiles: [profile],
+            continuityStore: store,
+            permissionRequest: { await permission.request() },
+            isExecutableFile: { _ in true },
+            isDirectory: { _ in true })
+        let startup = Task { @MainActor in await fixture.model.start() }
+        await store.waitUntilReconciling()
+
+        fixture.model.applicationDidBecomeActive()
+        fixture.model.setPassiveEnabled(false)
+        fixture.model.setPassiveEnabled(true)
+        fixture.model.pushToTalkPressed(profileID: profile.id)
+
+        #expect(fixture.macContextAccess.statusChecks == 0)
+        #expect(fixture.model.heldHotKeyProfileID == nil)
+        #expect(fixture.shortcut.startedProfiles.isEmpty)
+        #expect(fixture.speech.startCount == 0)
+        #expect(fixture.model.passiveEnabled)
+        #expect(fixture.preferences.passiveEnabled)
+
+        await store.releaseReconciliation()
+        await permission.waitUntilWaiting()
+        #expect(permission.requestCount == 1)
+        permission.resolve(true)
+        #expect(await startup.value)
+        #expect(fixture.model.isStartupReady)
+        #expect(fixture.speech.startCount == 1)
     }
 
     @MainActor @Test

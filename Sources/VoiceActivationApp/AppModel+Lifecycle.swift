@@ -4,7 +4,15 @@
 import Foundation
 import VoiceActivationCore
 
+enum AppModelStartupPhase {
+    case idle
+    case starting
+    case ready
+}
+
 extension AppModel {
+    var isStartupReady: Bool { startupPhase == .ready }
+
     /// Idempotently stops every adapter and flushes diagnostics before application exit.
     func shutdown() {
         guard !isShutdown else {
@@ -73,31 +81,61 @@ extension AppModel {
     }
 
     /// Wires coordinator callbacks, restores shortcuts, and starts permitted passive listening.
-    func start() async {
-        guard !started, !isShutdown else {
+    @discardableResult
+    func start() async -> Bool {
+        guard !isShutdown else {
             diagnostics.record(
                 category: .app,
                 event: "app_model.start_ignored",
-                fields: [
-                    "already_started": String(started),
-                    "shutdown": String(isShutdown),
-                ])
-            return
+                fields: ["reason": "shutdown"])
+            return false
         }
-        started = true
+        switch startupPhase {
+        case .ready:
+            diagnostics.record(
+                category: .app,
+                event: "app_model.start_ignored",
+                fields: ["reason": "already_ready"])
+            return true
+        case .starting:
+            diagnostics.record(
+                category: .app,
+                event: "app_model.start_ignored",
+                fields: ["reason": "already_starting"])
+            return false
+        case .idle:
+            break
+        }
+        startupPhase = .starting
         diagnostics.record(category: .app, event: "app_model.start_started")
         do {
             let interrupted = try await continuityStore.reconcileInterruptedWork()
-            guard !isShutdown else { return }
+            guard !Task.isCancelled, !isShutdown else {
+                startupPhase = .idle
+                diagnostics.record(category: .app, event: "app_model.start_cancelled")
+                return false
+            }
             publishInterruptedAgentWork(interrupted)
+        } catch is CancellationError {
+            startupPhase = .idle
+            diagnostics.record(category: .app, event: "app_model.start_cancelled")
+            return false
         } catch {
+            guard !Task.isCancelled, !isShutdown else {
+                startupPhase = .idle
+                diagnostics.record(category: .app, event: "app_model.start_cancelled")
+                return false
+            }
             diagnostics.record(
                 category: .app,
                 event: "continuity_store.read_failed",
                 level: .error,
                 fields: ["failure_category": "launch_reconcile"])
         }
-        guard !isShutdown else { return }
+        guard !isShutdown else {
+            startupPhase = .idle
+            return false
+        }
         refreshMacContextAccessStatus()
         startCredentialLoad()
         coordinator.onStateChange = { [weak self] in
@@ -156,24 +194,28 @@ extension AppModel {
         }
 
         guard passiveEnabled else {
+            startupPhase = .ready
             diagnostics.record(
                 category: .app,
                 event: "app_model.start_finished",
                 fields: ["passive_listening_started": "false"])
-            return
+            return true
         }
         guard await ensurePermissions(), passiveEnabled, !isShutdown else {
+            startupPhase = isShutdown ? .idle : .ready
             diagnostics.record(
                 category: .app,
                 event: "app_model.start_finished",
                 fields: ["passive_listening_started": "false"])
-            return
+            return !isShutdown
         }
         coordinator.setPassiveEnabled(true)
+        startupPhase = .ready
         diagnostics.record(
             category: .app,
             event: "app_model.start_finished",
             fields: ["passive_listening_started": "true"])
+        return true
     }
 
     /// Replaces launch interruption state with a deterministic bounded snapshot.
@@ -324,6 +366,19 @@ extension AppModel {
 
     /// Ensures every inherited or profile-specific speech selection can run.
     func validateAgentSpeechSettings(profiles: [WakeProfile]) throws {
+        try validateAgentSpeechSettings(
+            profiles: profiles,
+            readsAgentRepliesAloud: readsAgentRepliesAloud,
+            defaultSpeechVoice: defaultSpeechVoice,
+            elevenLabsAPIKey: elevenLabsAPIKey)
+    }
+
+    func validateAgentSpeechSettings(
+        profiles: [WakeProfile],
+        readsAgentRepliesAloud: Bool,
+        defaultSpeechVoice: TextToSpeechVoiceSelection,
+        elevenLabsAPIKey: String
+    ) throws {
         var selections: [TextToSpeechVoiceSelection] = []
         if readsAgentRepliesAloud {
             selections.append(defaultSpeechVoice)
@@ -377,11 +432,15 @@ extension AppModel {
             category: .hotKey,
             event: "app_model.push_to_talk_pressed",
             fields: ["profile_id": profileID.uuidString])
-        guard !isShutdown, heldHotKeyProfileID == nil else {
+        guard isStartupReady, !isShutdown, heldHotKeyProfileID == nil else {
             diagnostics.record(
                 category: .hotKey,
                 event: "app_model.push_to_talk_ignored",
-                fields: ["reason": isShutdown ? "shutdown" : "another_binding_held"])
+                fields: [
+                    "reason": !isStartupReady
+                        ? "startup_not_ready"
+                        : isShutdown ? "shutdown" : "another_binding_held",
+                ])
             return
         }
         heldHotKeyProfileID = profileID

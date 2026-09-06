@@ -122,7 +122,8 @@ final class AppModel {
     @ObservationIgnored var textToSpeechVoiceCatalogGenerations:
         [TextToSpeechBackendID: UInt64] = [:]
     @ObservationIgnored var agentLifecycleSequence: UInt64 = 0
-    @ObservationIgnored var started = false
+    @ObservationIgnored var settingsSaveGeneration: UInt64 = 0
+    @ObservationIgnored var startupPhase: AppModelStartupPhase = .idle
     @ObservationIgnored var isShutdown = false
     @ObservationIgnored var permissionGranted = false
     @ObservationIgnored var permissionTask: Task<Bool, Never>?
@@ -313,6 +314,13 @@ final class AppModel {
         }
         passiveEnabled = enabled
         preferences.passiveEnabled = enabled
+        guard isStartupReady else {
+            diagnostics.record(
+                category: .ui,
+                event: "app_model.passive_toggle_deferred",
+                fields: ["enabled": String(enabled)])
+            return
+        }
         if enabled {
             Task(priority: .userInitiated) { @MainActor [weak self] in
                 guard let self, self.passiveEnabled else { return }
@@ -410,151 +418,6 @@ final class AppModel {
             wakeProfiles[draftIndex].isEnabled = enabled
         }
         coordinator.refreshConfiguration()
-    }
-
-    @discardableResult
-    /// Validates all drafts, atomically applies runtime changes, and persists valid settings.
-    ///
-    /// - Returns: `true` when Settings may close; otherwise `settingsError` explains the failure.
-    func saveSettings() async -> Bool {
-        guard !isSavingSettings else {
-            diagnostics.record(
-                category: .settings,
-                event: "settings.save_ignored",
-                fields: ["reason": "already_saving"])
-            return false
-        }
-        isSavingSettings = true
-        defer { isSavingSettings = false }
-        diagnostics.record(
-            category: .settings,
-            event: "settings.save_started",
-            fields: [
-                "profile_count": String(wakeProfiles.count),
-                "speech_backend": defaultSpeechVoice.backendID.rawValue,
-                "reads_replies": String(readsAgentRepliesAloud),
-                "plays_working_sound": String(playsAgentWorkingSound),
-            ])
-
-        let profiles: [WakeProfile]
-        do {
-            profiles = try wakeProfiles.map { try $0.validatedProfile() }
-            try WakeProfileCollectionValidator.validate(profiles)
-            try validateFileSystem(profiles)
-            try validateAgentSpeechSettings(profiles: profiles)
-        } catch {
-            settingsError = error.localizedDescription
-            diagnostics.record(
-                category: .settings,
-                event: "settings.save_failed",
-                level: .error,
-                fields: [
-                    "stage": "validation",
-                    "error_type": String(describing: type(of: error)),
-                ])
-            return false
-        }
-
-        do {
-            try registerShortcuts(profiles)
-        } catch {
-            settingsError = error.localizedDescription
-            diagnostics.record(
-                category: .settings,
-                event: "settings.save_failed",
-                level: .error,
-                fields: [
-                    "stage": "hot_key_registration",
-                    "error_type": String(describing: type(of: error)),
-                ])
-            return false
-        }
-
-        let normalizedAPIKey = elevenLabsAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        credentialLoadTask?.cancel()
-        do {
-            try agentSpeechCredentialStore.saveElevenLabsAPIKey(
-                normalizedAPIKey.isEmpty ? nil : normalizedAPIKey)
-        } catch {
-            try? registerShortcuts(activeWakeProfiles)
-            settingsError = error.localizedDescription
-            diagnostics.record(
-                category: .settings,
-                event: "settings.save_failed",
-                level: .error,
-                fields: [
-                    "stage": "credential_storage",
-                    "error_type": String(describing: type(of: error)),
-                ])
-            return false
-        }
-
-        let profileIDsToReset = agentProfileIDsToReset(
-            oldProfiles: activeWakeProfiles,
-            newProfiles: profiles)
-        let savedDrafts = wakeProfiles
-        let savedActiveProfiles = activeWakeProfiles
-        let savedLocaleID = localeID
-        let savedReadsAgentRepliesAloud = readsAgentRepliesAloud
-        let savedPlaysAgentWorkingSound = playsAgentWorkingSound
-        let savedCapturesMacContext = capturesMacContext
-        let savedDefaultSpeechVoice = defaultSpeechVoice
-        let savedElevenLabsVoiceID = elevenLabsVoiceID
-        if !profileIDsToReset.isEmpty {
-            await agentRunner.reset(profileIDs: profileIDsToReset)
-            discardInterruptedAgentWork(profileIDs: profileIDsToReset)
-        }
-        guard !Task.isCancelled,
-            !isShutdown,
-            wakeProfiles == savedDrafts,
-            activeWakeProfiles == savedActiveProfiles,
-            localeID == savedLocaleID,
-            readsAgentRepliesAloud == savedReadsAgentRepliesAloud,
-            playsAgentWorkingSound == savedPlaysAgentWorkingSound,
-            capturesMacContext == savedCapturesMacContext,
-            defaultSpeechVoice == savedDefaultSpeechVoice,
-            elevenLabsVoiceID == savedElevenLabsVoiceID
-        else {
-            try? registerShortcuts(activeWakeProfiles)
-            settingsError = "Settings changed while saving. Review them and save again."
-            diagnostics.record(
-                category: .settings,
-                event: "settings.save_failed",
-                level: .warning,
-                fields: ["stage": "stale_after_agent_reset"])
-            return false
-        }
-        preferences.wakeProfiles = profiles
-        preferences.localeID = localeID
-        preferences.readsAgentRepliesAloud = readsAgentRepliesAloud
-        preferences.playsAgentWorkingSound = playsAgentWorkingSound
-        preferences.agentSpeechProvider = agentSpeechProvider
-        preferences.elevenLabsVoiceID = elevenLabsVoiceID
-        preferences.defaultSpeechVoice = defaultSpeechVoice
-        elevenLabsAPIKey = normalizedAPIKey
-        elevenLabsVoiceID = preferences.elevenLabsVoiceID
-        let previousSpeechConfiguration = agentSpeechSettingsState.configuration
-        agentSpeechSettingsState.update(
-            defaultSelection: defaultSpeechVoice,
-            elevenLabsAPIKey: normalizedAPIKey)
-        agentConversationAudioPresenter.refreshSettings()
-        activeWakeProfiles = profiles
-        wakeProfiles = activeWakeProfiles.map(WakeProfileDraft.init)
-        localeID = preferences.localeID
-        preferences.capturesMacContext = capturesMacContext
-        macContextCapturer.setEnabled(capturesMacContext)
-        settingsError = nil
-        coordinator.refreshConfiguration()
-        diagnostics.record(
-            category: .settings,
-            event: "settings.save_finished",
-            fields: [
-                "profile_count": String(profiles.count),
-                "reset_agent_session_count": String(profileIDsToReset.count),
-                "speech_configuration_changed": String(
-                    previousSpeechConfiguration != agentSpeechSettingsState.configuration),
-            ])
-        return true
     }
 
 }

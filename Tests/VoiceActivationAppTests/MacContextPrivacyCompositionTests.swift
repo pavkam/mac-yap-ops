@@ -75,22 +75,24 @@ extension AppModelTests {
 
     @MainActor @Test
     func applicationActivationMonitor_WhenNotificationsArrive_RefreshesOncePerActiveEventOnly()
-        throws
+        async throws
     {
         let notificationCenter = NotificationCenter()
         let access = MacContextAccessSpy(status: .authorized)
         let fixture = try Fixture(macContextAccess: access)
+        #expect(await fixture.model.start())
+        let startupStatusChecks = access.statusChecks
         let monitor = ApplicationActivationMonitor(notificationCenter: notificationCenter)
         monitor.start(model: fixture.model)
 
         notificationCenter.post(name: NSApplication.didResignActiveNotification, object: nil)
         notificationCenter.post(name: NSApplication.didHideNotification, object: nil)
-        #expect(access.statusChecks == 0)
+        #expect(access.statusChecks == startupStatusChecks)
 
         notificationCenter.post(name: NSApplication.didBecomeActiveNotification, object: nil)
         notificationCenter.post(name: NSApplication.didBecomeActiveNotification, object: nil)
 
-        #expect(access.statusChecks == 2)
+        #expect(access.statusChecks == startupStatusChecks + 2)
         #expect(access.promptingChecks == 0)
         #expect(fixture.model.macContextAccessStatus == .authorized)
         monitor.stop()

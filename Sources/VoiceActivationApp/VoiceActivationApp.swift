@@ -10,7 +10,7 @@ import VoiceActivationCore
 struct VoiceActivationApp: App {
     @State private var model: AppModel
     @State private var launchAtLogin: LaunchAtLoginSetting
-    @State private var applicationActivationMonitor: ApplicationActivationMonitor
+    @State private var applicationStartup: ApplicationStartup
 
     @MainActor
     init() {
@@ -72,25 +72,32 @@ struct VoiceActivationApp: App {
         let continuityStore = UserDefaultsAgentContinuityStore(
             defaults: .standard,
             diagnostics: diagnostics)
-        let agentRunner = ACPAgentRunner(
-            continuityStore: continuityStore,
-            diagnostics: diagnostics)
         let macContextSnapshotter = SystemMacContextSnapshotter()
         let macContextAccess = MacContextAccessController()
-        let model = AppModel(
-            preferences: preferences,
-            agentRunner: agentRunner,
+        let composition = VoiceActivationAppComposition.make(
             continuityStore: continuityStore,
-            agentSpeechCredentialStore: credentialStore,
-            macContextAccess: macContextAccess,
-            macContextCapturer: macContextSnapshotter,
-            diagnostics: diagnostics)
-        let applicationActivationMonitor = ApplicationActivationMonitor()
-        applicationActivationMonitor.start(model: model)
-        _model = State(initialValue: model)
+            activationMonitor: ApplicationActivationMonitor(),
+            makeAgentRunner: { sharedStore in
+                ACPAgentRunner(
+                    continuityStore: sharedStore,
+                    diagnostics: diagnostics)
+            },
+            makeModel: { agentRunner, sharedStore in
+                AppModel(
+                    preferences: preferences,
+                    agentRunner: agentRunner,
+                    continuityStore: sharedStore,
+                    agentSpeechCredentialStore: credentialStore,
+                    macContextAccess: macContextAccess,
+                    macContextCapturer: macContextSnapshotter,
+                    startsAutomatically: false,
+                    diagnostics: diagnostics)
+            })
+        _model = State(initialValue: composition.model)
         _launchAtLogin = State(
             initialValue: LaunchAtLoginSetting(diagnostics: diagnostics))
-        _applicationActivationMonitor = State(initialValue: applicationActivationMonitor)
+        _applicationStartup = State(initialValue: composition.startup)
+        composition.startup.start()
     }
 
     var body: some Scene {

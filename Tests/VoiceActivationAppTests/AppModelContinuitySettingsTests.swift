@@ -8,6 +8,60 @@ import Testing
 @testable import VoiceActivationCore
 
 extension AppModelTests {
+    enum AgentProfileInvalidationEdit: CaseIterable, Sendable {
+        case fingerprintChanged
+        case removed
+    }
+
+    @MainActor @Test(arguments: AgentProfileInvalidationEdit.allCases)
+    func saveSettings_WhenAgentProfileInvalidates_FencesItsScheduledContextTurn(
+        edit: AgentProfileInvalidationEdit
+    ) async throws {
+        let profile = try makeAgentProfile(
+            displayName: "Agent",
+            executablePath: "/agents/original",
+            pushToTalkHotKey: .defaultValue)
+        let retained = try commandProfile()
+        let store = AppModelContinuityStoreSpy(
+            bookmarks: [try continuityBookmark(for: profile)],
+            markers: [continuityMarker(for: profile, index: 1)])
+        let runner = AppModelAgentRunnerSpy(continuityStore: store)
+        let target = MacContextTarget(
+            processIdentifier: 42,
+            applicationName: "Safari",
+            bundleIdentifier: "com.apple.Safari")
+        let context = MacContextCapturerSpy(target: target)
+        context.delayCapture()
+        let fixture = try Fixture(
+            profiles: [profile, retained],
+            agentRunner: runner,
+            continuityStore: store,
+            macContextCapturer: context,
+            isExecutableFile: { _ in true },
+            isDirectory: { _ in true })
+        #expect(await fixture.model.start())
+        fixture.model.coordinator.pushToTalkPressed(profileID: profile.id)
+        fixture.speech.emit("inspect this")
+        fixture.model.coordinator.pushToTalkReleased()
+        await context.waitUntilCapturing()
+        let scheduledTurn = fixture.model.coordinator.executionTask
+        switch edit {
+        case .fingerprintChanged:
+            fixture.model.wakeProfiles[0].agentHarness.executablePath = "/agents/replacement"
+        case .removed:
+            fixture.model.wakeProfiles = [WakeProfileDraft(profile: retained)]
+        }
+
+        #expect(await fixture.model.saveSettings())
+        context.releaseCapture()
+        await scheduledTurn?.value
+
+        #expect(context.captureCancellationCount == 1)
+        #expect(await runner.recordedInvocations().isEmpty)
+        #expect((await store.snapshot()).bookmarks.isEmpty)
+        #expect((await store.snapshot()).interruptedWork.isEmpty)
+    }
+
     @MainActor @Test
     func saveSettings_WhenAgentProfileIsRemoved_ResetsItsSessionAndBookmark() async throws {
         let removed = try makeAgentProfile()
@@ -198,34 +252,83 @@ extension AppModelTests {
     }
 
     @MainActor @Test
-    func saveSettings_WhenResetSuspendsAndSaveIsCancelled_DoesNotApplyStaleProfile()
+    func saveSettings_WhenCancelledBeforeReset_PreservesContinuityRecords()
         async throws
     {
         let profile = try makeAgentProfile(executablePath: "/agents/original")
-        let store = AppModelContinuityStoreSpy(bookmarks: [try continuityBookmark(for: profile)])
+        let bookmark = try continuityBookmark(for: profile)
+        let marker = continuityMarker(for: profile, index: 1)
+        let store = AppModelContinuityStoreSpy(bookmarks: [bookmark], markers: [marker])
         let runner = AppModelAgentRunnerSpy(continuityStore: store)
-        await runner.delayReset()
         let fixture = try Fixture(
             profiles: [profile],
             agentRunner: runner,
             continuityStore: store,
             isExecutableFile: { _ in true },
             isDirectory: { _ in true })
+        fixture.model.wakeProfiles[0].agentHarness.executablePath = "/agents/replacement"
+        let entry = AppModelSaveEntryGate()
+        let save = Task { @MainActor in
+            await entry.wait()
+            return await fixture.model.saveSettings()
+        }
+        await entry.waitUntilEntered()
+
+        save.cancel()
+        await entry.open()
+
+        #expect(!(await save.value))
+        #expect(await runner.recordedResets().isEmpty)
+        #expect((await store.snapshot()).bookmarks == [bookmark])
+        #expect((await store.snapshot()).interruptedWork == [marker])
+        #expect(fixture.model.activeWakeProfiles == [profile])
+        #expect(fixture.preferences.wakeProfiles == [profile])
+    }
+
+    @MainActor @Test
+    func saveSettings_WhenCancelledAfterResetBegins_CommitsSnapshotAndPreservesNewDraft()
+        async throws
+    {
+        let profile = try makeAgentProfile(executablePath: "/agents/original")
+        let bookmark = try continuityBookmark(for: profile)
+        let marker = continuityMarker(for: profile, index: 1)
+        let store = AppModelContinuityStoreSpy(bookmarks: [bookmark], markers: [marker])
+        let runner = AppModelAgentRunnerSpy(continuityStore: store)
+        await runner.delayReset()
+        let credentials = AgentSpeechCredentialStoreSpy()
+        let fixture = try Fixture(
+            profiles: [profile],
+            agentRunner: runner,
+            continuityStore: store,
+            agentSpeechCredentialStore: credentials,
+            isExecutableFile: { _ in true },
+            isDirectory: { _ in true })
         fixture.model.wakeProfiles[0].agentHarness.executablePath = "/agents/first-draft"
         fixture.model.capturesMacContext = false
+        fixture.model.elevenLabsAPIKey = " captured-key "
         let save = Task { @MainActor in await fixture.model.saveSettings() }
         await runner.waitUntilResetIsWaiting()
 
         fixture.model.wakeProfiles[0].agentHarness.executablePath = "/agents/newer-draft"
+        fixture.model.elevenLabsAPIKey = "newer-key"
         save.cancel()
+        let overlappingSave = await fixture.model.saveSettings()
         await runner.releaseReset()
 
-        #expect(!(await save.value))
-        #expect(fixture.model.activeWakeProfiles == [profile])
-        #expect(fixture.preferences.wakeProfiles == [profile])
+        #expect(!overlappingSave)
+        #expect(await save.value)
+        #expect(fixture.model.activeWakeProfiles[0].action.agentConfiguration?.executablePath
+            == "/agents/first-draft")
+        #expect(fixture.preferences.wakeProfiles[0].action.agentConfiguration?.executablePath
+            == "/agents/first-draft")
         #expect(fixture.model.wakeProfiles[0].agentHarness.executablePath == "/agents/newer-draft")
-        #expect(fixture.preferences.capturesMacContext)
-        #expect(fixture.shortcut.registeredProfiles == [profile])
+        #expect(fixture.model.elevenLabsAPIKey == "newer-key")
+        #expect(credentials.apiKey == "captured-key")
+        #expect(!fixture.preferences.capturesMacContext)
+        #expect(fixture.shortcut.registeredProfiles[0].action.agentConfiguration?.executablePath
+            == "/agents/first-draft")
+        #expect((await store.snapshot()).bookmarks.isEmpty)
+        #expect((await store.snapshot()).interruptedWork.isEmpty)
     }
 
     @MainActor @Test
@@ -269,6 +372,34 @@ extension AppModelTests {
             executablePath: "/usr/bin/open",
             argumentTemplates: ["https://example.com/?q={urlText}"],
             accent: .green)
+    }
+}
+
+private actor AppModelSaveEntryGate {
+    private var isOpen = false
+    private var didEnter = false
+    private var entryWaiters: [CheckedContinuation<Void, Never>] = []
+    private var blocked: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        didEnter = true
+        let waiters = entryWaiters
+        entryWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+        guard !isOpen else { return }
+        await withCheckedContinuation { blocked.append($0) }
+    }
+
+    func waitUntilEntered() async {
+        guard !didEnter else { return }
+        await withCheckedContinuation { entryWaiters.append($0) }
+    }
+
+    func open() {
+        isOpen = true
+        let waiters = blocked
+        blocked.removeAll()
+        waiters.forEach { $0.resume() }
     }
 }
 

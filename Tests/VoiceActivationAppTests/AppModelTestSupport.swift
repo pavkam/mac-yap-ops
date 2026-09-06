@@ -251,6 +251,11 @@ final class MacContextCapturerSpy: MacContextCapturing {
     var snapshot: MacContextSnapshot?
     var currentTargetCount = 0
     var captureCount = 0
+    private(set) var captureCancellationCount = 0
+    private var delaysCapture = false
+    private var captureContinuation: CheckedContinuation<MacContextSnapshot, Never>?
+    private var delayedResult: MacContextSnapshot?
+    private var captureWaiters: [CheckedContinuation<Void, Never>] = []
 
     init(target: MacContextTarget? = nil, snapshot: MacContextSnapshot? = nil) {
         self.target = target
@@ -264,13 +269,45 @@ final class MacContextCapturerSpy: MacContextCapturing {
 
     func capture(_ target: MacContextTarget) async -> MacContextSnapshot {
         captureCount += 1
-        return snapshot ?? MacContextSnapshot.normalized(
+        let result = snapshot ?? MacContextSnapshot.normalized(
             state: .targetUnavailable,
             target: target,
             windowTitle: nil,
             documentURL: nil,
             selectedText: nil,
             resources: [])
+        let waiters = captureWaiters
+        captureWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+        guard delaysCapture else { return result }
+        delayedResult = result
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { captureContinuation = $0 }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.captureCancellationCount += 1
+                self.releaseCapture(returning: result)
+            }
+        }
+    }
+
+    func delayCapture() { delaysCapture = true }
+
+    func waitUntilCapturing() async {
+        guard captureCount == 0 else { return }
+        await withCheckedContinuation { captureWaiters.append($0) }
+    }
+
+    func releaseCapture(returning result: MacContextSnapshot? = nil) {
+        delaysCapture = false
+        guard let continuation = captureContinuation else { return }
+        captureContinuation = nil
+        guard let resumedResult = result ?? delayedResult else {
+            preconditionFailure("A delayed capture must retain its result")
+        }
+        delayedResult = nil
+        continuation.resume(returning: resumedResult)
     }
 }
 

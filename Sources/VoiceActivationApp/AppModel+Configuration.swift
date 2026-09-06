@@ -17,6 +17,7 @@ extension AppModel {
 
     /// Refreshes Accessibility state after the application becomes active.
     func applicationDidBecomeActive() {
+        guard isStartupReady else { return }
         refreshMacContextAccessStatus()
     }
 

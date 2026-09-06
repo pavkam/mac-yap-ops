@@ -420,6 +420,7 @@ final class AppModelElevenLabsVoicePreviewSpy: ElevenLabsVoicePreviewing {
 final class PermissionRequestGate {
     private var continuations: [CheckedContinuation<Bool, Never>] = []
     private var waitingContinuations: [CheckedContinuation<Void, Never>] = []
+    private var completionWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
     private(set) var requestCount = 0
     private(set) var completionCount = 0
     var isWaiting: Bool { !continuations.isEmpty }
@@ -435,6 +436,9 @@ final class PermissionRequestGate {
             }
         }
         completionCount += 1
+        let completed = completionWaiters.filter { completionCount >= $0.0 }
+        completionWaiters.removeAll { completionCount >= $0.0 }
+        completed.forEach { $0.1.resume() }
         return granted
     }
 
@@ -449,6 +453,11 @@ final class PermissionRequestGate {
         for continuation in pending {
             continuation.resume(returning: granted)
         }
+    }
+
+    func waitUntilCompletionCount(_ count: Int) async {
+        guard completionCount < count else { return }
+        await withCheckedContinuation { completionWaiters.append((count, $0)) }
     }
 }
 
