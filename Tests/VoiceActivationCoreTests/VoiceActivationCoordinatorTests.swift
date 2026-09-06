@@ -154,11 +154,8 @@ actor ControlledAgentRunner: AgentHarnessRunning {
     private var delaysCancellation = false
     private var completesImmediately = false
     private var cancellationWaiters: [CheckedContinuation<Void, Never>] = []
+    private var preClaimGate: AgentRunnerPreClaimGate?
     private var postClaimBarrier: AgentRunnerActorBarrier?
-
-    func blockActor(using barrier: AgentRunnerActorBarrier) {
-        barrier.block()
-    }
 
     func run(
         admission: AgentRunAdmission,
@@ -167,6 +164,10 @@ actor ControlledAgentRunner: AgentHarnessRunning {
         prompt: AgentPrompt,
         onEvent: @escaping @Sendable (AgentRunEvent) async -> Void
     ) async throws -> AgentRunResult {
+        if let preClaimGate {
+            self.preClaimGate = nil
+            await preClaimGate.waitBeforeClaim()
+        }
         guard admission.claim() else { throw CancellationError() }
         if let postClaimBarrier {
             postClaimBarrier.block()
@@ -239,6 +240,10 @@ actor ControlledAgentRunner: AgentHarnessRunning {
 
     func completeRunsImmediately() {
         completesImmediately = true
+    }
+
+    func blockBeforeAdmissionClaim(using gate: AgentRunnerPreClaimGate) {
+        preClaimGate = gate
     }
 
     func blockAfterAdmissionClaim(using barrier: AgentRunnerActorBarrier) {
@@ -356,42 +361,39 @@ final class ControlledMacContextCapturer: MacContextCapturing {
     }
 }
 
-final class AgentAdmissionDiagnosticGate: VoiceActivationDiagnosticRecording,
-    @unchecked Sendable
-{
-    private let condition = NSCondition()
-    private var blocked = false
-    private var released = false
+actor AgentRunnerPreClaimGate {
+    private var didReachPreClaim = false
+    private var isOpen = false
+    private var reachObservers: [CheckedContinuation<Void, Never>] = []
+    private var claimWaiters: [CheckedContinuation<Void, Never>] = []
 
-    func record(
-        category: VoiceActivationDiagnosticCategory,
-        event: String,
-        level: VoiceActivationDiagnosticLevel,
-        fields: [String: String]
-    ) {
-        guard event == "coordinator.agent_execution_task_ready" else { return }
-        condition.lock()
-        blocked = true
-        condition.broadcast()
-        while !released {
-            condition.wait()
+    func waitBeforeClaim() async {
+        didReachPreClaim = true
+        let observers = reachObservers
+        reachObservers.removeAll()
+        for observer in observers {
+            observer.resume()
         }
-        condition.unlock()
+        guard !isOpen else { return }
+        await withCheckedContinuation { continuation in
+            claimWaiters.append(continuation)
+        }
     }
 
-    func flush() {}
-
-    func isBlocked() -> Bool {
-        condition.lock()
-        defer { condition.unlock() }
-        return blocked
+    func waitUntilRunReachedPreClaim() async {
+        guard !didReachPreClaim else { return }
+        await withCheckedContinuation { continuation in
+            reachObservers.append(continuation)
+        }
     }
 
-    func release() {
-        condition.lock()
-        released = true
-        condition.broadcast()
-        condition.unlock()
+    func releaseClaim() {
+        isOpen = true
+        let waiters = claimWaiters
+        claimWaiters.removeAll()
+        for waiter in waiters {
+            waiter.resume()
+        }
     }
 }
 

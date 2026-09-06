@@ -101,29 +101,21 @@ extension VoiceActivationCoordinatorTests {
     @Test func agentTurn_WhenGenerationRetiresAtRunnerAdmission_NeverEntersRunner()
         async throws
     {
-        let readyGate = AgentAdmissionDiagnosticGate()
-        let actorBarrier = AgentRunnerActorBarrier()
-        let fixture = try Fixture(
-            profiles: [try makeAgentProfile()],
-            diagnostics: readyGate)
+        let preClaimGate = AgentRunnerPreClaimGate()
+        let fixture = try Fixture(profiles: [try makeAgentProfile()])
         await fixture.agentRunner.completeRunsImmediately()
-        let barrierTask = Task.detached {
-            await fixture.agentRunner.blockActor(using: actorBarrier)
-        }
-        await waitUntil { actorBarrier.isEntered() }
-        readyGate.release()
+        await fixture.agentRunner.blockBeforeAdmissionClaim(using: preClaimGate)
         fixture.coordinator.setPassiveEnabled(true)
         fixture.speech.emit("agent stale turn", isFinal: true)
-        await waitUntil { readyGate.isBlocked() }
-        await Task.yield()
+        await preClaimGate.waitUntilRunReachedPreClaim()
 
-        fixture.coordinator.executionGeneration &+= 1
         let executionTask = fixture.coordinator.executionTask
-        actorBarrier.release()
-        await barrierTask.value
+        fixture.coordinator.cancelAgentRun()
+        await preClaimGate.releaseClaim()
         await executionTask?.value
 
         #expect(await fixture.agentRunner.recordedRunAttemptCount() == 0)
+        #expect(await fixture.agentRunner.recordedInvocations().isEmpty)
         fixture.coordinator.stop()
     }
 
@@ -138,6 +130,7 @@ extension VoiceActivationCoordinatorTests {
         fixture.coordinator.setPassiveEnabled(true)
         fixture.speech.emit("agent claimed turn", isFinal: true)
         await waitUntil { postClaimBarrier.isEntered() }
+        #expect(postClaimBarrier.isEntered())
 
         fixture.coordinator.cancelAgentRun()
         postClaimBarrier.release()
