@@ -6,6 +6,25 @@ import Foundation
 extension ACPAgentRunner {
     static let maximumActiveBackgroundTasksPerSession = 32
 
+    func preserveBackgroundSessionAfterPromptCancellation(
+        _ turnToken: UUID,
+        _ profileID: UUID,
+        _ recordID: UUID?
+    ) async -> Bool {
+        guard let recordID,
+              let record = records[profileID],
+              record.id == recordID,
+              !record.activeBackgroundTaskIDs.isEmpty,
+              let connection = record.connection,
+              await connection.retireCancelledPromptPreservingSession()
+        else { return false }
+        diagnostics.record(
+            category: .agent,
+            event: "acp_runner.cancel_preserved_background_session",
+            fields: ["turn_id": turnToken.uuidString])
+        return true
+    }
+
     /// Installs the single downstream sink for live between-turn session events.
     public func setSessionEventHandler(
         _ handler: (@Sendable (AgentSessionEventEnvelope) async -> Void)?
