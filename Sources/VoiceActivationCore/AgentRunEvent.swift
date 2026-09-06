@@ -405,6 +405,8 @@ public enum AgentRunEvent: Equatable, Sendable {
     case toolCallUpdate(AgentToolCallUpdate)
     /// The latest complete plan snapshot.
     case plan([AgentPlanEntry])
+    /// A typed update from a negotiated provider-owned background task.
+    case backgroundTask(AgentBackgroundTaskUpdate)
     /// Concise protocol or runner metadata.
     case metadata(kind: String, summary: String)
     /// Bounded diagnostic text suitable for an expandable detail view.

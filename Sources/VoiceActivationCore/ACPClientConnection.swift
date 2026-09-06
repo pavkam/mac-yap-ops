@@ -217,6 +217,8 @@ public actor ACPClientConnection {
     var agentName: String?
     var activeRestoration: ACPClientRestorationState?
     var activeEventDelivery: AgentRunEventDelivery?
+    var sessionEventDelivery: AgentRunEventDelivery?
+    var inFlightBackgroundTaskStops: Set<AgentBackgroundTaskID> = []
     var activeTurnToken: AgentTurnToken?
     var activePromptRequestID: ACPRequestID?
     var pendingMidTurnInputRequestCount = 0
@@ -327,6 +329,7 @@ public actor ACPClientConnection {
             publicationHooks: ACPClientPromptPublicationHooks(),
             onEvent: onEvent)
     }
+
 
     /// Offers opaque input to the exact active turn when negotiated steering is safe.
     ///
@@ -659,10 +662,13 @@ public actor ACPClientConnection {
 
         let restoration = detachRestoration()
         let eventDelivery = activeEventDelivery
+        let sessionDelivery = sessionEventDelivery
         responseChannelRouter.reset()
         responseChannelDroppedSpokenMessage = nil
         restoration?.responseChannelRouter.reset()
         activeEventDelivery = nil
+        sessionEventDelivery = nil
+        inFlightBackgroundTaskStops.removeAll()
         activeTurnToken = nil
         activePromptRequestID = nil
         promptFrameWasPublished = false
@@ -674,6 +680,7 @@ public actor ACPClientConnection {
 
         await discardRestoration(restoration)
         await eventDelivery?.finish(.discard)
+        await sessionDelivery?.finish(.discard)
         await cancelPendingPermissions()
         if terminalError == nil {
             finalize(with: .connectionClosed)
@@ -689,12 +696,5 @@ public actor ACPClientConnection {
             category: .acp,
             event: "acp_client.close_finished",
             fields: ["connection_id": connectionID.uuidString])
-    }
-    func waitForInputCompletion() async {
-        _ = await receiveTask?.result
-    }
-
-    func eventDeliverySnapshotForTesting() -> AgentRunEventDeliverySnapshot? {
-        activeEventDelivery?.snapshotForTesting
     }
 }

@@ -18,6 +18,7 @@ extension AgentRunEvent {
         case .toolCall: "tool_call"
         case .toolCallUpdate: "tool_call_update"
         case .plan: "plan"
+        case .backgroundTask: "background_task"
         case .permissionRequested: "permission_requested"
         case .metadata: "metadata"
         case .diagnostic: "diagnostic"

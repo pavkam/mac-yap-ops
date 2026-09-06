@@ -127,9 +127,26 @@ extension ACPClientConnection {
 
     private func deliverRouted(_ inputEvent: AgentRunEvent) async throws {
         var event = inputEvent
+        let promptOwnsDelivery = activeTurnToken != nil && !promptResponseWasReceived
+        if case .backgroundTask = event, capabilities?.supportsAIRAsyncTasks != true {
+            return
+        }
+        if !promptOwnsDelivery, !event.isAllowedBetweenPrompts {
+            diagnostics.record(
+                category: .agent,
+                event: "acp_client.event_dropped",
+                level: .debug,
+                fields: [
+                    "connection_id": connectionID.uuidString,
+                    "event_kind": event.clientDiagnosticName,
+                    "reason": "not_session_scoped",
+                ])
+            return
+        }
+        let delivery = promptOwnsDelivery ? activeEventDelivery : sessionEventDelivery
         if case let .agentSpokenMessageDelta(messageID, text) = event,
            !text.isEmpty,
-           activeEventDelivery == nil
+           delivery == nil
         {
             responseChannelDroppedSpokenMessage = AgentRunEventDeliverySpokenIdentity(
                 messageID: messageID)
@@ -147,7 +164,7 @@ extension ACPClientConnection {
         {
             responseChannelDroppedSpokenMessage = nil
         }
-        guard let delivery = activeEventDelivery else {
+        guard let delivery else {
             diagnostics.record(
                 category: .agent,
                 event: "acp_client.event_dropped",
@@ -298,5 +315,20 @@ extension ACPClientConnection {
         let now = DispatchTime.now().uptimeNanoseconds
         guard now >= start else { return 0 }
         return (now - start) / 1_000_000
+    }
+}
+
+private extension AgentRunEvent {
+    var isAllowedBetweenPrompts: Bool {
+        switch self {
+        case .agentMessageDelta, .agentSpokenMessageDelta,
+            .agentSpokenNarrationReady, .agentSpokenNarrationSuppressed,
+            .agentDisplayMessageDelta, .backgroundTask:
+            true
+        case .connected, .userMessageDelta, .thoughtDelta, .artifact, .toolCall,
+            .toolCallUpdate, .plan, .metadata, .diagnostic, .permissionRequested,
+            .unknown, .deliveryNotice:
+            false
+        }
     }
 }

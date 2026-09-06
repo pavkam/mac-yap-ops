@@ -22,7 +22,10 @@ extension ACPClientConnection {
         do {
             try Task.checkCancellation()
             let clientCapabilities = try ACPClientCapabilities.compose(
-                [ACPClientCapabilities.voiceResponseChannelsV1] + clientCapabilityFragments)
+                [
+                    ACPClientCapabilities.voiceResponseChannelsV1,
+                    ACPClientCapabilities.jetBrainsAIRAsyncTasksV1,
+                ] + clientCapabilityFragments)
             let output = await transport.output()
             try Task.checkCancellation()
             receiveTask = Task {

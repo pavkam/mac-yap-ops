@@ -28,6 +28,12 @@ extension ACPClientConnectionTests {
                         "channels": .array([.string("spoken"), .string("display")]),
                     ]),
                 ]),
+                "jetbrains": .object([
+                    "air": .object([
+                        "version": .integer(1),
+                        "capabilities": .array([.string("asyncTasks")]),
+                    ]),
+                ]),
             ]),
         ]))
 
@@ -51,9 +57,7 @@ extension ACPClientConnectionTests {
                 restoration: nil,
                 onRestoredEvent: { _, _ in },
                 clientCapabilityFragments: [
-                    .object(["_meta": .object([
-                        "jetbrains.air": .object(["tasks": .object(["version": .integer(1)])]),
-                    ])]),
+                    .object(["vendor": .object(["tasks": .object(["version": .integer(1)])])]),
                 ],
                 diagnostics: VoiceActivationDiagnostics.shared).connection
         }
@@ -67,7 +71,13 @@ extension ACPClientConnectionTests {
             return
         }
         #expect(metadata["ciobanu.org.voiceActivation"] != nil)
-        #expect(metadata["jetbrains.air"] == .object([
+        #expect(metadata["jetbrains"] == .object([
+            "air": .object([
+                "version": .integer(1),
+                "capabilities": .array([.string("asyncTasks")]),
+            ]),
+        ]))
+        #expect(capabilities["vendor"] == .object([
             "tasks": .object(["version": .integer(1)]),
         ]))
 

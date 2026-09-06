@@ -54,6 +54,7 @@ final class AgentRunEventDelivery: @unchecked Sendable {
     private let state: AgentRunEventDeliveryQueue
     private let completion: AgentRunEventDeliveryCompletion
     private let startGate: AgentRunEventDeliveryStartGate?
+    private let handlerBox: AgentRunEventDeliveryHandler
     private var consumerTask: Task<Void, Never>!
 
     var snapshotForTesting: AgentRunEventDeliverySnapshot {
@@ -68,13 +69,15 @@ final class AgentRunEventDelivery: @unchecked Sendable {
         let state = AgentRunEventDeliveryQueue(isLossless: startsPaused)
         let completion = AgentRunEventDeliveryCompletion()
         let startGate = startsPaused ? AgentRunEventDeliveryStartGate() : nil
+        let handlerBox = AgentRunEventDeliveryHandler(handler)
         self.state = state
         self.completion = completion
         self.startGate = startGate
+        self.handlerBox = handlerBox
         consumerTask = Task.detached(priority: .userInitiated) {
             await startGate?.wait()
             while let event = await state.next() {
-                await handler(event)
+                await handlerBox.deliver(event)
             }
             completion.resolve()
         }
@@ -82,6 +85,7 @@ final class AgentRunEventDelivery: @unchecked Sendable {
 
     deinit {
         state.discard()
+        handlerBox.clear()
         startGate?.open()
         consumerTask.cancel()
         completion.resolve()
@@ -108,6 +112,7 @@ final class AgentRunEventDelivery: @unchecked Sendable {
             await completion.wait()
         case .discard:
             state.discard()
+            handlerBox.clear()
             startGate?.open()
             consumerTask.cancel()
             completion.resolve()
@@ -116,6 +121,24 @@ final class AgentRunEventDelivery: @unchecked Sendable {
 
     func waitForConsumerTerminationForTesting() async {
         _ = await consumerTask.result
+    }
+}
+
+private final class AgentRunEventDeliveryHandler: @unchecked Sendable {
+    private let lock = NSLock()
+    private var handler: (@Sendable (AgentRunEvent) async -> Void)?
+
+    init(_ handler: @escaping @Sendable (AgentRunEvent) async -> Void) {
+        self.handler = handler
+    }
+
+    func deliver(_ event: AgentRunEvent) async {
+        let current = lock.withLock { handler }
+        await current?(event)
+    }
+
+    func clear() {
+        lock.withLock { handler = nil }
     }
 }
 
