@@ -27,6 +27,7 @@ immediately, without waiting for **Save Settings**.
 | Read inherited replies aloud | On | Allows profiles set to Inherit to use the app-wide voice. |
 | Default reply voice | Automatic macOS voice | Selects the backend and voice inherited by profiles. |
 | Agent activity sounds | On | Plays bounded thinking and tool-transition cues. |
+| Include focused Mac context in agent requests | On | Sends one bounded focused-app snapshot only with admitted ACP requests. Direct commands never receive it. |
 | Launch at Login | Off in a fresh macOS registration | Registers the current bundle through Service Management. |
 
 Each profile may inherit the default reply voice, disable narration, or select
@@ -81,6 +82,30 @@ See [Agent providers](agent-providers.md) for setup, authentication, and prompt
 usage. [ACP agent harness](agent-harness.md) owns the exact prompt bound plus the
 wire and lifecycle contract.
 
+## Focused Mac context and Accessibility
+
+**Include focused Mac context in agent requests** defaults to On. After a
+successful **Save Settings**, each admitted ACP request may include a one-shot
+snapshot for the app that was frontmost when that utterance was admitted. It is
+not a continuous observer and it does not re-read a later selection while a
+turn is queued. Turning it off prevents target lookup and native context capture;
+the provider receives the normal instruction and request blocks only.
+
+The Settings status check and lifecycle refresh only ask macOS whether
+Accessibility is already authorized; neither can show a privacy prompt.
+**Enable Accessibility…** is the sole Settings action that asks macOS to show
+that prompt. Until access is granted, an ACP request still receives the frozen
+application name and bundle identifier with
+`captureState: "accessibility_not_authorized"` when a target is available.
+
+The snapshot can contain the application, focused window title, document URL,
+selected text, and selected resource links. It does not include screenshots,
+clipboard data, file contents, a full Accessibility tree, or background updates.
+Voice Activation neither persists nor logs snapshot values. The selected ACP
+provider receives the prompt blocks and may retain or replay them under its own
+session policy; Voice Activation does not restore an old snapshot after restart.
+See [ACP agent harness](agent-harness.md) for the exact schema and bounds.
+
 ## Validation summary
 
 A valid saved configuration has:
@@ -103,9 +128,10 @@ prompts are stored in the app's `UserDefaults` domain. Provider authentication
 stays in each provider CLI. The optional ElevenLabs API key is stored only as a
 generic password in macOS Keychain.
 
-Voice Activation does not persist conversation prompts, agent output, raw tool
-payloads, or audio. See [Privacy and security](privacy-and-security.md) for the
-complete data and retention boundary.
+Voice Activation does not persist conversation prompts, Mac-context snapshots,
+agent output, raw tool payloads, or audio. See
+[Privacy and security](privacy-and-security.md) for the complete data and
+retention boundary.
 
 ## Related guides
 
