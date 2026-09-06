@@ -121,6 +121,12 @@ extension AgentRunPresentation {
             maximumBytes: Self.maximumOutputBytes,
             marker: "… earlier output omitted …\n",
             separator: "\n\n")
+        spokenOutputBuffer = mergedTextBuffer(
+            historical: stage.spokenOutputBuffer,
+            live: spokenOutputBuffer,
+            maximumBytes: Self.maximumSpokenOutputBytes,
+            marker: "… earlier spoken response omitted …\n",
+            separator: "\n\n")
         diagnosticBuffer = mergedTextBuffer(
             historical: stage.diagnosticBuffer,
             live: diagnosticBuffer,
@@ -174,6 +180,16 @@ extension AgentRunPresentation {
             live: outputBuffer,
             maximumBytes: Self.maximumOutputBytes,
             marker: "… earlier output omitted …\n",
+            separator: "\n\n").value
+    }
+
+    var sourceQualifiedSpokenOutput: String {
+        guard let stage = restorationState?.stage else { return spokenOutputBuffer.value }
+        return mergedTextBuffer(
+            historical: stage.spokenOutputBuffer,
+            live: spokenOutputBuffer,
+            maximumBytes: Self.maximumSpokenOutputBytes,
+            marker: "… earlier spoken response omitted …\n",
             separator: "\n\n").value
     }
 

@@ -160,6 +160,7 @@ struct AgentThinkingPresentation: Equatable, Identifiable, Sendable {
 /// Distinguishes visible response Markdown from collapsible agent reasoning.
 enum AgentMessagePresentationKind: Equatable, Sendable {
     case response
+    case spokenResponse
     case thought
 }
 
@@ -260,6 +261,7 @@ struct AgentRunSnapshot: Equatable, Sendable {
     let phase: AgentRunPhase
     let voiceInput: String
     let output: String
+    let spokenOutput: String
     let timeline: [AgentRunTimelineItem]
     let diagnostics: String
     let plan: [AgentPlanEntry]
@@ -283,6 +285,7 @@ struct AgentRunSnapshot: Equatable, Sendable {
         phase: AgentRunPhase,
         voiceInput: String,
         output: String,
+        spokenOutput: String = "",
         timeline: [AgentRunTimelineItem],
         diagnostics: String,
         plan: [AgentPlanEntry],
@@ -305,6 +308,7 @@ struct AgentRunSnapshot: Equatable, Sendable {
         self.phase = phase
         self.voiceInput = voiceInput
         self.output = output
+        self.spokenOutput = spokenOutput
         self.timeline = timeline
         self.diagnostics = diagnostics
         self.plan = plan
@@ -323,6 +327,9 @@ struct AgentRunSnapshot: Equatable, Sendable {
         var sections = ["Request\n\(prompt)"]
         if !output.isEmpty {
             sections.append("Response\n\(output)")
+        }
+        if !spokenOutput.isEmpty {
+            sections.append("Spoken response\n\(spokenOutput)")
         }
         if !artifacts.isEmpty {
             let lines = artifacts.map { result in

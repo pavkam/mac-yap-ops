@@ -12,6 +12,7 @@ import VoiceActivationCore
 final class AgentRunPresentation {
     /// The largest retained copyable agent-response payload.
     static let maximumOutputBytes = 512 * 1_024
+    static let maximumSpokenOutputBytes = 64 * 1_024
     static let maximumDiagnosticBytes = 16 * 1_024
     static let maximumTools = 32
     static let maximumArtifacts = 32
@@ -51,6 +52,7 @@ final class AgentRunPresentation {
             phase: phase,
             voiceInput: voiceInput,
             output: sourceQualifiedOutput,
+            spokenOutput: sourceQualifiedSpokenOutput,
             timeline: sourceQualifiedTimeline,
             diagnostics: sourceQualifiedDiagnostics,
             plan: sourceQualifiedPlan,
@@ -81,6 +83,9 @@ final class AgentRunPresentation {
     var outputBuffer = AgentRunBoundedTextBuffer(
         maximumBytes: maximumOutputBytes,
         marker: "… earlier output omitted …\n")
+    var spokenOutputBuffer = AgentRunBoundedTextBuffer(
+        maximumBytes: maximumSpokenOutputBytes,
+        marker: "… earlier spoken response omitted …\n")
     var diagnosticBuffer = AgentRunBoundedTextBuffer(
         maximumBytes: maximumDiagnosticBytes,
         marker: "… earlier diagnostics omitted …\n")
@@ -151,6 +156,7 @@ final class AgentRunPresentation {
         voiceInput = ""
         needsResponseSeparator = false
         outputBuffer.removeAll()
+        spokenOutputBuffer.removeAll()
         diagnosticBuffer.removeAll()
         plan = []
         tools = []
@@ -476,6 +482,7 @@ final class AgentRunPresentation {
         voiceInput = ""
         needsResponseSeparator = false
         outputBuffer.removeAll(keepingCapacity: false)
+        spokenOutputBuffer.removeAll(keepingCapacity: false)
         diagnosticBuffer.removeAll(keepingCapacity: false)
         plan.removeAll(keepingCapacity: false)
         tools.removeAll(keepingCapacity: false)

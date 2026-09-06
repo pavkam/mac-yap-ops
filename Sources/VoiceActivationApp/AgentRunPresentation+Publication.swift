@@ -58,6 +58,7 @@ extension AgentRunPresentation {
                     "run_id": snapshot.runID.uuidString,
                     "timeline_item_count": String(snapshot.timeline.count),
                     "output_character_count": String(snapshot.output.count),
+                    "spoken_output_character_count": String(snapshot.spokenOutput.count),
                     "tool_count": String(snapshot.tools.count),
                     "artifact_count": String(snapshot.artifacts.count),
                     "artifact_byte_count": String(retainedArtifactBytes),

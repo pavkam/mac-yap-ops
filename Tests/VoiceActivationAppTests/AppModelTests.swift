@@ -361,7 +361,12 @@ final class AppModelAgentConversationAudioSpy: AgentConversationAudioPlaying {
     func setWorking(_ working: Bool) {}
     func playActivitySound(_ sound: AgentActivitySound) {}
 
-    func speak(_ text: String, localeID: String) {
+    func speak(
+        _ text: String,
+        localeID: String,
+        inputFormat: AgentSpeechInputFormat,
+        admissionPolicy: AgentSpeechAdmissionPolicy
+    ) {
         spoken.append((text, localeID))
         onSpeakingChange?(true)
     }
