@@ -259,12 +259,38 @@ extension AgentRunPresentation {
         historicalHasOmissions: Bool,
         includesHistoryBoundary: Bool
     ) -> [AgentRunTimelineItem] {
-        var result = historical
-        if includesHistoryBoundary {
+        let isSentinel: (AgentRunTimelineItem) -> Bool = { item in
+            switch item {
+            case .omitted, .historyBoundary:
+                true
+            case .message, .userMessage, .thinking:
+                false
+            }
+        }
+        let existingBoundaryIndex = timeline.lastIndex(of: .historyBoundary)
+        let priorHistory: [AgentRunTimelineItem]
+        let live: [AgentRunTimelineItem]
+        if let existingBoundaryIndex {
+            priorHistory = timeline[..<existingBoundaryIndex].filter { !isSentinel($0) }
+            let liveStartIndex = timeline.index(after: existingBoundaryIndex)
+            live = timeline[liveStartIndex...].filter { !isSentinel($0) }
+        } else {
+            priorHistory = []
+            live = timeline.filter { !isSentinel($0) }
+        }
+
+        var result = historical.filter { !isSentinel($0) } + priorHistory
+        if includesHistoryBoundary
+            || historical.contains(.historyBoundary)
+            || existingBoundaryIndex != nil
+        {
             result.append(.historyBoundary)
         }
-        result.append(contentsOf: timeline)
-        var hasOmissions = historicalHasOmissions || timelineHasOmittedActivity
+        result.append(contentsOf: live)
+        var hasOmissions = historicalHasOmissions
+            || timelineHasOmittedActivity
+            || historical.contains(.omitted)
+            || timeline.contains(.omitted)
         enforceAgentRunTimelineBounds(
             &result,
             hasOmittedActivity: &hasOmissions,
