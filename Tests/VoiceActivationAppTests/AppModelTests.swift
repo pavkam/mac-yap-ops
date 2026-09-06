@@ -85,6 +85,7 @@ final class AppModelSpeechSessionSpy: SpeechSessionProtocol {
     private(set) var startCount = 0
     private(set) var mode: SpeechSessionMode?
     private var onUpdate: ((SpeechUpdate) -> Void)?
+    private var startContinuations: [CheckedContinuation<Void, Never>] = []
 
     func start(
         mode: SpeechSessionMode,
@@ -96,11 +97,21 @@ final class AppModelSpeechSessionSpy: SpeechSessionProtocol {
         startCount += 1
         self.mode = mode
         self.onUpdate = onUpdate
+        let waiters = startContinuations
+        startContinuations = []
+        for waiter in waiters {
+            waiter.resume()
+        }
     }
 
     func stop() {
         mode = nil
         onUpdate = nil
+    }
+
+    func waitUntilStarted() async {
+        guard startCount == 0 else { return }
+        await withCheckedContinuation { startContinuations.append($0) }
     }
 
     func emit(_ transcript: String, isFinal: Bool = false) {
@@ -348,15 +359,28 @@ final class AppModelElevenLabsVoicePreviewSpy: ElevenLabsVoicePreviewing {
 @MainActor
 final class PermissionRequestGate {
     private var continuations: [CheckedContinuation<Bool, Never>] = []
+    private var waitingContinuations: [CheckedContinuation<Void, Never>] = []
     private(set) var requestCount = 0
     private(set) var completionCount = 0
     var isWaiting: Bool { !continuations.isEmpty }
 
     func request() async -> Bool {
         requestCount += 1
-        let granted = await withCheckedContinuation { continuations.append($0) }
+        let granted = await withCheckedContinuation { continuation in
+            continuations.append(continuation)
+            let waiters = waitingContinuations
+            waitingContinuations = []
+            for waiter in waiters {
+                waiter.resume()
+            }
+        }
         completionCount += 1
         return granted
+    }
+
+    func waitUntilWaiting() async {
+        guard continuations.isEmpty else { return }
+        await withCheckedContinuation { waitingContinuations.append($0) }
     }
 
     func resolve(_ granted: Bool) {
