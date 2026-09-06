@@ -56,6 +56,7 @@ struct AgentRunPanelView: View {
                     VStack(alignment: .leading, spacing: 18) {
                         requestCard(snapshot)
                         AgentRunArtifactShelf(snapshot: snapshot, model: model)
+                        backgroundTasks(snapshot)
                         timeline(snapshot)
                         plan(snapshot)
                         noticeCards(snapshot)
@@ -95,6 +96,7 @@ struct AgentRunPanelView: View {
                     }
                 }
                 .onChange(of: snapshot.artifacts) { followBottom(proxy) }
+                .onChange(of: snapshot.backgroundTasks) { followBottom(proxy) }
                 .onChange(of: snapshot.timeline) { followBottom(proxy) }
                 .onChange(of: snapshot.notices) { followBottom(proxy) }
                 .onChange(of: snapshot.plan) { followBottom(proxy) }
@@ -122,7 +124,7 @@ struct AgentRunPanelView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(snapshot.profileName)
                         .font(.headline)
-                    Text(phaseLabel(snapshot.phase))
+                    Text(panelPhaseLabel(snapshot))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

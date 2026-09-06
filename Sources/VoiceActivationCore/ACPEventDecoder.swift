@@ -89,6 +89,14 @@ public struct ACPEventDecoder: Sendable {
             return .metadata(kind: discriminator, summary: try sessionInfoSummary(update))
         case "usage_update":
             return .metadata(kind: discriminator, summary: try usageSummary(update))
+        case "async_task_spawned", "async_task_progress", "async_task_state_update":
+            do {
+                return .backgroundTask(try backgroundTaskUpdate(
+                    discriminator: discriminator,
+                    update: update))
+            } catch {
+                return AgentBackgroundTaskLimits.invalidUpdate
+            }
         default:
             let retainedDiscriminator = bounded(
                 discriminator,
@@ -427,7 +435,7 @@ public struct ACPEventDecoder: Sendable {
         return bounded(summary)
     }
 
-    private func object(
+    func object(
         _ value: ACPJSONValue?,
         named name: String) throws -> [String: ACPJSONValue]
     {
@@ -444,7 +452,7 @@ public struct ACPEventDecoder: Sendable {
         return array
     }
 
-    private func string(_ value: ACPJSONValue?, named name: String) throws -> String {
+    func string(_ value: ACPJSONValue?, named name: String) throws -> String {
         guard case let .string(string) = value else {
             throw malformed(name)
         }
@@ -542,7 +550,7 @@ public struct ACPEventDecoder: Sendable {
         return try rawValue(value, named: name)
     }
 
-    private func unsignedInteger(_ value: ACPJSONValue?, named name: String) throws -> UInt64 {
+    func unsignedInteger(_ value: ACPJSONValue?, named name: String) throws -> UInt64 {
         switch value {
         case let .integer(integer) where integer >= 0:
             return UInt64(integer)
@@ -576,7 +584,7 @@ public struct ACPEventDecoder: Sendable {
         }
     }
 
-    private func malformed(_ field: String) -> EventError {
+    func malformed(_ field: String) -> EventError {
         .malformedSessionUpdate("Invalid or missing \(field).")
     }
 

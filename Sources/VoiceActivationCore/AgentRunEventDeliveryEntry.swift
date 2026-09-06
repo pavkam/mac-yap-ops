@@ -176,6 +176,8 @@ struct AgentRunEventDeliveryEntry {
                 + toolContentByteCount(update.content)
         case let .plan(entries):
             return entries.reduce(0) { saturatingAdd($0, $1.content.utf8.count) }
+        case let .backgroundTask(update):
+            return backgroundTaskByteCount(update)
         case let .metadata(kind, summary):
             return kind.utf8.count + summary.utf8.count
         case .diagnostic:
@@ -201,6 +203,25 @@ struct AgentRunEventDeliveryEntry {
             return discriminator.utf8.count + summary.utf8.count
         case .deliveryNotice:
             return 0
+        }
+    }
+
+    private static func backgroundTaskByteCount(_ update: AgentBackgroundTaskUpdate) -> Int {
+        func strings(_ values: [String?]) -> Int {
+            values.reduce(0) { saturatingAdd($0, $1?.utf8.count ?? 0) }
+        }
+        switch update {
+        case let .spawned(id, name, taskType, description, _, _, outputFilePath, toolCallID):
+            return strings([
+                id.rawValue, name, taskType, description, outputFilePath, toolCallID,
+            ])
+        case let .progress(
+            id, description, summary, lastToolName, _, outputFilePath, toolCallID):
+            return strings([
+                id.rawValue, description, summary, lastToolName, outputFilePath, toolCallID,
+            ])
+        case let .stateChanged(id, _, summary, outputFilePath, toolCallID):
+            return strings([id.rawValue, summary, outputFilePath, toolCallID])
         }
     }
 

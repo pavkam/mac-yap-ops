@@ -158,6 +158,7 @@ extension AppModel {
         case .artifact: "artifact"
         case .toolCall: "tool_call"
         case .toolCallUpdate: "tool_call_update"
+        case .backgroundTask: "background_task"
         case .plan: "plan"
         case .permissionRequested: "permission_requested"
         case .metadata: "metadata"

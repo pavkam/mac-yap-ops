@@ -128,8 +128,36 @@ public enum AgentConversationInputDisposition: Equatable, Sendable {
     case failed
 }
 
+/// A live provider event correlated to its owning profile and ACP session.
+public struct AgentSessionEventEnvelope: Equatable, Sendable {
+    /// The wake profile that owns the cached provider process.
+    public let profileID: UUID
+    /// The exact opaque ACP session identifier reported by that process.
+    public let sessionID: String
+    /// The source-qualified event emitted by the current connection generation.
+    public let streamEvent: AgentRunStreamEvent
+
+    /// Creates an exact session-scoped event envelope.
+    public init(
+        profileID: UUID,
+        sessionID: String,
+        streamEvent: AgentRunStreamEvent
+    ) {
+        self.profileID = profileID
+        self.sessionID = sessionID
+        self.streamEvent = streamEvent
+    }
+}
+
 /// Runs ACP turns and manages their cached conversation sessions.
 public protocol AgentHarnessRunning: Sendable {
+    /// Installs the single session-scoped event sink used between prompt turns.
+    ///
+    /// Passing `nil` detaches downstream delivery before application shutdown.
+    func setSessionEventHandler(
+        _ handler: (@Sendable (AgentSessionEventEnvelope) async -> Void)?
+    ) async
+
     /// Runs one prompt in the profile's reusable conversation session.
     ///
     /// - Parameters:
@@ -173,6 +201,18 @@ public protocol AgentHarnessRunning: Sendable {
         turnToken: AgentTurnToken,
         requestID: ACPRequestID,
         optionID: String?) async
+    /// Requests stop for one exact live provider-owned background task.
+    ///
+    /// - Parameters:
+    ///   - profileID: The profile owning the cached connection.
+    ///   - sessionID: The exact opaque ACP session identity.
+    ///   - taskID: The exact opaque provider task identity.
+    /// - Returns: The provider's typed transport acknowledgement.
+    func stopBackgroundTask(
+        profileID: UUID,
+        sessionID: String,
+        taskID: AgentBackgroundTaskID
+    ) async throws -> Bool
     /// Cancels the active turn without discarding unrelated cached sessions.
     func cancel() async
     /// Discards cached sessions belonging to the supplied profiles.

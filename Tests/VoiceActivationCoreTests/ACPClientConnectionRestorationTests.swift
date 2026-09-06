@@ -320,6 +320,12 @@ extension ACPClientConnectionTests {
                         "channels": .array([.string("spoken"), .string("display")]),
                     ]),
                 ]),
+                "jetbrains": .object([
+                    "air": .object([
+                        "version": .integer(1),
+                        "capabilities": .array([.string("asyncTasks")]),
+                    ]),
+                ]),
             ]),
         ])))
         try await transport.feed(restorationInitializeResponse(load: false, resume: false))

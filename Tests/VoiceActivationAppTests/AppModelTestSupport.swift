@@ -59,6 +59,8 @@ extension AppModelTests {
                 return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
                     && isDirectory.boolValue
             },
+            agentSessionEventScheduler: any AgentSessionEventScheduling =
+                MainRunLoopAgentSessionEventScheduler(),
             diagnostics: any VoiceActivationDiagnosticRecording =
                 VoiceActivationDiagnostics.shared
         ) throws {
@@ -91,6 +93,7 @@ extension AppModelTests {
                 macContextCapturer: macContextCapturer,
                 isExecutableFile: isExecutableFile,
                 isDirectory: isDirectory,
+                agentSessionEventScheduler: agentSessionEventScheduler,
                 startsAutomatically: false,
                 diagnostics: diagnostics)
         }

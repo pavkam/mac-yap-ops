@@ -49,6 +49,10 @@ deterministic fixtures, and its exact initialize identity prove a host-owned
 idle outcome. The initialize-only probe validates the handshake; it does not
 prove steering or model behavior.
 
+Codex ACP 1.8.0 also does not enter the Claude AIR async-task path. It remains a
+standard owned prompt between request and response; process exit marks that work
+interrupted and restoration may recover session context, never the in-flight turn.
+
 The project pin remains authoritative. The npm `latest` tag was `1.10.0` on the
 validation date, so registry drift already exists. Do not change the pin without
 reviewing release changes, bundled Codex compatibility, tests, and a handshake.

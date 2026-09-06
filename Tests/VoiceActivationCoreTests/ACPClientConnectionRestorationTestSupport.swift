@@ -22,7 +22,22 @@ extension ACPClientConnectionTests {
     }
 
     func initializeRequest(
-        capabilities: ACPJSONValue = ACPClientCapabilities.voiceResponseChannelsV1
+        capabilities: ACPJSONValue = .object([
+            "_meta": .object([
+                "ciobanu.org.voiceActivation": .object([
+                    "responseChannels": .object([
+                        "version": .integer(1),
+                        "channels": .array([.string("spoken"), .string("display")]),
+                    ]),
+                ]),
+                "jetbrains": .object([
+                    "air": .object([
+                        "version": .integer(1),
+                        "capabilities": .array([.string("asyncTasks")]),
+                    ]),
+                ]),
+            ]),
+        ])
     ) -> ACPMessage {
         .request(
             id: .integer(1),

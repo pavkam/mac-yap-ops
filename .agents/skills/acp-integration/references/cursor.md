@@ -36,6 +36,10 @@ Permission option identifiers are opaque. Return the exact selected ID. ACP
 permission `kind` values such as `allow_once` and `reject_always` are policy
 hints, not replacements for the ID.
 
+Cursor 2026.01.23 has no proven JetBrains AIR async-task contract. Keep it on
+stable owned prompts, bound and ignore unknown extensions, and never describe
+session restoration as survival of an in-flight prompt.
+
 ## Manual validation
 
 ```bash

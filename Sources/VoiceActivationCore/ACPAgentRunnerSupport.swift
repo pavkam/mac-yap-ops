@@ -18,6 +18,7 @@ extension AgentRunEvent {
         case .toolCall: "tool_call"
         case .toolCallUpdate: "tool_call_update"
         case .plan: "plan"
+        case .backgroundTask: "background_task"
         case .permissionRequested: "permission_requested"
         case .metadata: "metadata"
         case .diagnostic: "diagnostic"
@@ -51,6 +52,11 @@ final class ACPAgentConnectionRecord {
     var exitStatus: Int32?
     var suppressesExitDiagnostic = false
     var accessOrdinal: UInt64
+    var activeBackgroundTaskIDs: Set<AgentBackgroundTaskID> = []
+    var stoppableBackgroundTaskIDs: Set<AgentBackgroundTaskID> = []
+    var pendingBackgroundTaskStopIDs: Set<AgentBackgroundTaskID> = []
+    var pendingBackgroundTaskMarkerIDs: Set<AgentBackgroundTaskID> = []
+    var backgroundTaskWorkKeys: [AgentBackgroundTaskID: AgentInterruptedWorkKey] = [:]
     let exitObservation: ACPAgentProcessExitLatch
 
     init(

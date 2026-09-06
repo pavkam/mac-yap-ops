@@ -127,6 +127,12 @@ enum AgentRunEventNormalizer {
                 event: .plan(retained),
                 discardedBytes: discardedBytes,
                 discardedEntries: discardedEntries)
+        case let .backgroundTask(update):
+            let normalized = normalizedBackgroundTask(update)
+            return controlEntries(
+                event: normalized.event,
+                discardedBytes: normalized.discardedBytes,
+                discardedEntries: 0)
         case let .metadata(kind, summary):
             let boundedKind = boundedPrefix(kind, maximumBytes: maximumControlTextBytes)
             let boundedSummary = boundedPrefix(summary, maximumBytes: maximumControlTextBytes)
@@ -181,6 +187,104 @@ enum AgentRunEventNormalizer {
             return AgentRunEventNormalization(entries: entries)
         case .deliveryNotice:
             return AgentRunEventNormalization(entries: [AgentRunEventDeliveryEntry(event: event)])
+        }
+    }
+
+    private static func normalizedBackgroundTask(
+        _ update: AgentBackgroundTaskUpdate
+    ) -> (event: AgentRunEvent, discardedBytes: Int) {
+        func required(_ value: String, maximumBytes: Int, nonempty: Bool = false) -> Bool {
+            (!nonempty || !value.isEmpty) && value.utf8.count <= maximumBytes
+        }
+        func optional(_ value: String?, maximumBytes: Int) -> (String?, Int) {
+            guard let value else { return (nil, 0) }
+            guard value.utf8.count <= maximumBytes else { return (nil, value.utf8.count) }
+            return (value, 0)
+        }
+        func normalizedUsage(_ usage: AgentBackgroundTaskUsage?) -> AgentBackgroundTaskUsage? {
+            guard let usage else { return nil }
+            return AgentBackgroundTaskUsage(
+                totalTokens: usage.totalTokens.map { max(0, $0) },
+                toolUses: usage.toolUses.map { max(0, $0) },
+                durationMilliseconds: usage.durationMilliseconds.map { max(0, $0) })
+        }
+
+        switch update {
+        case let .spawned(
+            id, name, taskType, description, showInTranscript, canStop,
+            outputFilePath, toolCallID):
+            guard required(
+                id.rawValue,
+                maximumBytes: AgentBackgroundTaskLimits.maximumIdentifierBytes,
+                nonempty: true),
+                required(name, maximumBytes: AgentBackgroundTaskLimits.maximumShortTextBytes),
+                required(taskType, maximumBytes: AgentBackgroundTaskLimits.maximumShortTextBytes),
+                required(description, maximumBytes: AgentBackgroundTaskLimits.maximumDetailBytes)
+            else { return (AgentBackgroundTaskLimits.invalidUpdate, 0) }
+            let output = optional(
+                outputFilePath,
+                maximumBytes: AgentBackgroundTaskLimits.maximumDetailBytes)
+            let tool = optional(
+                toolCallID,
+                maximumBytes: AgentBackgroundTaskLimits.maximumIdentifierBytes)
+            return (.backgroundTask(.spawned(
+                id: id,
+                name: name,
+                taskType: taskType,
+                description: description,
+                showInTranscript: showInTranscript,
+                canStop: canStop,
+                outputFilePath: output.0,
+                toolCallID: tool.0)), saturatingAdd(output.1, tool.1))
+        case let .progress(
+            id, description, summary, lastToolName, usage, outputFilePath, toolCallID):
+            guard required(
+                id.rawValue,
+                maximumBytes: AgentBackgroundTaskLimits.maximumIdentifierBytes,
+                nonempty: true)
+            else { return (AgentBackgroundTaskLimits.invalidUpdate, 0) }
+            let description = optional(
+                description,
+                maximumBytes: AgentBackgroundTaskLimits.maximumDetailBytes)
+            let summary = optional(summary, maximumBytes: AgentBackgroundTaskLimits.maximumDetailBytes)
+            let lastTool = optional(
+                lastToolName,
+                maximumBytes: AgentBackgroundTaskLimits.maximumShortTextBytes)
+            let output = optional(
+                outputFilePath,
+                maximumBytes: AgentBackgroundTaskLimits.maximumDetailBytes)
+            let tool = optional(
+                toolCallID,
+                maximumBytes: AgentBackgroundTaskLimits.maximumIdentifierBytes)
+            let discarded = [description.1, summary.1, lastTool.1, output.1, tool.1]
+                .reduce(0, saturatingAdd)
+            return (.backgroundTask(.progress(
+                id: id,
+                description: description.0,
+                summary: summary.0,
+                lastToolName: lastTool.0,
+                usage: normalizedUsage(usage),
+                outputFilePath: output.0,
+                toolCallID: tool.0)), discarded)
+        case let .stateChanged(id, state, summary, outputFilePath, toolCallID):
+            guard required(
+                id.rawValue,
+                maximumBytes: AgentBackgroundTaskLimits.maximumIdentifierBytes,
+                nonempty: true)
+            else { return (AgentBackgroundTaskLimits.invalidUpdate, 0) }
+            let summary = optional(summary, maximumBytes: AgentBackgroundTaskLimits.maximumDetailBytes)
+            let output = optional(
+                outputFilePath,
+                maximumBytes: AgentBackgroundTaskLimits.maximumDetailBytes)
+            let tool = optional(
+                toolCallID,
+                maximumBytes: AgentBackgroundTaskLimits.maximumIdentifierBytes)
+            return (.backgroundTask(.stateChanged(
+                id: id,
+                state: state,
+                summary: summary.0,
+                outputFilePath: output.0,
+                toolCallID: tool.0)), [summary.1, output.1, tool.1].reduce(0, saturatingAdd))
         }
     }
 

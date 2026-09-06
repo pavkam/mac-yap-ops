@@ -191,7 +191,7 @@ extension ACPAgentRunner {
         turnToken: UUID,
         profileID: UUID,
         recordID: UUID
-    ) {
+    ) async {
         guard let turn = activeTurn,
             turn.token == turnToken,
             turn.profileID == profileID,
@@ -208,6 +208,15 @@ extension ACPAgentRunner {
                     "record_id": recordID.uuidString,
                     "event_kind": event.runnerDiagnosticName,
                 ])
+            return
+        }
+        if case .backgroundTask = event,
+            !(await prepareBackgroundTaskEvent(
+                event,
+                profileID: profileID,
+                sessionID: records[profileID]?.sessionID,
+                recordID: recordID))
+        {
             return
         }
         diagnostics.record(
@@ -361,6 +370,9 @@ extension ACPAgentRunner {
 
         records.removeValue(forKey: profileID)
         await turn.delivery.finish(.discard)
+        if let connection = record.connection {
+            await connection.setSessionEventHandler(nil)
+        }
         await record.transport.terminate()
         await record.transport.closeReadStreams()
         record.diagnosticsTask?.cancel()
@@ -400,6 +412,9 @@ extension ACPAgentRunner {
                 "profile_id": record.profileID.uuidString,
                 "record_id": record.id.uuidString,
             ])
+        if let connection = record.connection {
+            await connection.setSessionEventHandler(nil)
+        }
         await record.transport.terminate()
         await record.transport.closeReadStreams()
         _ = await record.transport.waitForExit()

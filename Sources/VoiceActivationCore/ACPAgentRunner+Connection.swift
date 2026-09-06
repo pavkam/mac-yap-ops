@@ -83,6 +83,8 @@ extension ACPAgentRunner {
             try ensureActiveTurn(token: turnToken)
         }
 
+        try ensureSessionCapacityBeforeProcessLaunch()
+
         diagnostics.record(
             category: .agent,
             event: "acp_runner.transport_creating",
@@ -162,6 +164,21 @@ extension ACPAgentRunner {
 
             record.connection = result.connection
             record.sessionID = activation.sessionID
+            let connectedSessionID = activation.sessionID
+            let connectedRecordID = record.id
+            await result.connection.setSessionEventHandler { [weak self] event in
+                await self?.receiveSessionEvent(
+                    .live(event),
+                    profileID: profileID,
+                    sessionID: connectedSessionID,
+                    recordID: connectedRecordID)
+            }
+            guard records[profileID]?.id == record.id,
+                  record.exitStatus == nil
+            else {
+                await result.connection.setSessionEventHandler(nil)
+                throw ACPAgentRunnerError.cancelled
+            }
             diagnostics.record(
                 category: .agent,
                 event: "acp_runner.connection_ready",
@@ -322,7 +339,9 @@ extension ACPAgentRunner {
     ) async throws {
         guard records.count > Self.maximumCachedSessions,
             let candidate = records.values
-                .filter({ $0.id != preservingRecordID })
+                .filter({
+                    $0.id != preservingRecordID && $0.activeBackgroundTaskIDs.isEmpty
+                })
                 .min(by: { left, right in
                     if left.accessOrdinal == right.accessOrdinal {
                         return left.id.uuidString < right.id.uuidString
@@ -345,6 +364,18 @@ extension ACPAgentRunner {
         recordSessionEviction(profileID: candidate.profileID)
         await dispose(candidate)
         try ensureActiveTurn(token: turnToken)
+    }
+
+    func ensureSessionCapacityBeforeProcessLaunch() throws {
+        guard records.count >= Self.maximumCachedSessions,
+              !records.values.contains(where: { $0.activeBackgroundTaskIDs.isEmpty })
+        else { return }
+        diagnostics.record(
+            category: .agent,
+            event: "acp_runner.session_capacity_reached",
+            level: .warning,
+            fields: ["cached_session_count": String(records.count)])
+        throw ACPAgentRunnerError.sessionCapacityReached
     }
 
     func recordSessionEviction(profileID: UUID) {

@@ -35,6 +35,21 @@ public enum ACPClientCapabilities {
         ]),
     ])
 
+    /// JetBrains AIR v1 async-task support for the exact Claude 0.73 adapter pin.
+    ///
+    /// This is a nonstandard extension documented by the tagged adapter source:
+    /// https://github.com/agentclientprotocol/claude-agent-acp/blob/v0.73.0/src/air-extension.ts
+    public static let jetBrainsAIRAsyncTasksV1: ACPJSONValue = .object([
+        "_meta": .object([
+            "jetbrains": .object([
+                "air": .object([
+                    "version": .integer(1),
+                    "capabilities": .array([.string("asyncTasks")]),
+                ]),
+            ]),
+        ]),
+    ])
+
     /// Deep-merges independently owned JSON-object fragments.
     ///
     /// Object paths merge recursively. An identical non-object leaf may be shared;

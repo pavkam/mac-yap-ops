@@ -6,6 +6,81 @@ import Testing
 @testable import VoiceActivationCore
 
 struct ACPEventDecoderTests {
+    @Test func asyncTaskSpawnedFixture_DecodesEveryPinnedField() throws {
+        let update = ACPAsyncTaskFixtures.spawned
+
+        #expect(try ACPEventDecoder().event(from: message(update: update)) ==
+            .backgroundTask(.spawned(
+                id: AgentBackgroundTaskID(rawValue: "task-7"),
+                name: "Watch build",
+                taskType: "shell",
+                description: "Waiting for CI",
+                showInTranscript: true,
+                canStop: true,
+                outputFilePath: "/tmp/build.log",
+                toolCallID: "tool-9")))
+    }
+
+    @Test func asyncTaskProgressFixture_DecodesUsageAndOptionalFields() throws {
+        let update = ACPAsyncTaskFixtures.progress
+
+        #expect(try ACPEventDecoder().event(from: message(update: update)) ==
+            .backgroundTask(.progress(
+                id: AgentBackgroundTaskID(rawValue: "task-7"),
+                description: "Still running",
+                summary: "3 of 5",
+                lastToolName: "Bash",
+                usage: AgentBackgroundTaskUsage(
+                    totalTokens: 12,
+                    toolUses: 3,
+                    durationMilliseconds: 900),
+                outputFilePath: "/tmp/build.log",
+                toolCallID: "tool-9")))
+    }
+
+    @Test(arguments: [
+        ("running", AgentBackgroundTaskState.running),
+        ("paused", .paused), ("completed", .completed),
+        ("failed", .failed), ("stopped", .stopped),
+    ])
+    func asyncTaskStateFixture_DecodesEveryTerminalState(
+        wireState: String,
+        state: AgentBackgroundTaskState
+    ) throws {
+        let update = ACPAsyncTaskFixtures.state(wireState)
+
+        #expect(try ACPEventDecoder().event(from: message(update: update)) ==
+            .backgroundTask(.stateChanged(
+                id: AgentBackgroundTaskID(rawValue: "task-7"),
+                state: state,
+                summary: "Done",
+                outputFilePath: "/tmp/build.log",
+                toolCallID: "tool-9")))
+    }
+
+    @Test func asyncTaskUpdate_WhenRequiredIdentityIsInvalid_ReturnsBoundedUnknown() throws {
+        let oversized = String(repeating: "x", count: 257)
+        let update = #"{"sessionUpdate":"async_task_progress","asyncTaskId":"\#(oversized)","raw":"private"}"#
+
+        #expect(try ACPEventDecoder().event(from: message(update: update)) == .unknown(
+            discriminator: "async_task_update",
+            summary: "Invalid ACP async task update."))
+    }
+
+    @Test func asyncTaskUpdate_WhenOptionalContentExceedsLimit_DropsOptionalContent() throws {
+        let oversized = String(repeating: "x", count: 4_097)
+        let update = #"{"sessionUpdate":"async_task_progress","asyncTaskId":"task-7","summary":"\#(oversized)","outputFilePath":"\#(oversized)"}"#
+
+        #expect(try ACPEventDecoder().event(from: message(update: update)) ==
+            .backgroundTask(.progress(
+                id: AgentBackgroundTaskID(rawValue: "task-7"),
+                description: nil,
+                summary: nil,
+                lastToolName: nil,
+                usage: nil,
+                outputFilePath: nil,
+                toolCallID: nil)))
+    }
     @Test func event_WhenStableSessionUpdatesArrive_ReturnsTypedEvents() throws {
         let fixtures: [(String, AgentRunEvent)] = [
             (

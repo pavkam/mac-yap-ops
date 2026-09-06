@@ -175,6 +175,14 @@ actor AppModelAgentRunnerSpy: AgentHarnessRunning {
     private let events: [AgentRunEvent]
     private let publicationBehavior: PublicationBehavior
     private let continuityStore: (any AgentContinuityStoring)?
+    private var sessionEventHandler:
+        (@Sendable (AgentSessionEventEnvelope) async -> Void)?
+    private var capturedSessionEventHandler:
+        (@Sendable (AgentSessionEventEnvelope) async -> Void)?
+    private var sessionHandlerInstallStates: [Bool] = []
+    private var backgroundTaskStops:
+        [(profileID: UUID, sessionID: String, taskID: AgentBackgroundTaskID)] = []
+    private var backgroundTaskStopResult = true
 
     init(
         events: [AgentRunEvent] = [],
@@ -184,6 +192,16 @@ actor AppModelAgentRunnerSpy: AgentHarnessRunning {
         self.events = events
         self.publicationBehavior = publicationBehavior
         self.continuityStore = continuityStore
+    }
+
+    func setSessionEventHandler(
+        _ handler: (@Sendable (AgentSessionEventEnvelope) async -> Void)?
+    ) {
+        sessionEventHandler = handler
+        sessionHandlerInstallStates.append(handler != nil)
+        if let handler {
+            capturedSessionEventHandler = handler
+        }
     }
 
     func run(
@@ -222,6 +240,15 @@ actor AppModelAgentRunnerSpy: AgentHarnessRunning {
         optionID: String?
     ) async {}
 
+    func stopBackgroundTask(
+        profileID: UUID,
+        sessionID: String,
+        taskID: AgentBackgroundTaskID
+    ) async throws -> Bool {
+        backgroundTaskStops.append((profileID, sessionID, taskID))
+        return backgroundTaskStopResult
+    }
+
     func cancel() async {}
 
     func reset(profileIDs: Set<UUID>) async {
@@ -257,6 +284,26 @@ actor AppModelAgentRunnerSpy: AgentHarnessRunning {
         shouldDelayReset = false
         resetContinuation?.resume()
         resetContinuation = nil
+    }
+
+    func emitSessionEvent(_ envelope: AgentSessionEventEnvelope) async {
+        await sessionEventHandler?(envelope)
+    }
+
+    func emitCapturedSessionEvent(_ envelope: AgentSessionEventEnvelope) async {
+        await capturedSessionEventHandler?(envelope)
+    }
+
+    func recordedSessionHandlerInstallStates() -> [Bool] {
+        sessionHandlerInstallStates
+    }
+
+    func setBackgroundTaskStopResult(_ result: Bool) {
+        backgroundTaskStopResult = result
+    }
+
+    func recordedBackgroundTaskStops() -> [(UUID, String, AgentBackgroundTaskID)] {
+        backgroundTaskStops.map { ($0.profileID, $0.sessionID, $0.taskID) }
     }
 }
 
@@ -294,6 +341,10 @@ actor AppModelPermissionAgentRunnerSpy: AgentHarnessRunning {
         self.options = options
     }
 
+    func setSessionEventHandler(
+        _ handler: (@Sendable (AgentSessionEventEnvelope) async -> Void)?
+    ) async {}
+
     func run(
         admission: AgentRunAdmission,
         profileID: UUID,
@@ -330,6 +381,14 @@ actor AppModelPermissionAgentRunnerSpy: AgentHarnessRunning {
                 optionID: optionID))
         continuation?.resume(returning: AgentRunResult(stopReason: .endTurn))
         continuation = nil
+    }
+
+    func stopBackgroundTask(
+        profileID: UUID,
+        sessionID: String,
+        taskID: AgentBackgroundTaskID
+    ) async throws -> Bool {
+        false
     }
 
     func cancel() async {

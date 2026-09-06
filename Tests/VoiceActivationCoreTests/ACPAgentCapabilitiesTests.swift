@@ -5,6 +5,86 @@ import Testing
 @testable import VoiceActivationCore
 
 @Suite struct ACPAgentCapabilitiesTests {
+    @Test func claude073_WhenBothSidesAdvertiseAIRAsyncTasks_EnablesAsyncTasks() throws {
+        let result = try ACPAgentCapabilities.decode(
+            initializeResult: initializeResult(
+                name: "@agentclientprotocol/claude-agent-acp",
+                version: "0.73.0",
+                air: airMetadata()),
+            preset: .claude,
+            clientAdvertisesAIRAsyncTasks: true)
+
+        #expect(result.supportsAIRAsyncTasks)
+    }
+
+    @Test(arguments: [true, false])
+    func claude073_WhenClientOrAgentCapabilityIsMissing_DisablesAsyncTasks(
+        omitClientCapability: Bool
+    ) throws {
+        let result = try ACPAgentCapabilities.decode(
+            initializeResult: initializeResult(
+                name: "@agentclientprotocol/claude-agent-acp",
+                version: "0.73.0",
+                air: omitClientCapability ? airMetadata() : nil),
+            preset: .claude,
+            clientAdvertisesAIRAsyncTasks: !omitClientCapability)
+
+        #expect(!result.supportsAIRAsyncTasks)
+    }
+
+    @Test func nonAllowlistedProvider_WhenAIRIsAdvertised_DisablesAsyncTasks() throws {
+        let result = try ACPAgentCapabilities.decode(
+            initializeResult: initializeResult(
+                name: "another-agent",
+                version: "0.73.0",
+                air: airMetadata()),
+            preset: .claude,
+            clientAdvertisesAIRAsyncTasks: true)
+
+        #expect(!result.supportsAIRAsyncTasks)
+    }
+
+    @Test func airMetadata_WhenMalformedOrOversized_FailsInitialization() {
+        let privateValue = "private-air-capability"
+        let malformed: [ACPJSONValue] = [
+            .string(privateValue),
+            .object([
+                "version": .integer(1),
+                "capabilities": .array(Array(
+                    repeating: .string(privateValue),
+                    count: 33)),
+            ]),
+        ]
+
+        for air in malformed {
+            do {
+                _ = try ACPAgentCapabilities.decode(
+                    initializeResult: initializeResult(
+                        name: "@agentclientprotocol/claude-agent-acp",
+                        version: "0.73.0",
+                        air: air),
+                    preset: .claude)
+                Issue.record("Expected invalid AIR metadata")
+            } catch {
+                #expect(!error.localizedDescription.contains(privateValue))
+                #expect(!String(reflecting: error).contains(privateValue))
+            }
+        }
+    }
+
+    @Test func futureAIRVersion_DisablesWithoutInterpretingItsCapabilityPayload() throws {
+        let result = try ACPAgentCapabilities.decode(
+            initializeResult: initializeResult(
+                name: "@agentclientprotocol/claude-agent-acp",
+                version: "0.73.0",
+                air: .object([
+                    "version": .integer(2),
+                    "capabilities": .string("future-private-shape"),
+                ])),
+            preset: .claude)
+
+        #expect(!result.supportsAIRAsyncTasks)
+    }
     @Test func decode_WhenPinnedClaudeAdvertisesSteering_EnablesHostOwnedIdleSteering()
         throws
     {
@@ -178,7 +258,8 @@ import Testing
     private func initializeResult(
         name: String,
         version: String,
-        steering: ACPJSONValue? = nil
+        steering: ACPJSONValue? = nil,
+        air: ACPJSONValue? = nil
     ) -> ACPJSONValue {
         var result: [String: ACPJSONValue] = [
             "protocolVersion": .integer(1),
@@ -187,9 +268,21 @@ import Testing
                 "version": .string(version),
             ]),
         ]
-        if let steering {
-            result["_meta"] = .object(["steering": steering])
+        if steering != nil || air != nil {
+            var metadata: [String: ACPJSONValue] = [:]
+            metadata["steering"] = steering
+            if let air {
+                metadata["jetbrains"] = .object(["air": air])
+            }
+            result["_meta"] = .object(metadata)
         }
         return .object(result)
+    }
+
+    private func airMetadata() -> ACPJSONValue {
+        .object([
+            "version": .integer(1),
+            "capabilities": .array([.string("asyncTasks")]),
+        ])
     }
 }

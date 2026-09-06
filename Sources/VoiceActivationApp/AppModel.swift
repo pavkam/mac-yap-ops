@@ -109,7 +109,9 @@ final class AppModel {
     @ObservationIgnored let macContextCapturer: ConfigurableMacContextCapturer
     @ObservationIgnored let shortcut: any PushToTalkShortcutManaging
     @ObservationIgnored let overlayPresenter: RecordingOverlayPresenter
-    @ObservationIgnored let agentRunPresentation: AgentRunPresentation
+    @ObservationIgnored var agentRunPresentation: AgentRunPresentation
+    @ObservationIgnored let agentSessionPresentationRegistry: AgentSessionPresentationRegistry
+    @ObservationIgnored let agentSessionEventScheduler: any AgentSessionEventScheduling
     @ObservationIgnored let agentRunPanelPresenter: AgentRunPanelPresenter
     @ObservationIgnored let soundPresenter: CaptureSoundPresenter
     @ObservationIgnored let agentConversationAudioPlayer: any AgentConversationAudioPlaying
@@ -123,6 +125,9 @@ final class AppModel {
         [TextToSpeechBackendID: UInt64] = [:]
     @ObservationIgnored var textToSpeechVoicePreviewGeneration: UInt64 = 0
     @ObservationIgnored var agentLifecycleSequence: UInt64 = 0
+    @ObservationIgnored var agentSessionAppRunGeneration: UInt64 = 0
+    @ObservationIgnored var agentSessionHandlerGeneration: UInt64 = 0
+    @ObservationIgnored var agentPresentationProfile: WakeProfile?
     @ObservationIgnored var settingsSaveGeneration: UInt64 = 0
     @ObservationIgnored var startupGeneration: UInt64 = 0
     var startupPhase: AppModelStartupPhase = .idle
@@ -183,6 +188,8 @@ final class AppModel {
         macContextCapturer: any MacContextCapturing = EmptyMacContextCapturer(),
         isExecutableFile: @escaping @MainActor (String) -> Bool = AppModel.executableFileExists,
         isDirectory: @escaping @MainActor (String) -> Bool = AppModel.directoryExists,
+        agentSessionEventScheduler: any AgentSessionEventScheduling =
+            MainRunLoopAgentSessionEventScheduler(),
         startsAutomatically: Bool = true,
         diagnostics: any VoiceActivationDiagnosticRecording = VoiceActivationDiagnostics.shared
     ) {
@@ -219,6 +226,7 @@ final class AppModel {
         self.continuityStore = continuityStore
         self.isExecutableFile = isExecutableFile
         self.isDirectory = isDirectory
+        self.agentSessionEventScheduler = agentSessionEventScheduler
         self.permissionRequest = permissionRequest
         self.macContextAccess = macContextAccess
         self.macContextCapturer = ConfigurableMacContextCapturer(
@@ -231,6 +239,7 @@ final class AppModel {
         self.diagnostics = diagnostics
         overlayPresenter = RecordingOverlayPresenter(display: recordingOverlay)
         agentRunPresentation = AgentRunPresentation(diagnostics: diagnostics)
+        agentSessionPresentationRegistry = AgentSessionPresentationRegistry()
         agentRunPanelPresenter = AgentRunPanelPresenter(
             display: agentRunPanel,
             artifactOpener: artifactOpener,
@@ -268,9 +277,7 @@ final class AppModel {
         overlayPresenter.onCancel = { [weak self] in
             self?.cancelCapture()
         }
-        agentRunPresentation.onPublication = { [weak self] snapshot in
-            self?.publishAgentRun(snapshot)
-        }
+        bindAgentRunPresentation(agentRunPresentation)
         agentRunPanelPresenter.onCancel = { [weak self] runID in
             self?.cancelAgentRun(runID: runID)
         }
@@ -283,12 +290,16 @@ final class AppModel {
                 key: key,
                 optionID: optionID)
         }
+        agentRunPanelPresenter.onStopBackgroundTask = { [weak self] runID, taskID in
+            self?.stopBackgroundTask(runID: runID, taskID: taskID)
+        }
         agentRunPanelPresenter.onClose = { [weak self] runID in
             self?.agentRunPresentation.close(runID: runID)
         }
         agentRunPanelPresenter.onDelete = { [weak self] runID in
             guard let self, self.agentRunSnapshot?.runID == runID else { return }
             self.agentRunPresentation.discard(runID: runID)
+            self.agentSessionPresentationRegistry.remove(runID: runID)
             self.agentRunSnapshot = nil
         }
         resolvedAgentConversationAudioPlayer.onSpeakingChange = { [weak self] speaking in

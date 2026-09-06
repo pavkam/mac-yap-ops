@@ -65,6 +65,8 @@ struct AgentRunPresentationRestorationStage {
         case .toolCallUpdate(let update):
             hasVisibleHistory = updateTool(update) || hasVisibleHistory
             hasVisibleHistory = upsertArtifacts(from: update.content) || hasVisibleHistory
+        case .backgroundTask:
+            break
         case .plan(let entries):
             plan = Array(entries.prefix(AgentRunPresentation.maximumPlanEntries))
             hasVisibleHistory = !entries.isEmpty || hasVisibleHistory

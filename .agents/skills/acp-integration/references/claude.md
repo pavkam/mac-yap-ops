@@ -32,6 +32,20 @@ standard `session/request_permission` request remains authoritative. Preserve
 option IDs exactly, settle cancellation, and do not infer persistent provider
 effects merely from a label or option kind.
 
+## AIR async-task contract
+
+The pinned adapter's JetBrains AIR extension is nonstandard ACP. Voice
+Activation enables it only when preset, initialized package name, exact version
+`0.73.0`, client advertisement, and provider advertisement all match AIR version
+1 with `asyncTasks`. It then accepts typed spawn/progress/state events between
+turns and may send `_session/async_task/stop` with exact opaque IDs.
+
+The adapter process owns the task. Quitting Voice Activation or losing that
+process marks identifier-only work interrupted; it does not prove task survival.
+Any pin upgrade must review the tagged AIR sources, rerun capability, decoder,
+and connection fixtures, then rerun the initialize-only probe before changing
+the allowlist.
+
 ## Host-owned steering contract
 
 The pinned 0.73.0 adapter advertises top-level
@@ -68,4 +82,6 @@ also reads current registry metadata; it still does not prompt a model.
 - [Claude Agent ACP adapter](https://github.com/agentclientprotocol/claude-agent-acp)
 - [Pinned v0.73.0 release](https://github.com/agentclientprotocol/claude-agent-acp/releases/tag/v0.73.0)
 - [Pinned v0.73.0 steering implementation](https://github.com/agentclientprotocol/claude-agent-acp/blob/v0.73.0/src/acp-agent.ts)
+- [Pinned v0.73.0 AIR negotiation](https://github.com/agentclientprotocol/claude-agent-acp/blob/v0.73.0/src/air-extension.ts)
+- [Pinned v0.73.0 async tasks](https://github.com/agentclientprotocol/claude-agent-acp/blob/v0.73.0/src/async-tasks.ts)
 - [Permission extension](https://github.com/agentclientprotocol/claude-agent-acp/blob/main/docs/permission-extension.md)

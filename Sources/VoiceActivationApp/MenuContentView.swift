@@ -22,6 +22,14 @@ struct MenuContentView: View {
                 agentRunControls(snapshot)
             }
 
+            if !model.activeAgentBackgroundSessions.isEmpty {
+                backgroundSessions
+            }
+
+            if model.interruptedAgentWork.contains(where: { $0.providerTaskID != nil }) {
+                interruptedBackgroundWork
+            }
+
             profileList
 
             if model.state == .capturing {
@@ -162,12 +170,14 @@ struct MenuContentView: View {
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .foregroundStyle(snapshot.accent.swiftUIColor)
                 Spacer()
-                Text(agentRunPhaseLabel(snapshot.phase))
+                Text(snapshot.hasActiveBackgroundTasks && snapshot.phase != .running
+                    ? "Working in background"
+                    : agentRunPhaseLabel(snapshot.phase))
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
                     .foregroundStyle(.secondary)
             }
 
-            if snapshot.phase.isTerminal {
+            if snapshot.phase.isTerminal && snapshot.canCloseOrDelete {
                 HStack(spacing: 8) {
                     Spacer(minLength: 0)
 
@@ -234,6 +244,43 @@ struct MenuContentView: View {
         }
         .padding(.horizontal, 14)
         .padding(.bottom, 12)
+    }
+
+    private var backgroundSessions: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("Background sessions")
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+                .tracking(0.8)
+            ForEach(model.activeAgentBackgroundSessions) { session in
+                Button {
+                    model.showAgentBackgroundSession(session.key)
+                } label: {
+                    HStack {
+                        Label(session.profileName, systemImage: "clock.arrow.2.circlepath")
+                        Spacer()
+                        Text("\(session.activeTaskCount)")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(
+                    "\(session.profileName), \(session.activeTaskCount) active background tasks")
+            }
+        }
+        .padding(12)
+        .background(.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, 14)
+        .padding(.bottom, 12)
+    }
+
+    private var interruptedBackgroundWork: some View {
+        Label("Interrupted when Voice Activation exited", systemImage: "exclamationmark.circle")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 18)
+            .padding(.bottom, 12)
     }
 
     private func agentRunPhaseLabel(_ phase: AgentRunPhase) -> String {
