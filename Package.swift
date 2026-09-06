@@ -14,6 +14,9 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-testing", revision: "swift-6.2.2-RELEASE"),
+        .package(
+            url: "https://github.com/gonzalezreal/swift-markdown-ui",
+            exact: "2.4.1"),
     ],
     targets: [
         .target(name: "VoiceActivationCore"),
@@ -21,6 +24,9 @@ let package = Package(
             name: "VoiceActivationApp",
             dependencies: [
                 "VoiceActivationCore",
+                .product(
+                    name: "MarkdownUI",
+                    package: "swift-markdown-ui"),
             ],
             exclude: [
                 "Resources/AgentThinking.wav",
@@ -42,6 +48,9 @@ let package = Package(
             name: "VoiceActivationAppTests",
             dependencies: [
                 "VoiceActivationApp",
+                .product(
+                    name: "MarkdownUI",
+                    package: "swift-markdown-ui"),
                 .product(name: "Testing", package: "swift-testing"),
             ]),
     ])

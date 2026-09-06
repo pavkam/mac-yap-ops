@@ -9,6 +9,23 @@ extension AgentRunPanelView {
         userBubble(snapshot.prompt, label: "Request")
     }
 
+    var miniAgentMark: some View {
+        ZStack {
+            Circle()
+                .fill(LinearGradient(
+                    colors: [accent, accent.opacity(0.68)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing))
+            Circle().stroke(.white.opacity(0.28), lineWidth: 0.7)
+            Image(systemName: "sparkles")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.white)
+        }
+        .frame(width: 27, height: 27)
+        .shadow(color: accent.opacity(0.18), radius: 5, y: 2)
+        .accessibilityHidden(true)
+    }
+
     @ViewBuilder
     func timeline(_ snapshot: AgentRunSnapshot) -> some View {
         if snapshot.timeline.isEmpty,
@@ -47,18 +64,33 @@ extension AgentRunPanelView {
     }
 
     func messageBlock(_ message: AgentMessagePresentation) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            sectionLabel(
-                message.kind == .thought
-                    ? "Thinking"
-                    : model.snapshot?.providerName ?? "Agent",
-                symbol: message.kind == .thought ? "brain.head.profile" : "sparkles")
-            AgentMarkdownView(markdown: message.text)
-                .font(.body)
-                .foregroundStyle(message.kind == .thought ? .secondary : .primary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .textSelection(.enabled)
-                .tint(accent)
+        HStack(alignment: .top, spacing: 10) {
+            if message.kind == .response {
+                miniAgentMark
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                sectionLabel(
+                    message.kind == .thought
+                        ? "Thinking"
+                        : model.snapshot?.providerName ?? "Agent",
+                    symbol: message.kind == .thought ? "brain.head.profile" : "sparkles")
+                AgentMarkdownView(
+                    markdown: message.text,
+                    accent: accent,
+                    style: message.kind == .thought ? .detail : .response)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 13)
+            .padding(.vertical, 11)
+            .background {
+                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                    .fill(.white.opacity(message.kind == .thought ? 0.035 : 0.055))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                    .stroke(.white.opacity(0.10), lineWidth: 0.7)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.leading, message.kind == .thought ? 12 : 0)

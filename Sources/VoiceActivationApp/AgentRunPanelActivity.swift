@@ -108,10 +108,10 @@ extension AgentRunPanelView {
         case let .thought(message):
             VStack(alignment: .leading, spacing: 5) {
                 sectionLabel("Reasoning", symbol: "brain.head.profile")
-                AgentMarkdownView(markdown: message.text)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
+                AgentMarkdownView(
+                    markdown: message.text,
+                    accent: accent,
+                    style: .detail)
             }
         case let .tool(tool):
             HStack(alignment: .top, spacing: 8) {
@@ -125,10 +125,10 @@ extension AgentRunPanelView {
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                     ForEach(Array(tool.content.enumerated()), id: \.offset) { _, content in
-                        AgentMarkdownView(markdown: content)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
+                        AgentMarkdownView(
+                            markdown: content,
+                            accent: accent,
+                            style: .detail)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
