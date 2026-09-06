@@ -13,6 +13,10 @@ enum AgentRunEventDeliveryTextKind: Equatable {
     case diagnostic
 }
 
+struct AgentRunEventDeliverySpokenIdentity: Hashable {
+    let messageID: String?
+}
+
 /// A normalized queue entry with explicit byte cost and delivery criticality.
 struct AgentRunEventDeliveryEntry {
     private var storedEvent: AgentRunEvent?
@@ -51,6 +55,11 @@ struct AgentRunEventDeliveryEntry {
             return nil
         }
         return notice.kind
+    }
+
+    var spokenMessageIdentity: AgentRunEventDeliverySpokenIdentity? {
+        guard case let .agentSpokenMessage(messageID) = textKind else { return nil }
+        return AgentRunEventDeliverySpokenIdentity(messageID: messageID)
     }
 
     init(event: AgentRunEvent) {

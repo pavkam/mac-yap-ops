@@ -114,6 +114,31 @@ extension ACPClientConnection {
     }
 
     func deliver(_ event: AgentRunEvent) async throws {
+        for routedEvent in responseChannelRouter.route(event) {
+            try await deliverRouted(routedEvent)
+        }
+    }
+
+    func finishResponseChannelMessage() async throws {
+        for event in responseChannelRouter.finishMessage() {
+            try await deliverRouted(event)
+        }
+    }
+
+    private func deliverRouted(_ inputEvent: AgentRunEvent) async throws {
+        var event = inputEvent
+        if case .agentSpokenMessageDelta = event, activeEventDelivery == nil {
+            responseChannelVisibleFragmentWasDropped = true
+        } else if case let .agentSpokenNarrationReady(messageID, _) = event,
+                  responseChannelVisibleFragmentWasDropped
+        {
+            responseChannelVisibleFragmentWasDropped = false
+            event = .agentSpokenNarrationSuppressed(
+                messageID: messageID,
+                reason: .incompleteDelivery)
+        } else if case .agentSpokenNarrationSuppressed = event {
+            responseChannelVisibleFragmentWasDropped = false
+        }
         guard let delivery = activeEventDelivery else {
             diagnostics.record(
                 category: .agent,
@@ -138,6 +163,9 @@ extension ACPClientConnection {
                 ])
             return
         case .ignored, .stopped:
+            if case .agentSpokenMessageDelta = event {
+                responseChannelVisibleFragmentWasDropped = true
+            }
             diagnostics.record(
                 category: .agent,
                 event: "acp_client.event_dropped",

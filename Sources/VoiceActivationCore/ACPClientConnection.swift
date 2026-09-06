@@ -142,6 +142,7 @@ final class ACPClientRestorationState {
     let delivery: AgentRunEventDelivery?
     var requestID: ACPRequestID?
     var responseWasReceived = false
+    var responseChannelRouter = AgentResponseChannelRouter()
 
     init(
         token: AgentRestorationToken,
@@ -180,10 +181,8 @@ public actor ACPClientConnection {
 
     static let maximumAdvertisedAuthenticationMethods = 8
     static let resumeSetupUpdateAllowlist: Set<String> = [
-        "available_commands_update",
-        "config_option_update",
-        "current_mode_update",
-        "session_info_update",
+        "available_commands_update", "config_option_update",
+        "current_mode_update", "session_info_update",
         "usage_update",
     ]
     static let clientName = "voice-activation"
@@ -197,12 +196,13 @@ public actor ACPClientConnection {
         \(markdownPresentationPreamble)
         The following content block is the user's request.
         """
-
     let transport: any ACPTransport
     let configuration: AgentHarnessConfiguration
     let diagnostics: any VoiceActivationDiagnosticRecording
     let connectionID = UUID()
     let eventDecoder = ACPEventDecoder()
+    var responseChannelRouter = AgentResponseChannelRouter()
+    var responseChannelVisibleFragmentWasDropped = false
     var receiveTask: Task<Void, Never>?
     var nextRequestID: Int64 = 1
     var pendingRequests: [ACPRequestID: PendingClientRequest] = [:]
@@ -621,6 +621,7 @@ public actor ACPClientConnection {
         }
 
         isPromptCancelling = true
+        responseChannelRouter.reset()
         diagnostics.record(
             category: .acp,
             event: "acp_client.cancel_started",
@@ -658,6 +659,9 @@ public actor ACPClientConnection {
 
         let restoration = detachRestoration()
         let eventDelivery = activeEventDelivery
+        responseChannelRouter.reset()
+        responseChannelVisibleFragmentWasDropped = false
+        restoration?.responseChannelRouter.reset()
         activeEventDelivery = nil
         activeTurnToken = nil
         activePromptRequestID = nil
@@ -686,7 +690,6 @@ public actor ACPClientConnection {
             event: "acp_client.close_finished",
             fields: ["connection_id": connectionID.uuidString])
     }
-
     func waitForInputCompletion() async {
         _ = await receiveTask?.result
     }
@@ -694,5 +697,4 @@ public actor ACPClientConnection {
     func eventDeliverySnapshotForTesting() -> AgentRunEventDeliverySnapshot? {
         activeEventDelivery?.snapshotForTesting
     }
-
 }
