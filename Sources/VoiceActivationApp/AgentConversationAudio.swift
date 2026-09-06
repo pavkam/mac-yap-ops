@@ -270,7 +270,6 @@ final class AgentConversationAudioPresenter {
             updateWorking(true)
         case .followUpSubmitted(let runID, _, _, _):
             guard self.runID == runID else { return }
-            rejectsAgentSpeechUntilNextTurn = false
             narration.reset()
             toolSoundPhases.removeAll(keepingCapacity: true)
             player.stopSpeaking()
@@ -281,6 +280,7 @@ final class AgentConversationAudioPresenter {
             break
         case .turnStarted(let runID):
             guard self.runID == runID else { return }
+            rejectsAgentSpeechUntilNextTurn = false
             narration.reset()
             toolSoundPhases.removeAll(keepingCapacity: true)
             updateWorking(true)

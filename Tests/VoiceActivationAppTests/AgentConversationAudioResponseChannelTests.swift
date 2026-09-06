@@ -111,18 +111,47 @@ struct AgentConversationAudioResponseChannelTests {
     }
 
     @MainActor @Test
-    func cancelledRun_RejectsLateSpokenDelta() throws {
+    func queuedFollowUp_AfterCancellationSpeaksWhenAcceptedTurnStarts() throws {
         let (presenter, player, runID) = try makePresenter()
+        presenter.handle(.followUpSubmitted(
+            runID: runID,
+            inputID: UUID(),
+            prompt: "Continue",
+            disposition: .queued))
         presenter.handle(.turnCancellationStarted(runID: runID))
         presenter.handle(.turnCompleted(
             runID: runID,
-            result: AgentRunResult(stopReason: .endTurn)))
+            result: AgentRunResult(stopReason: .cancelled)))
+        presenter.handle(.turnStarted(runID: runID))
+
+        presenter.handle(.event(
+            runID: runID,
+            event: .agentSpokenNarrationReady(messageID: "next", text: "New turn.")))
+
+        #expect(player.spoken.map(\.text) == ["New turn."])
+    }
+
+    @MainActor @Test
+    func followUpSubmittedDuringCancellation_CannotAdmitRetiredNarration() throws {
+        let (presenter, player, runID) = try makePresenter()
+        presenter.handle(.turnCancellationStarted(runID: runID))
+        presenter.handle(.followUpSubmitted(
+            runID: runID,
+            inputID: UUID(),
+            prompt: "Continue",
+            disposition: .queued))
 
         presenter.handle(.event(
             runID: runID,
             event: .agentSpokenNarrationReady(messageID: "late", text: "Too late.")))
-
         #expect(player.spoken.isEmpty)
+
+        presenter.handle(.turnStarted(runID: runID))
+        presenter.handle(.event(
+            runID: runID,
+            event: .agentSpokenNarrationReady(messageID: "next", text: "New turn.")))
+
+        #expect(player.spoken.map(\.text) == ["New turn."])
     }
 
     @MainActor
