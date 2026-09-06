@@ -51,7 +51,8 @@ push-to-talk details, see [Getting started](docs/getting-started.md).
   in Settings. Direct commands never receive this context.
 - A non-activating conversation panel with ordered turns, bounded follow-ups,
   provider-exposed thinking and tools, spoken permission choices, cancellation,
-  session recovery, and retained output controls.
+  retained output controls, and capability-gated ACP session restoration across
+  application launches.
 - Selectable GitHub-flavored Markdown responses with safe link handling and
   agent-provided images omitted instead of fetched from the network.
 - Optional macOS or ElevenLabs reply speech with a global default or per-profile
@@ -70,9 +71,12 @@ They run with the signed-in user's access, and a provider may contact its own
 services. Provider authentication stays with its CLI. The optional ElevenLabs
 key stays in macOS Keychain.
 
-The app does not maintain a conversation-history database or audio archive.
-Diagnostics exclude prompts, transcripts, credentials, provider content, audio,
-and Mac-context snapshot values or content. See
+The app does not maintain a conversation-history database or audio archive. It
+persists only bounded ACP session identifiers, compatibility fingerprints, and
+identifier-only interrupted-work markers. Conversation content remains with the
+provider. Diagnostics exclude continuity identifiers and fingerprints as well
+as prompts, transcripts, credentials, provider content, audio, and Mac-context
+snapshot values or content. See
 [Privacy and security](docs/privacy-and-security.md) for the complete data,
 persistence, and retention boundaries.
 

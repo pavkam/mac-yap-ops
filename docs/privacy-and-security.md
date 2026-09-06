@@ -51,6 +51,11 @@ and provider permission policies as trusted configuration.
   generic-password item. It is never stored in preferences or process arguments.
 - The structured diagnostic trace is stored under
   `~/Library/Logs/VoiceActivation/` and rotates locally.
+- One strict schema-1 `UserDefaults` value stores identifier-only ACP
+  continuity: profile/session bookmarks, a provider compatibility fingerprint,
+  access ordinals, and exact work markers made from profile, session,
+  occurrence, optional turn/provider-task identifiers, and local lifecycle
+  state. It contains no conversation content or authorization.
 
 Preferences and diagnostic files use the signed-in user's normal filesystem
 protection; Voice Activation does not add application-level encryption to them.
@@ -62,8 +67,10 @@ working-folder path.
 Live transcripts, queued follow-ups, agent output, reasoning exposed by the
 provider, tool state, permission requests, narration text, synthesized audio,
 reusable ACP processes, and Mac-context snapshot values are held only for the
-active application process. Voice Activation does not maintain a durable
-conversation-history database or write captured audio to disk.
+active application process. Opaque ACP bookmarks can restore provider-owned
+context or bounded replay, but Voice Activation does not maintain a durable
+conversation-history database or write captured audio to disk. The provider
+owns the actual conversation content and its retention.
 
 Focused Mac context is on by default for admitted ACP requests and can be
 disabled in Settings; direct commands never receive it. The normal status check
@@ -102,12 +109,23 @@ User-visible conversation state is bounded in memory:
 | Details in one thinking group | 128 |
 | Lifecycle notices | 16 |
 | Pending recognized follow-ups | 16 |
+| ACP session bookmarks | 64 |
+| ACP interrupted-work markers | 64 |
+| One persisted ACP identifier | 4 KiB UTF-8 |
+| Complete continuity envelope | 512 KiB encoded JSON |
 
 When presentation text or activity is removed to satisfy a bound, the panel
 shows an omission marker or count. Narration queues, provider sessions, ACP
 frames, event delivery, standard-error tails, and permission collections have
 separate protocol-level bounds documented in
 [ACP agent harness](agent-harness.md).
+
+A 65th bookmark evicts the deterministic least-recently-used bookmark. A 65th
+unique work marker is rejected atomically. Unknown schema versions or fields,
+malformed JSON, duplicates, invalid identifiers or fingerprints, excessive
+records, and oversized continuity data are quarantined as empty in memory. A
+read does not rewrite quarantined bytes; a later explicit valid mutation
+replaces them.
 
 ## Diagnostics and redaction
 
@@ -118,6 +136,11 @@ transcripts, credentials, authorization values, raw provider content, response
 text, audio, or Mac-context snapshot values or content (including app names,
 bundle identifiers, window titles, document URLs, selections, and resource
 names).
+
+Continuity events additionally exclude stored session, turn, provider-task,
+occurrence, restoration-token, and fingerprint values. They retain only fixed
+operation and activation categories, capability booleans, counts, error types,
+and timings. Provider-owned replay remains content and is never diagnostic data.
 
 Fields whose names suggest sensitive content are replaced with `<redacted>` at
 the file boundary. That is defense in depth, not a content filter: paths and
