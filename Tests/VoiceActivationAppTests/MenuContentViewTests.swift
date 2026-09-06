@@ -74,6 +74,22 @@ struct MenuContentViewTests {
     }
 
     @MainActor @Test
+    func userMessage_WhenQueued_RendersTransportCaptionAndAccessibilityValue() throws {
+        let model = AgentRunPanelModel()
+        let message = AgentUserMessagePresentation(
+            id: UUID(),
+            text: "also add tests",
+            disposition: .queued)
+        let block = AgentRunPanelView(model: model).userMessageBlock(
+            message)
+        let renderer = ImageRenderer(content: block)
+        renderer.proposedSize = ProposedViewSize(width: 320, height: nil)
+        #expect(renderer.cgImage != nil)
+        #expect(message.transportPresentation?.caption == "Queued for next turn")
+        #expect(message.transportPresentation?.accessibilityValue == "Queued for next turn")
+    }
+
+    @MainActor @Test
     func render_WhenConversationControlsCollapse_LeavesNoSystemWindowShadow() async throws {
         guard ProcessInfo.processInfo.environment[Self.childEnvironmentKey] == "1" else {
             try IsolatedAppKitTestProcess.run(
@@ -139,4 +155,5 @@ struct MenuContentViewTests {
             agentSpeechCredentialStore: SilentAgentSpeechCredentialStore(),
             startsAutomatically: false)
     }
+
 }

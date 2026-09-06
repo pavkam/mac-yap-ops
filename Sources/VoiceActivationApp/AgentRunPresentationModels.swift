@@ -176,11 +176,45 @@ struct AgentUserMessagePresentation: Equatable, Identifiable, Sendable {
     let id: UUID
     let messageID: String?
     var text: String
+    var disposition: AgentConversationInputDisposition?
 
-    init(id: UUID, messageID: String? = nil, text: String) {
+    init(
+        id: UUID,
+        messageID: String? = nil,
+        text: String,
+        disposition: AgentConversationInputDisposition? = nil
+    ) {
         self.id = id
         self.messageID = messageID
         self.text = text
+        self.disposition = disposition
+    }
+
+    var transportPresentation: AgentUserMessageTransportPresentation? {
+        disposition.map { disposition in
+            let label = disposition.presentationLabel
+            return AgentUserMessageTransportPresentation(
+                caption: label,
+                accessibilityValue: label)
+        }
+    }
+}
+
+/// Visible and spoken-accessibility copy for one locally submitted user input.
+struct AgentUserMessageTransportPresentation: Equatable, Sendable {
+    let caption: String
+    let accessibilityValue: String
+}
+
+extension AgentConversationInputDisposition {
+    var presentationLabel: String {
+        switch self {
+        case .routing: "Routing…"
+        case .injected: "Added to current turn"
+        case .queued: "Queued for next turn"
+        case .prompted: "Started as next turn"
+        case .failed: "Delivery failed — say it again"
+        }
     }
 }
 

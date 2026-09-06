@@ -419,4 +419,36 @@ extension AgentConversationAudioPresenterTests {
         #expect(player.workingStates.last == true)
     }
 
+    @MainActor @Test
+    func lifecycle_WhenFollowUpDispositionChanges_DoesNotChangeNarrationOrAudio() throws {
+        let player = AgentConversationAudioSpy()
+        let presenter = AgentConversationAudioPresenter(
+            player: player,
+            readsReplies: { true },
+            playsWorkingSound: { true },
+            localeID: { "en-US" })
+        let runID = UUID()
+        presenter.handle(.started(
+            runID: runID,
+            profile: try agentProfile(),
+            prompt: "First"))
+        presenter.handle(.event(
+            runID: runID,
+            event: .agentMessageDelta(messageID: "reply", text: "Still speaking.")))
+        let originalSpokenText = player.spoken.map(\.text)
+        let originalSpokenLocales = player.spoken.map(\.localeID)
+        let originalStopSpeakingCount = player.stopSpeakingCount
+        let originalWorkingStates = player.workingStates
+
+        presenter.handle(.followUpDispositionChanged(
+            runID: runID,
+            inputID: UUID(),
+            disposition: .queued))
+
+        #expect(player.spoken.map(\.text) == originalSpokenText)
+        #expect(player.spoken.map(\.localeID) == originalSpokenLocales)
+        #expect(player.stopSpeakingCount == originalStopSpeakingCount)
+        #expect(player.workingStates == originalWorkingStates)
+    }
+
 }

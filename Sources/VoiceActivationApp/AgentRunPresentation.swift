@@ -219,9 +219,19 @@ final class AgentRunPresentation {
         publishNow()
     }
 
-    /// Appends a user follow-up after settling the preceding thinking group.
-    func submitFollowUp(runID: UUID, prompt: String) {
-        guard self.runID == runID, phase?.isTerminal == false else { return }
+    /// Appends an identified user follow-up after settling the preceding thinking group.
+    func submitFollowUp(
+        runID: UUID,
+        inputID: UUID,
+        prompt: String,
+        disposition: AgentConversationInputDisposition
+    ) {
+        guard self.runID == runID, phase?.isTerminal == false,
+              !timeline.contains(where: { item in
+                  guard case .userMessage(let message) = item else { return false }
+                  return message.id == inputID
+              })
+        else { return }
         diagnosticsRecorder.record(
             category: .ui,
             event: "agent_presentation.follow_up_added",
@@ -231,10 +241,42 @@ final class AgentRunPresentation {
             ])
         flushPendingPublication()
         settleActiveThinkingGroup()
-        timeline.append(.userMessage(AgentUserMessagePresentation(id: UUID(), text: prompt)))
+        timeline.append(.userMessage(AgentUserMessagePresentation(
+            id: inputID,
+            text: prompt,
+            disposition: disposition)))
         voiceInput = ""
         enforceTimelineBounds()
         publishNow()
+    }
+
+    /// Updates only the identified local follow-up in the active run.
+    func updateFollowUp(
+        runID: UUID,
+        inputID: UUID,
+        disposition: AgentConversationInputDisposition
+    ) {
+        guard self.runID == runID, phase?.isTerminal == false,
+              let index = timeline.firstIndex(where: { item in
+                  guard case .userMessage(let message) = item else { return false }
+                  return message.id == inputID && message.disposition != nil
+              }),
+              case .userMessage(var message) = timeline[index],
+              message.disposition != disposition
+        else { return }
+        flushPendingPublication()
+        message.disposition = disposition
+        timeline[index] = .userMessage(message)
+        publishNow()
+    }
+
+    /// Appends a presentation-owned follow-up for legacy direct presentation callers.
+    func submitFollowUp(runID: UUID, prompt: String) {
+        submitFollowUp(
+            runID: runID,
+            inputID: UUID(),
+            prompt: prompt,
+            disposition: .routing)
     }
 
     /// Appends a bounded local lifecycle notice to the active conversation.
