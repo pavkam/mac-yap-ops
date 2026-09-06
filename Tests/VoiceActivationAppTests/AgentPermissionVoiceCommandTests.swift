@@ -35,12 +35,12 @@ struct AgentPermissionVoiceCommandTests {
             options: options) == nil)
     }
 
-    @Test func match_WhenDenyOptionIsMissing_ReturnsSafeCancellation() {
+    @Test func match_WhenDenyOptionIsMissing_ReturnsNoDecision() {
         let allowOnly = [
             AgentPermissionOption(id: "allow-once", label: "Allow", kind: .allowOnce),
         ]
 
-        #expect(AgentPermissionVoiceCommand.match("deny", options: allowOnly) == .cancel)
+        #expect(AgentPermissionVoiceCommand.match("deny", options: allowOnly) == nil)
     }
 
     @Test func match_WhenNormalizedLabelsAreDuplicated_ReturnsNoDecision() {

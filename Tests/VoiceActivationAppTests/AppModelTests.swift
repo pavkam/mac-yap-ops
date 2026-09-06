@@ -273,8 +273,26 @@ actor AppModelPermissionAgentRunnerSpy: AgentHarnessRunning {
 
     let turnToken = AgentTurnToken()
     let requestID = ACPRequestID.string("voice-permission")
+    private let options: [AgentPermissionOption]
     private var resolutions: [Resolution] = []
     private var continuation: CheckedContinuation<AgentRunResult, Never>?
+
+    init(options: [AgentPermissionOption] = [
+        AgentPermissionOption(
+            id: "allow-once",
+            label: "Allow once",
+            kind: .allowOnce),
+        AgentPermissionOption(
+            id: "allow-always",
+            label: "Allow always",
+            kind: .allowAlways),
+        AgentPermissionOption(
+            id: "deny-once",
+            label: "Deny",
+            kind: .rejectOnce),
+    ]) {
+        self.options = options
+    }
 
     func run(
         admission: AgentRunAdmission,
@@ -296,20 +314,7 @@ actor AppModelPermissionAgentRunnerSpy: AgentHarnessRunning {
                         title: "Edit settings",
                         kind: .edit,
                         status: .pending),
-                    options: [
-                        AgentPermissionOption(
-                            id: "allow-once",
-                            label: "Allow once",
-                            kind: .allowOnce),
-                        AgentPermissionOption(
-                            id: "allow-always",
-                            label: "Allow always",
-                            kind: .allowAlways),
-                        AgentPermissionOption(
-                            id: "deny-once",
-                            label: "Deny",
-                            kind: .rejectOnce),
-                    ]))))
+                    options: options))))
         return await withCheckedContinuation { continuation = $0 }
     }
 
