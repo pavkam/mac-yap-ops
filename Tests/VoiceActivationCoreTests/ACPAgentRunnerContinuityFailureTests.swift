@@ -214,8 +214,7 @@ struct ACPAgentRunnerContinuityFailureTests {
             configuration: configuration)])
         let restoring = FakeACPTransport()
         let fresh = FakeACPTransport()
-        let unused = FakeACPTransport()
-        let factory = RunnerTransportFactory(transports: [restoring, fresh, unused])
+        let factory = RunnerTransportFactory(transports: [restoring, fresh])
         let runner = ACPAgentRunner(
             transportFactory: factory,
             continuityStore: store,
@@ -240,7 +239,6 @@ struct ACPAgentRunnerContinuityFailureTests {
         }
 
         #expect(await factory.createdConfigurations().count == 2)
-        #expect(await unused.allSentMessages().isEmpty)
     }
 
     @Test func run_WhenRestorationReplayOverflows_FallsBackFreshBeforePrompt()

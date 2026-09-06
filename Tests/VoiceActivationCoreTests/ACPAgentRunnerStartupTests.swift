@@ -350,9 +350,7 @@ extension ACPAgentRunnerTests {
 
     @Test func run_WhenFreshPromptReturnsUnavailable_DoesNotRetryUtterance() async throws {
         let firstTransport = FakeACPTransport()
-        let unusedTransport = FakeACPTransport()
-        let factory = RunnerTransportFactory(
-            transports: [firstTransport, unusedTransport])
+        let factory = RunnerTransportFactory(transports: [firstTransport])
         let runner = ACPAgentRunner(transportFactory: factory)
         let configuration = try makeConfiguration()
         let activeRun = run(runner, profileID: UUID(), configuration: configuration)
@@ -374,7 +372,6 @@ extension ACPAgentRunnerTests {
         }
         #expect(await factory.createdConfigurations() == [configuration])
         #expect(await firstTransport.observedTerminationCount() == 1)
-        #expect(await unusedTransport.observedTerminationCount() == 0)
         await runner.shutdown()
     }
 
