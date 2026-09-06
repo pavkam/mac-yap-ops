@@ -11,14 +11,21 @@ extension AgentRunPresentation {
             providerName = agentName
         case .userMessageDelta:
             break
-        case .agentMessageDelta(let messageID, let text):
+        case .agentMessageDelta(let messageID, let text),
+            .agentDisplayMessageDelta(let messageID, let text):
             if needsResponseSeparator, !text.isEmpty {
                 outputBuffer.append("\n\n")
                 needsResponseSeparator = false
             }
             outputBuffer.append(text)
             settleActiveThinkingGroup()
-            appendResponseMessage(text, messageID: messageID)
+            appendResponseMessage(text, messageID: messageID, kind: .response)
+        case .agentSpokenMessageDelta(let messageID, let text):
+            spokenOutputBuffer.append(text)
+            settleActiveThinkingGroup()
+            appendResponseMessage(text, messageID: messageID, kind: .spokenResponse)
+        case .agentSpokenNarrationReady, .agentSpokenNarrationSuppressed:
+            break
         case .thoughtDelta(let messageID, let text):
             appendThinkingMessage(text, messageID: messageID)
         case .artifact(let artifact):
@@ -200,10 +207,14 @@ extension AgentRunPresentation {
         settleActiveThinkingGroup()
     }
 
-    func appendResponseMessage(_ text: String, messageID: String?) {
+    func appendResponseMessage(
+        _ text: String,
+        messageID: String?,
+        kind: AgentMessagePresentationKind
+    ) {
         guard !text.isEmpty else { return }
         if case .message(var message) = timeline.last,
-            message.kind == .response,
+            message.kind == kind,
             message.messageID == messageID
         {
             message.text.append(text)
@@ -217,7 +228,7 @@ extension AgentRunPresentation {
                 AgentMessagePresentation(
                     id: UUID(),
                     messageID: messageID,
-                    kind: .response,
+                    kind: kind,
                     text: text)))
         enforceTimelineBounds()
     }

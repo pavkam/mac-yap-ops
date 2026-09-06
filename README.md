@@ -59,8 +59,14 @@ push-to-talk details, see [Getting started](docs/getting-started.md).
   providers retain it in a bounded FIFO for the next ordinary turn.
 - Selectable GitHub-flavored Markdown responses with safe link handling and
   bounded HTTPS image loading; typed ACP results use the local preview shelf.
+- Agent-authored spoken and display response channels. ACP v1 has no standard
+  spoken channel, so current adapters receive an exact marker compatibility
+  instruction and supporting providers may use optional namespaced metadata.
+  Ordinary unmarked replies keep the existing visible Markdown and narration
+  behavior.
 - Optional macOS or ElevenLabs reply speech with a global default or per-profile
-  voice, plus barge-in, activity cues, and profile-aware follow-ups.
+  voice, plus barge-in, activity cues, and profile-aware follow-ups. Spoken
+  responses remain visible and copyable even when reply reading is disabled.
 - Structured local diagnostics, Launch at Login, and signed SwiftPM app-bundle
   packaging.
 
@@ -74,6 +80,12 @@ Direct commands and ACP providers launch as explicit processes without a shell.
 They run with the signed-in user's access, and a provider may contact its own
 services. Provider authentication stays with its CLI. The optional ElevenLabs
 key stays in macOS Keychain.
+
+Reply speech is derived only from agent-authored response text. Voice Activation
+never synthesizes raw tool payloads, plans, thoughts, permissions, diagnostics,
+or ACP frames. The macOS backend uses the local system synthesizer. Selecting
+ElevenLabs sends only admitted response text to ElevenLabs for synthesis. Typed
+spoken text remains visible in the conversation panel without being rewritten.
 
 The app does not maintain a conversation-history database or audio archive. It
 persists only bounded ACP session identifiers, compatibility fingerprints, and

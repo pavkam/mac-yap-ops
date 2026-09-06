@@ -22,7 +22,12 @@ final class SilentAgentConversationAudioPlayer: AgentConversationAudioPlaying {
     func endConversation() {}
     func setWorking(_ working: Bool) {}
     func playActivitySound(_ sound: AgentActivitySound) {}
-    func speak(_ text: String, localeID: String) {}
+    func speak(
+        _ text: String,
+        localeID: String,
+        inputFormat: AgentSpeechInputFormat,
+        admissionPolicy: AgentSpeechAdmissionPolicy
+    ) {}
     func stopSpeaking() {}
     func stopAll() {}
 }

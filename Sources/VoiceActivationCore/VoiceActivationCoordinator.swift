@@ -620,6 +620,10 @@ extension AgentRunEvent {
         case .connected: "connected"
         case .userMessageDelta: "user_message_delta"
         case .agentMessageDelta: "agent_message_delta"
+        case .agentSpokenMessageDelta: "agent_spoken_message_delta"
+        case .agentSpokenNarrationReady: "agent_spoken_narration_ready"
+        case .agentSpokenNarrationSuppressed: "agent_spoken_narration_suppressed"
+        case .agentDisplayMessageDelta: "agent_display_message_delta"
         case .thoughtDelta: "thought_delta"
         case .artifact: "artifact"
         case .toolCall: "tool_call"
@@ -637,10 +641,13 @@ extension AgentRunEvent {
 extension AgentRunEvent {
     var isMeaningfulAgentActivity: Bool {
         switch self {
-        case .agentMessageDelta(_, let text), .thoughtDelta(_, let text):
+        case .agentMessageDelta(_, let text), .agentSpokenMessageDelta(_, let text),
+            .agentDisplayMessageDelta(_, let text), .thoughtDelta(_, let text):
             !text.isEmpty
         case .artifact, .toolCall, .toolCallUpdate, .permissionRequested, .deliveryNotice:
             true
+        case .agentSpokenNarrationReady, .agentSpokenNarrationSuppressed:
+            false
         case .plan(let entries):
             !entries.isEmpty
         case .connected, .userMessageDelta, .metadata, .diagnostic, .unknown:

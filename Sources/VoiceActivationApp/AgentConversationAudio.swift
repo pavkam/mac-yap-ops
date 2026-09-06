@@ -16,7 +16,11 @@ protocol AgentConversationAudioPlaying: AnyObject {
     func endConversation()
     func setWorking(_ working: Bool)
     func playActivitySound(_ sound: AgentActivitySound)
-    func speak(_ text: String, localeID: String)
+    func speak(
+        _ text: String,
+        localeID: String,
+        inputFormat: AgentSpeechInputFormat,
+        admissionPolicy: AgentSpeechAdmissionPolicy)
     func stopSpeaking()
     func stopAll()
 }
@@ -122,9 +126,18 @@ final class AgentConversationAudioOrchestrator: AgentConversationAudioPlaying {
         activityLoop.play(sound)
     }
 
-    func speak(_ text: String, localeID: String) {
-        let value = String(text.prefix(20_000))
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+    func speak(
+        _ text: String,
+        localeID: String,
+        inputFormat: AgentSpeechInputFormat = .legacyMarkdown,
+        admissionPolicy: AgentSpeechAdmissionPolicy = .legacyNormalized
+    ) {
+        let value = switch admissionPolicy {
+        case .legacyNormalized:
+            String(text.prefix(20_000)).trimmingCharacters(in: .whitespacesAndNewlines)
+        case .agentAuthoredVerbatim:
+            text
+        }
         guard !value.isEmpty else {
             diagnostics.record(
                 category: .audio,
@@ -139,6 +152,20 @@ final class AgentConversationAudioOrchestrator: AgentConversationAudioPlaying {
                 fields: ["reason": "speech_disabled"])
             return
         }
+        let admitted = speechQueue.enqueue(
+            AgentSpeechRequest(
+                text: value,
+                localeID: localeID,
+                configuration: configuration,
+                inputFormat: inputFormat,
+                admissionPolicy: admissionPolicy))
+        guard admitted else {
+            diagnostics.record(
+                category: .audio,
+                event: "conversation_audio.speech_ignored",
+                fields: ["reason": "queue_rejected"])
+            return
+        }
         diagnostics.record(
             category: .audio,
             event: "conversation_audio.speech_enqueued",
@@ -146,11 +173,6 @@ final class AgentConversationAudioOrchestrator: AgentConversationAudioPlaying {
                 "character_count": String(value.count),
                 "backend": configuration.selection.backendID.rawValue,
             ])
-        speechQueue.enqueue(
-            AgentSpeechRequest(
-                text: value,
-                localeID: localeID,
-                configuration: configuration))
     }
 
     func stopSpeaking() {
@@ -198,6 +220,7 @@ final class AgentConversationAudioPresenter {
     private var runID: UUID?
     private var readsActiveReplies = false
     private var activityIsWorking = false
+    private var rejectsAgentSpeechUntilNextTurn = false
     private var toolSoundPhases: [String: ToolSoundPhase] = [:]
 
     init(
@@ -221,7 +244,11 @@ final class AgentConversationAudioPresenter {
                     fields: ["reason": "read_replies_disabled"])
                 return
             }
-            player.speak(text, localeID: localeID())
+            player.speak(
+                text,
+                localeID: localeID(),
+                inputFormat: .legacyMarkdown,
+                admissionPolicy: .legacyNormalized)
         }
     }
 
@@ -232,8 +259,9 @@ final class AgentConversationAudioPresenter {
             fields: lifecycleEvent.audioDiagnosticFields)
         switch lifecycleEvent {
         case .started(let runID, let profile, _):
-            narration.reset()
             self.runID = runID
+            rejectsAgentSpeechUntilNextTurn = false
+            narration.reset()
             readsActiveReplies = player.beginConversation(
                 profile: profile,
                 readsInheritedReplies: readsReplies())
@@ -252,11 +280,13 @@ final class AgentConversationAudioPresenter {
             break
         case .turnStarted(let runID):
             guard self.runID == runID else { return }
+            rejectsAgentSpeechUntilNextTurn = false
             narration.reset()
             toolSoundPhases.removeAll(keepingCapacity: true)
             updateWorking(true)
         case .turnCancellationStarted(let runID):
             guard self.runID == runID else { return }
+            rejectsAgentSpeechUntilNextTurn = true
             narration.reset()
             player.stopSpeaking()
             updateWorking(false)
@@ -269,6 +299,7 @@ final class AgentConversationAudioPresenter {
         case .turnCompleted(let runID, let result):
             guard self.runID == runID else { return }
             if result.stopReason == .cancelled {
+                rejectsAgentSpeechUntilNextTurn = true
                 narration.reset()
                 player.stopSpeaking()
             } else if readsActiveReplies {
@@ -279,6 +310,7 @@ final class AgentConversationAudioPresenter {
             updateWorking(false)
         case .turnFailed(let runID, _):
             guard self.runID == runID else { return }
+            rejectsAgentSpeechUntilNextTurn = true
             if readsActiveReplies {
                 narration.finish()
             } else {
@@ -287,36 +319,44 @@ final class AgentConversationAudioPresenter {
             updateWorking(false)
         case .completed(let runID, let result):
             guard self.runID == runID else { return }
+            let speaksStopped = result.stopReason == .cancelled && readsActiveReplies
+            self.runID = nil
+            rejectsAgentSpeechUntilNextTurn = true
             narration.reset()
             activityIsWorking = false
             player.stopAll()
-            self.runID = nil
             toolSoundPhases.removeAll(keepingCapacity: true)
-            if result.stopReason == .cancelled, readsActiveReplies {
-                player.speak("Stopped.", localeID: localeID())
+            if speaksStopped {
+                player.speak(
+                    "Stopped.",
+                    localeID: localeID(),
+                    inputFormat: .legacyMarkdown,
+                    admissionPolicy: .legacyNormalized)
             }
             readsActiveReplies = false
             player.endConversation()
         case .failed(let runID, _):
             guard self.runID == runID else { return }
+            self.runID = nil
+            rejectsAgentSpeechUntilNextTurn = true
             narration.reset()
             activityIsWorking = false
             player.stopAll()
             readsActiveReplies = false
             player.endConversation()
-            self.runID = nil
             toolSoundPhases.removeAll(keepingCapacity: true)
         }
     }
 
     func shutdown() {
         diagnostics.record(category: .audio, event: "conversation_audio.shutdown")
+        runID = nil
+        rejectsAgentSpeechUntilNextTurn = true
         narration.reset()
         activityIsWorking = false
         player.stopAll()
         readsActiveReplies = false
         player.endConversation()
-        runID = nil
         toolSoundPhases.removeAll(keepingCapacity: true)
     }
 
@@ -359,6 +399,20 @@ final class AgentConversationAudioPresenter {
                 narration.append(messageID: messageID, text: text)
             }
             updateWorking(true)
+        case .agentSpokenMessageDelta:
+            narration.markSemanticBoundary()
+        case .agentDisplayMessageDelta:
+            narration.markSemanticBoundary()
+            updateWorking(true)
+        case .agentSpokenNarrationReady(_, let text):
+            guard readsActiveReplies, !rejectsAgentSpeechUntilNextTurn else { return }
+            player.speak(
+                text,
+                localeID: localeID(),
+                inputFormat: .agentAuthoredPlainText,
+                admissionPolicy: .agentAuthoredVerbatim)
+        case .agentSpokenNarrationSuppressed:
+            break
         case .permissionRequested:
             narration.markSemanticBoundary()
             updateWorking(false)
@@ -527,6 +581,10 @@ extension AgentRunEvent {
         case .connected: "connected"
         case .userMessageDelta: "user_message_delta"
         case .agentMessageDelta: "agent_message_delta"
+        case .agentSpokenMessageDelta: "agent_spoken_message_delta"
+        case .agentSpokenNarrationReady: "agent_spoken_narration_ready"
+        case .agentSpokenNarrationSuppressed: "agent_spoken_narration_suppressed"
+        case .agentDisplayMessageDelta: "agent_display_message_delta"
         case .thoughtDelta: "thought_delta"
         case .artifact: "artifact"
         case .toolCall: "tool_call"

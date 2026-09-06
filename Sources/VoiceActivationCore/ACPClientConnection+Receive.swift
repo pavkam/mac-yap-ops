@@ -136,6 +136,10 @@ extension ACPClientConnection {
                                 maximumBytes: Self.maximumDiagnosticBytes)))
                     return
                 }
+                if isPromptCancelling {
+                    _ = try eventDecoder.event(from: message)
+                    return
+                }
                 if activeTurnToken != nil, !promptResponseWasReceived {
                     promptHadActivity = true
                 }
@@ -192,6 +196,19 @@ extension ACPClientConnection {
         else {
             return
         }
+        for routedEvent in restoration.responseChannelRouter.route(event) {
+            try await deliverRoutedRestored(
+                routedEvent,
+                restoration: restoration,
+                delivery: delivery)
+        }
+    }
+
+    private func deliverRoutedRestored(
+        _ event: AgentRunEvent,
+        restoration: ACPClientRestorationState,
+        delivery: AgentRunEventDelivery
+    ) async throws {
         switch delivery.send(event) {
         case .accepted, .ignored:
             return
@@ -260,11 +277,27 @@ extension ACPClientConnection {
         if let restoration = activeRestoration,
            restoration.requestID == id
         {
+            if result.isFailure {
+                restoration.responseChannelRouter.reset()
+            } else {
+                for event in restoration.responseChannelRouter.finishMessage() {
+                    guard let delivery = restoration.delivery else { continue }
+                    try await deliverRoutedRestored(
+                        event,
+                        restoration: restoration,
+                        delivery: delivery)
+                }
+            }
             restoration.responseWasReceived = true
             restoration.delivery?.stopAdmission()
         }
 
         if id == activePromptRequestID {
+            if result.isFailure || isPromptCancelling {
+                responseChannelRouter.reset()
+            } else {
+                try await finishResponseChannelMessage()
+            }
             promptResponseWasReceived = true
             activeEventDelivery?.stopAdmission()
             await cancelPendingPermissions()

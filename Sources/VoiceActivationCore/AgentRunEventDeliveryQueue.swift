@@ -22,6 +22,8 @@ final class AgentRunEventDeliveryQueue: @unchecked Sendable {
     private var discardedArtifactBytes: UInt64 = 0
     private var discardedArtifactEntries: UInt64 = 0
     private var discardedDiagnosticBytes: UInt64 = 0
+    private var incompleteSpokenMessages: Set<AgentRunEventDeliverySpokenIdentity> = []
+    private var suppressAllNarration = false
 
     init(isLossless: Bool = false) {
         self.isLossless = isLossless
@@ -44,13 +46,15 @@ final class AgentRunEventDeliveryQueue: @unchecked Sendable {
         }
     }
 
-    func send(_ event: AgentRunEvent) -> AgentRunEventDeliveryAdmission {
+    func send(_ inputEvent: AgentRunEvent) -> AgentRunEventDeliveryAdmission {
         var continuation: CheckedContinuation<AgentRunEvent?, Never>?
         var immediateEvent: AgentRunEvent?
         let result = lock.withLock { () -> AgentRunEventDeliveryAdmission in
             guard lifecycle == .open else {
                 return .stopped
             }
+
+            let event = narrationSafeEvent(inputEvent)
 
             let normalized: AgentRunEventNormalization
             do {
@@ -64,6 +68,11 @@ final class AgentRunEventDeliveryQueue: @unchecked Sendable {
             }
             guard !normalized.entries.isEmpty else {
                 return .ignored
+            }
+            if case let .agentSpokenMessageDelta(messageID, _) = event,
+               normalized.entries.contains(where: { $0.noticeKind == .outputTruncated })
+            {
+                markSpokenIncomplete(AgentRunEventDeliverySpokenIdentity(messageID: messageID))
             }
             if isLossless,
                normalized.entries.contains(where: { $0.noticeKind != nil })
@@ -95,6 +104,9 @@ final class AgentRunEventDeliveryQueue: @unchecked Sendable {
                 pendingOutputBytes += change.outputByteDelta
                 pendingDiagnosticBytes += change.diagnosticByteDelta
                 if change.discardedBytes > 0 {
+                    if let identity = appended.spokenMessageIdentity {
+                        markSpokenIncomplete(identity)
+                    }
                     insertNotice(
                         at: entries.count - 1,
                         kind: change.noticeKind,
@@ -181,6 +193,8 @@ final class AgentRunEventDeliveryQueue: @unchecked Sendable {
             pendingArtifactBytes = 0
             pendingDiagnosticBytes = 0
             pendingControlBytes = 0
+            incompleteSpokenMessages.removeAll()
+            suppressAllNarration = false
             continuation = waiter
             waiter = nil
         }
@@ -297,6 +311,7 @@ final class AgentRunEventDeliveryQueue: @unchecked Sendable {
                 discardWholeEntry(at: index, noticeKind: category)
             } else {
                 var entry = entries[index]
+                markSpokenIncomplete(entry.spokenMessageIdentity)
                 let discarded = entry.discardTextPrefix(atLeast: excess)
                 subtractCounters(for: entries[index])
                 entries[index] = entry
@@ -325,6 +340,7 @@ final class AgentRunEventDeliveryQueue: @unchecked Sendable {
         noticeKind: AgentRunEventDeliveryNoticeKind)
     {
         let removed = remove(at: index)
+        markSpokenIncomplete(removed.spokenMessageIdentity)
         let bytes = switch noticeKind {
         case .outputTruncated:
             removed.outputBytes
@@ -420,6 +436,53 @@ final class AgentRunEventDeliveryQueue: @unchecked Sendable {
         pendingArtifactBytes -= entry.artifactBytes
         pendingDiagnosticBytes -= entry.diagnosticBytes
         pendingControlBytes -= entry.controlBytes
+    }
+
+    private func narrationSafeEvent(_ event: AgentRunEvent) -> AgentRunEvent {
+        switch event {
+        case let .agentSpokenNarrationReady(messageID, _):
+            let identity = AgentRunEventDeliverySpokenIdentity(messageID: messageID)
+            let byteCount = AgentRunEventDeliveryEntry.controlByteCount(for: event)
+            let mustSuppress = suppressAllNarration
+                || incompleteSpokenMessages.remove(identity) != nil
+                || byteCount > AgentRunEventDelivery.maximumPendingControlBytes
+                || saturatingAdd(pendingControlBytes, byteCount)
+                    > AgentRunEventDelivery.maximumPendingControlBytes
+                || entries.count + 1 > AgentRunEventDelivery.maximumPendingEntries
+            guard mustSuppress else { return event }
+            return .agentSpokenNarrationSuppressed(
+                messageID: messageID,
+                reason: .incompleteDelivery)
+        case let .agentSpokenNarrationSuppressed(messageID, reason):
+            incompleteSpokenMessages.remove(
+                AgentRunEventDeliverySpokenIdentity(messageID: messageID))
+            return .agentSpokenNarrationSuppressed(messageID: messageID, reason: reason)
+        default:
+            return event
+        }
+    }
+
+    private func markSpokenIncomplete(_ identity: AgentRunEventDeliverySpokenIdentity?) {
+        guard let identity else { return }
+        if let index = entries.firstIndex(where: {
+            $0.spokenNarrationReadyIdentity == identity
+        }) {
+            let replacement = AgentRunEventDeliveryEntry(event: .agentSpokenNarrationSuppressed(
+                messageID: identity.messageID,
+                reason: .incompleteDelivery))
+            subtractCounters(for: entries[index])
+            entries[index] = replacement
+            addCounters(for: replacement)
+            incompleteSpokenMessages.remove(identity)
+            return
+        }
+        guard !suppressAllNarration else { return }
+        guard incompleteSpokenMessages.count < AgentRunEventDelivery.maximumPendingEntries else {
+            incompleteSpokenMessages.removeAll()
+            suppressAllNarration = true
+            return
+        }
+        incompleteSpokenMessages.insert(identity)
     }
 }
 

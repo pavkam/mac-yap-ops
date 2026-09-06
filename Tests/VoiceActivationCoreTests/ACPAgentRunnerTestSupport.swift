@@ -47,7 +47,7 @@ extension ACPAgentRunnerTests {
             method: "initialize",
             params: .object([
                 "protocolVersion": .integer(1),
-                "clientCapabilities": .object([:]),
+                "clientCapabilities": ACPClientCapabilities.voiceResponseChannelsV1,
                 "clientInfo": .object([
                     "name": .string("voice-activation"),
                     "title": .string("Voice Activation"),

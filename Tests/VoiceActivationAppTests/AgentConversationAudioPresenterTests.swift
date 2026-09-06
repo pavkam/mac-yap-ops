@@ -21,6 +21,8 @@ final class AgentConversationAudioSpy: AgentConversationAudioPlaying {
     private(set) var workingStates: [Bool] = []
     private(set) var activitySounds: [AgentActivitySound] = []
     private(set) var spoken: [(text: String, localeID: String)] = []
+    private(set) var spokenFormats: [AgentSpeechInputFormat] = []
+    private(set) var spokenPolicies: [AgentSpeechAdmissionPolicy] = []
     private(set) var events: [Event] = []
     private(set) var stopSpeakingCount = 0
     private(set) var stopAllCount = 0
@@ -51,8 +53,15 @@ final class AgentConversationAudioSpy: AgentConversationAudioPlaying {
         events.append(.activity(sound))
     }
 
-    func speak(_ text: String, localeID: String) {
+    func speak(
+        _ text: String,
+        localeID: String,
+        inputFormat: AgentSpeechInputFormat,
+        admissionPolicy: AgentSpeechAdmissionPolicy
+    ) {
         spoken.append((text, localeID))
+        spokenFormats.append(inputFormat)
+        spokenPolicies.append(admissionPolicy)
         events.append(.speech(text))
         onSpeak?()
     }
@@ -72,8 +81,10 @@ final class AgentSpeechQueueSpy: AgentSpeechQueueing {
     private(set) var requests: [AgentSpeechRequest] = []
     private(set) var stopCount = 0
 
-    func enqueue(_ request: AgentSpeechRequest) {
+    @discardableResult
+    func enqueue(_ request: AgentSpeechRequest) -> Bool {
         requests.append(request)
+        return true
     }
 
     func stop() {

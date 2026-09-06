@@ -21,7 +21,9 @@ extension ACPClientConnectionTests {
         }
     }
 
-    func initializeRequest(capabilities: ACPJSONValue = .object([:])) -> ACPMessage {
+    func initializeRequest(
+        capabilities: ACPJSONValue = ACPClientCapabilities.voiceResponseChannelsV1
+    ) -> ACPMessage {
         .request(
             id: .integer(1),
             method: "initialize",

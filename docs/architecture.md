@@ -58,7 +58,9 @@ VoiceActivationApp
       │   ├─ SpeechSessionProtocol → AppleSpeechSession
       │   ├─ CommandRunning → CommandRunner
       │   └─ AgentHarnessRunning → ACPAgentRunner
-      │       ├─ ACPClientConnection → ACPProcessTransport
+      │       ├─ ACPClientConnection
+      │       │   ├─ ACPEventDecoder → AgentResponseChannelRouter
+      │       │   └─ ACPProcessTransport
       │       └─ same shared continuity store
       ├─ RecordingOverlayPresenter → non-activating NSPanel
       ├─ AgentRunPresentation → AgentRunPanelPresenter
@@ -127,6 +129,13 @@ one active prompt, update decoding, permissions, and connection terminal state.
 lifecycles. A bounded two-stage delivery path preserves order and backpressure
 between transport ingestion and the app.
 
+ACP v1 has no standard spoken-response channel. `ACPEventDecoder` recognizes the
+optional `ciobanu.org.voiceActivation` version-1 metadata on text content blocks,
+then `AgentResponseChannelRouter` passes typed content literally or recognizes
+the exact current-adapter marker stream. Unmarked text, malformed metadata, and
+marker mismatches retain their original legacy event and text. Routed events then
+cross the existing bounded delivery and run/session/source identity gates.
+
 The runner also compares a saved profile bookmark with a versioned fingerprint
 of the current provider preset, executable, ordered arguments, working folder,
 and validated, trimmed system prompt. Only an exact match may reach
@@ -135,7 +144,9 @@ ID is removed before the provider process starts. The shared continuity store
 persists no conversation content.
 
 `AgentRunPresentation` reduces typed lifecycle and ACP events into one bounded
-conversation timeline plus a deduplicated result collection. The panel
+conversation timeline plus a deduplicated result collection. Agent-authored
+spoken text remains visible in a labelled spoken-response row; display text uses
+the rich response path; legacy text remains visible as before. The panel
 presenter rejects stale run actions and hosts a result-first layout in a
 non-activating floating panel. Embedded image bytes are decoded off the main
 actor; Quick Look previews only existing local files. Explicit open and reveal
@@ -148,7 +159,12 @@ semantic panel styling, bounded credential-free HTTPS image loading, and an
 panel. Image bytes are capped before off-main Image I/O downsampling and remain
 in a bounded memory-only cache.
 `AgentConversationAudioPresenter` maps the same typed lifecycle into narration
-and activity cues without making the presentation model own audio playback.
+and activity cues without making the presentation model own audio playback. It
+narrates only a complete admitted spoken unit or the compatible legacy reply
+path. Display responses, tools, plans, thoughts, permissions, diagnostics, raw
+ACP data, and restored history never become speech. Reply-reading settings still
+gate narration; when ElevenLabs is selected, only the admitted spoken text leaves
+the Mac for synthesis.
 
 See [ACP agent harness](agent-harness.md) for the wire contract and
 [Agent conversations](agent-conversations.md) for the user-visible model.
@@ -181,6 +197,12 @@ Core services depend on `VoiceActivationDiagnosticRecording`, a metadata-only
 interface. The app supplies a bounded rotating JSONL recorder. Call sites emit
 typed lifecycle events, counts, identifiers, outcomes, and timings—not prompts,
 transcripts, credentials, provider content, or audio.
+
+Response-channel diagnostics follow the same boundary. They record content-free
+`event_kind` values such as `agent_message_delta`,
+`agent_spoken_message_delta`, `agent_display_message_delta`, and
+`agent_spoken_narration_suppressed`; they never record response text,
+marker-adjacent content, `_meta` payloads, or speech bytes.
 
 Continuity narrows this further: its store and restoration lifecycle events do
 not emit session, turn, task, occurrence, restoration-token, or fingerprint

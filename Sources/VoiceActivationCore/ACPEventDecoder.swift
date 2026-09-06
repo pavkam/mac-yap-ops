@@ -49,7 +49,14 @@ public struct ACPEventDecoder: Sendable {
             let chunk = try contentChunk(update)
             switch chunk.content {
             case let .text(text):
-                return .agentMessageDelta(messageID: chunk.messageID, text: text)
+                return switch chunk.responseChannel {
+                case .spoken:
+                    .agentSpokenMessageDelta(messageID: chunk.messageID, text: text)
+                case .display:
+                    .agentDisplayMessageDelta(messageID: chunk.messageID, text: text)
+                case nil:
+                    .agentMessageDelta(messageID: chunk.messageID, text: text)
+                }
             case let .artifact(artifact):
                 return .artifact(artifact)
             case .unsupported:
@@ -112,7 +119,8 @@ public struct ACPEventDecoder: Sendable {
             contentType: contentType,
             messageID: messageID,
             content: try decodedContentBlock(content),
-            isUserRequest: isUserRequest)
+            isUserRequest: isUserRequest,
+            responseChannel: responseChannel(from: content["_meta"]))
     }
 
     private func decodedContentBlock(
@@ -188,6 +196,18 @@ public struct ACPEventDecoder: Sendable {
             return false
         }
         return true
+    }
+
+    private func responseChannel(from value: ACPJSONValue?) -> ResponseChannel? {
+        guard case let .object(metadata) = value,
+              case let .object(namespace) = metadata["ciobanu.org.voiceActivation"],
+              case let .object(extensionValue) = namespace["responseChannel"],
+              case .integer(1) = extensionValue["version"],
+              case let .string(channel) = extensionValue["channel"]
+        else {
+            return nil
+        }
+        return ResponseChannel(rawValue: channel)
     }
 
     private func embeddedResource(_ content: [String: ACPJSONValue]) throws -> AgentArtifact {
@@ -587,6 +607,12 @@ private struct ContentChunk: Sendable {
     let messageID: String?
     let content: DecodedContentBlock
     let isUserRequest: Bool
+    let responseChannel: ResponseChannel?
+}
+
+private enum ResponseChannel: String, Sendable {
+    case spoken
+    case display
 }
 
 private enum DecodedContentBlock: Sendable {

@@ -39,17 +39,44 @@ struct AgentSpeechConfiguration: Equatable, Sendable {
         credential: nil)
 }
 
+enum AgentSpeechInputFormat: Equatable, Sendable {
+    case legacyMarkdown
+    case agentAuthoredPlainText
+}
+
+enum AgentSpeechAdmissionPolicy: Equatable, Sendable {
+    case legacyNormalized
+    case agentAuthoredVerbatim
+}
+
 struct AgentSpeechRequest: Equatable, Sendable {
     let text: String
     let localeID: String
     let configuration: AgentSpeechConfiguration
+    let inputFormat: AgentSpeechInputFormat
+    let admissionPolicy: AgentSpeechAdmissionPolicy
+
+    init(
+        text: String,
+        localeID: String,
+        configuration: AgentSpeechConfiguration,
+        inputFormat: AgentSpeechInputFormat = .legacyMarkdown,
+        admissionPolicy: AgentSpeechAdmissionPolicy = .legacyNormalized
+    ) {
+        self.text = text
+        self.localeID = localeID
+        self.configuration = configuration
+        self.inputFormat = inputFormat
+        self.admissionPolicy = admissionPolicy
+    }
 }
 
 @MainActor
 protocol AgentSpeechQueueing: AnyObject {
     var onStateChange: ((AgentSpeechQueueState) -> Void)? { get set }
 
-    func enqueue(_ request: AgentSpeechRequest)
+    @discardableResult
+    func enqueue(_ request: AgentSpeechRequest) -> Bool
     func stop()
 }
 
@@ -103,34 +130,58 @@ final class AgentSpeechQueue: AgentSpeechQueueing {
         self.diagnostics = diagnostics
     }
 
-    func enqueue(_ request: AgentSpeechRequest) {
-        let text = request.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else {
-            diagnostics.record(
-                category: .audio,
-                event: "speech.queue_rejected",
-                level: .warning,
-                fields: ["reason": "empty"])
-            return
+    @discardableResult
+    func enqueue(_ request: AgentSpeechRequest) -> Bool {
+        let admittedRequest: AgentSpeechRequest
+        let appended: (id: UInt64, coalesced: Bool)
+        switch request.admissionPolicy {
+        case .legacyNormalized:
+            let text = request.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else {
+                reject(reason: "empty", policy: request.admissionPolicy)
+                return false
+            }
+            admittedRequest = AgentSpeechRequest(
+                text: String(text.prefix(Self.maximumCoalescedCharacters)),
+                localeID: request.localeID,
+                configuration: request.configuration,
+                inputFormat: request.inputFormat,
+                admissionPolicy: request.admissionPolicy)
+            appended = appendLegacy(admittedRequest)
+        case .agentAuthoredVerbatim:
+            guard !request.text.isEmpty else {
+                reject(reason: "empty", policy: request.admissionPolicy)
+                return false
+            }
+            guard request.text.count <= Self.maximumCoalescedCharacters else {
+                reject(reason: "oversized", policy: request.admissionPolicy)
+                return false
+            }
+            guard pending.count < Self.maximumPendingRequests else {
+                reject(reason: "queue_full", policy: request.admissionPolicy)
+                return false
+            }
+            admittedRequest = request
+            let pendingRequest = makePendingRequest(request)
+            pending.append(pendingRequest)
+            appended = (pendingRequest.id, false)
         }
-        let boundedRequest = AgentSpeechRequest(
-            text: String(text.prefix(Self.maximumCoalescedCharacters)),
-            localeID: request.localeID,
-            configuration: request.configuration)
-        let appended = append(boundedRequest)
         diagnostics.record(
             category: .audio,
             event: "speech.queue_enqueued",
             fields: [
                 "request_id": String(appended.id),
-                "backend": boundedRequest.configuration.selection.backendID.rawValue,
-                "character_count": String(boundedRequest.text.count),
+                "backend": admittedRequest.configuration.selection.backendID.rawValue,
+                "character_count": String(admittedRequest.text.count),
                 "pending_count": String(pending.count),
                 "coalesced": String(appended.coalesced),
+                "input_format": admittedRequest.inputFormat.diagnosticName,
+                "admission_policy": admittedRequest.admissionPolicy.diagnosticName,
                 "generation": String(generation),
             ])
         startPrefetching()
         advance()
+        return true
     }
 
     func stop() {
@@ -157,7 +208,7 @@ final class AgentSpeechQueue: AgentSpeechQueueing {
             ])
     }
 
-    private func append(_ request: AgentSpeechRequest) -> (id: UInt64, coalesced: Bool) {
+    private func appendLegacy(_ request: AgentSpeechRequest) -> (id: UInt64, coalesced: Bool) {
         guard pending.count >= Self.maximumPendingRequests,
             var previous = pending.popLast()
         else {
@@ -174,9 +225,22 @@ final class AgentSpeechQueue: AgentSpeechQueueing {
             AgentSpeechRequest(
                 text: combinedText,
                 localeID: request.localeID,
-                configuration: request.configuration))
+                configuration: request.configuration,
+                inputFormat: request.inputFormat,
+                admissionPolicy: request.admissionPolicy))
         pending.append(previous)
         return (previous.id, true)
+    }
+
+    private func reject(reason: String, policy: AgentSpeechAdmissionPolicy) {
+        diagnostics.record(
+            category: .audio,
+            event: "speech.queue_rejected",
+            level: .warning,
+            fields: [
+                "reason": reason,
+                "admission_policy": policy.diagnosticName,
+            ])
     }
 
     private func makePendingRequest(_ request: AgentSpeechRequest) -> PendingRequest {
@@ -502,5 +566,23 @@ final class AgentSpeechQueue: AgentSpeechQueueing {
     nonisolated private static func milliseconds(from start: UInt64, to end: UInt64) -> UInt64 {
         guard end >= start else { return 0 }
         return (end - start) / 1_000_000
+    }
+}
+
+private extension AgentSpeechInputFormat {
+    var diagnosticName: String {
+        switch self {
+        case .legacyMarkdown: "legacy_markdown"
+        case .agentAuthoredPlainText: "agent_authored_plain_text"
+        }
+    }
+}
+
+private extension AgentSpeechAdmissionPolicy {
+    var diagnosticName: String {
+        switch self {
+        case .legacyNormalized: "legacy_normalized"
+        case .agentAuthoredVerbatim: "agent_authored_verbatim"
+        }
     }
 }

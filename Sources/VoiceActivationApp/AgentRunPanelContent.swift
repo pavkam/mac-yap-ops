@@ -73,13 +73,16 @@ extension AgentRunPanelView {
         snapshot: AgentRunSnapshot
     ) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            if message.kind == .response {
+            if message.kind != .thought {
                 miniAgentMark(snapshot)
             }
 
             VStack(alignment: .leading, spacing: 8) {
                 if message.kind == .thought {
                     sectionLabel("Thinking", symbol: "brain.head.profile")
+                } else if message.kind == .spokenResponse {
+                    sectionLabel("Spoken response", symbol: "speaker.wave.2")
+                        .accessibilityHidden(true)
                 } else {
                     Label {
                         Text(snapshot.profileName)
@@ -89,11 +92,21 @@ extension AgentRunPanelView {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 }
-                AgentMarkdownView(
-                    markdown: message.text,
-                    accent: accent,
-                    style: message.kind == .thought ? .detail : .response)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                if message.kind == .spokenResponse {
+                    Text(message.text)
+                        .font(.callout)
+                        .lineSpacing(2)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityLabel("Spoken response")
+                        .accessibilityValue(message.text)
+                } else {
+                    AgentMarkdownView(
+                        markdown: message.text,
+                        accent: accent,
+                        style: message.kind == .thought ? .detail : .response)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
             .padding(.horizontal, 13)
             .padding(.vertical, 11)

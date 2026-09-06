@@ -23,6 +23,18 @@ public enum ACPClientCapabilitiesError: Error, Equatable, LocalizedError, Sendab
 
 /// Additively composes independent JSON-object fragments for ACP `clientCapabilities`.
 public enum ACPClientCapabilities {
+    /// Voice Activation's optional v1 spoken/display response-channel extension.
+    public static let voiceResponseChannelsV1: ACPJSONValue = .object([
+        "_meta": .object([
+            "ciobanu.org.voiceActivation": .object([
+                "responseChannels": .object([
+                    "version": .integer(1),
+                    "channels": .array([.string("spoken"), .string("display")]),
+                ]),
+            ]),
+        ]),
+    ])
+
     /// Deep-merges independently owned JSON-object fragments.
     ///
     /// Object paths merge recursively. An identical non-object leaf may be shared;

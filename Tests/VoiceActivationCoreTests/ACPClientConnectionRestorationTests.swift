@@ -313,6 +313,14 @@ extension ACPClientConnectionTests {
         #expect(await transport.nextSentMessage() == initializeRequest(capabilities: .object([
             "response": .object(["version": .integer(1)]),
             "background": .object(["enabled": .bool(true)]),
+            "_meta": .object([
+                "ciobanu.org.voiceActivation": .object([
+                    "responseChannels": .object([
+                        "version": .integer(1),
+                        "channels": .array([.string("spoken"), .string("display")]),
+                    ]),
+                ]),
+            ]),
         ])))
         try await transport.feed(restorationInitializeResponse(load: false, resume: false))
         _ = await transport.nextSentMessage()

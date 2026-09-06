@@ -11,6 +11,9 @@ struct AgentRunPresentationRestorationStage {
     var outputBuffer = AgentRunBoundedTextBuffer(
         maximumBytes: AgentRunPresentation.maximumOutputBytes,
         marker: "… earlier output omitted …\n")
+    var spokenOutputBuffer = AgentRunBoundedTextBuffer(
+        maximumBytes: AgentRunPresentation.maximumSpokenOutputBytes,
+        marker: "… earlier spoken response omitted …\n")
     var diagnosticBuffer = AgentRunBoundedTextBuffer(
         maximumBytes: AgentRunPresentation.maximumDiagnosticBytes,
         marker: "… earlier diagnostics omitted …\n")
@@ -37,11 +40,19 @@ struct AgentRunPresentationRestorationStage {
         case .userMessageDelta(let messageID, let text):
             hasVisibleHistory = !text.isEmpty || hasVisibleHistory
             appendUserMessage(text, messageID: messageID)
-        case .agentMessageDelta(let messageID, let text):
+        case .agentMessageDelta(let messageID, let text),
+            .agentDisplayMessageDelta(let messageID, let text):
             hasVisibleHistory = !text.isEmpty || hasVisibleHistory
             outputBuffer.append(text)
             settleActiveThinkingGroup()
-            appendResponseMessage(text, messageID: messageID)
+            appendResponseMessage(text, messageID: messageID, kind: .response)
+        case .agentSpokenMessageDelta(let messageID, let text):
+            hasVisibleHistory = !text.isEmpty || hasVisibleHistory
+            spokenOutputBuffer.append(text)
+            settleActiveThinkingGroup()
+            appendResponseMessage(text, messageID: messageID, kind: .spokenResponse)
+        case .agentSpokenNarrationReady, .agentSpokenNarrationSuppressed:
+            break
         case .thoughtDelta(let messageID, let text):
             hasVisibleHistory = !text.isEmpty || hasVisibleHistory
             appendThinkingMessage(text, messageID: messageID)
@@ -131,10 +142,14 @@ struct AgentRunPresentationRestorationStage {
         enforceTimelineBounds()
     }
 
-    private mutating func appendResponseMessage(_ text: String, messageID: String?) {
+    private mutating func appendResponseMessage(
+        _ text: String,
+        messageID: String?,
+        kind: AgentMessagePresentationKind
+    ) {
         guard !text.isEmpty else { return }
         if case .message(var message) = timeline.last,
-            message.kind == .response,
+            message.kind == kind,
             message.messageID == messageID
         {
             message.text.append(text)
@@ -143,7 +158,7 @@ struct AgentRunPresentationRestorationStage {
             timeline.append(.message(AgentMessagePresentation(
                 id: UUID(),
                 messageID: messageID,
-                kind: .response,
+                kind: kind,
                 text: text)))
         }
         enforceTimelineBounds()
