@@ -72,6 +72,7 @@ accessibility settings. Inject or pass the preference into pure policies.
 | Streaming output follows until the user scrolls, then either fights them or never resumes | Auto-follow was keyed only to content updates | Track distance from bottom and user scrolling separately; follow growth only while the viewport was already at the bottom. |
 | A picture request renders only “Image omitted” | Both Markdown image providers were deliberately non-networking | Load only HTTPS images through the bounded memory-only loader, reserve a stable picture surface during loading, show an explicit unavailable state, and keep image content out of narration. |
 | A floating panel steals focus, appears behind the current app, or cannot drag | SwiftUI content tried to own AppKit activation/frame behavior | Keep `NSPanel` non-activating, order it explicitly, and route drag/minimize/restore through the controller while preserving the expanded frame. |
+| A visible Delete button in the non-activating conversation panel ignores pointer clicks while its siblings work | SwiftUI's `.destructive` `ButtonRole` suppressed pointer activation in the fully hosted panel hierarchy | Keep the red tint and permanent-delete accessibility hint without the role; guard the real hit target with an isolated synthesized-click test. |
 
 ## Manual experience matrix
 

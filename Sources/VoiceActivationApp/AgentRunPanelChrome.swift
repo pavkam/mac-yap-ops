@@ -43,11 +43,14 @@ extension AgentRunPanelView {
             .transition(actionDockTransition)
         } else {
             HStack(spacing: 8) {
-                Button("Delete", systemImage: "trash", role: .destructive) {
+                Button {
                     model.onAction?(.delete(runID: snapshot.runID))
+                } label: {
+                    Label("Delete", systemImage: "trash")
                 }
                 .buttonStyle(.bordered)
                 .tint(.red)
+                .accessibilityHint("Permanently deletes this conversation")
                 Button("Copy output", systemImage: "doc.on.doc") {
                     model.onAction?(.copy(runID: snapshot.runID))
                 }
