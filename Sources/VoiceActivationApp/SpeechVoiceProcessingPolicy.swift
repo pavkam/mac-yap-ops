@@ -5,10 +5,16 @@ import AVFoundation
 import VoiceActivationCore
 
 protocol SpeechVoiceProcessingConfiguring: AnyObject {
+    var speechOutputChannelCount: AVAudioChannelCount { get }
+
     func setVoiceProcessingEnabled(_ enabled: Bool) throws
 }
 
-extension AVAudioInputNode: SpeechVoiceProcessingConfiguring {}
+extension AVAudioInputNode: SpeechVoiceProcessingConfiguring {
+    var speechOutputChannelCount: AVAudioChannelCount {
+        outputFormat(forBus: 0).channelCount
+    }
+}
 
 enum SpeechVoiceProcessingPolicy {
     static func configure(
@@ -16,6 +22,12 @@ enum SpeechVoiceProcessingPolicy {
         mode: SpeechSessionMode)
     {
         guard mode == .conversation else { return }
-        try? input.setVoiceProcessingEnabled(true)
+        do {
+            try input.setVoiceProcessingEnabled(true)
+        } catch {
+            return
+        }
+        guard input.speechOutputChannelCount != 1 else { return }
+        try? input.setVoiceProcessingEnabled(false)
     }
 }

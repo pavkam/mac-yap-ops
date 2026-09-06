@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Alexandru Ciobanu (alex+git@ciobanu.org)
 // SPDX-License-Identifier: MIT
 
+import AVFoundation
 import Testing
 @testable import VoiceActivationApp
 @testable import VoiceActivationCore
 
 private final class SpeechVoiceProcessingInputSpy: SpeechVoiceProcessingConfiguring {
+    var speechOutputChannelCount: AVAudioChannelCount = 1
     var error: (any Error)?
     private(set) var values: [Bool] = []
 
@@ -37,6 +39,15 @@ struct SpeechVoiceProcessingPolicyTests {
         SpeechVoiceProcessingPolicy.configure(input, mode: .conversation)
 
         #expect(input.values == [true])
+    }
+
+    @Test func configure_WhenVoiceProcessingExposesMultipleChannels_DisablesIt() {
+        let input = SpeechVoiceProcessingInputSpy()
+        input.speechOutputChannelCount = 9
+
+        SpeechVoiceProcessingPolicy.configure(input, mode: .conversation)
+
+        #expect(input.values == [true, false])
     }
 
     @Test(arguments: [
