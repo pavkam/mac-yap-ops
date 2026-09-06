@@ -143,6 +143,8 @@ struct AgentRunPanelModelArtifactTests {
         AgentRunSnapshot(
             runID: runID,
             profileID: UUID(),
+            profileName: "Computer",
+            profileIcon: .defaultValue,
             accent: .blue,
             prompt: "Render",
             providerName: "Codex",

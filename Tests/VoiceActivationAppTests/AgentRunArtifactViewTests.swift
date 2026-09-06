@@ -66,6 +66,8 @@ struct AgentRunArtifactViewTests {
         return AgentRunSnapshot(
             runID: UUID(),
             profileID: UUID(),
+            profileName: "Computer",
+            profileIcon: .defaultValue,
             accent: .blue,
             prompt: "Create a report",
             providerName: "Codex",
@@ -115,6 +117,8 @@ struct AgentRunArtifactViewTests {
         return AgentRunSnapshot(
             runID: UUID(),
             profileID: UUID(),
+            profileName: "Computer",
+            profileIcon: .defaultValue,
             accent: .blue,
             prompt: "Create a preview and report",
             providerName: "Codex",

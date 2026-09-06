@@ -79,6 +79,8 @@ struct AgentRunPanelInteractionTests {
         AgentRunSnapshot(
             runID: runID,
             profileID: UUID(),
+            profileName: "Computer",
+            profileIcon: .defaultValue,
             accent: .purple,
             prompt: "Do the work",
             providerName: "Codex",

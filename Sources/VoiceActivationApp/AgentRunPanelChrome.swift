@@ -151,16 +151,6 @@ extension AgentRunPanelView {
         }
     }
 
-    func phaseSymbol(_ phase: AgentRunPhase) -> String {
-        switch phase {
-        case .listening: "waveform.badge.mic"
-        case .running: "sparkles"
-        case .cancelling: "clock.arrow.circlepath"
-        case let .completed(reason): reason == .cancelled ? "xmark" : "checkmark.circle.fill"
-        case .failed: "exclamationmark.triangle.fill"
-        }
-    }
-
     func planSymbol(_ status: AgentPlanStatus) -> String {
         switch status {
         case .pending: "circle"

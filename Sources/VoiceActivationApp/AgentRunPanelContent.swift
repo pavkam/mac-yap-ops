@@ -9,7 +9,7 @@ extension AgentRunPanelView {
         userBubble(snapshot.prompt, label: "Request")
     }
 
-    var miniAgentMark: some View {
+    func miniAgentMark(_ snapshot: AgentRunSnapshot) -> some View {
         ZStack {
             Circle()
                 .fill(LinearGradient(
@@ -17,7 +17,7 @@ extension AgentRunPanelView {
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing))
             Circle().stroke(.white.opacity(0.28), lineWidth: 0.7)
-            Image(systemName: "sparkles")
+            ProfileIconGlyph(icon: snapshot.profileIcon)
                 .font(.system(size: 9, weight: .bold))
                 .foregroundStyle(.white)
         }
@@ -53,7 +53,7 @@ extension AgentRunPanelView {
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 case let .message(message):
-                    messageBlock(message)
+                    messageBlock(message, snapshot: snapshot)
                 case let .userMessage(message):
                     userMessageBlock(message)
                 case let .thinking(thinking):
@@ -63,18 +63,27 @@ extension AgentRunPanelView {
         }
     }
 
-    func messageBlock(_ message: AgentMessagePresentation) -> some View {
+    func messageBlock(
+        _ message: AgentMessagePresentation,
+        snapshot: AgentRunSnapshot
+    ) -> some View {
         HStack(alignment: .top, spacing: 10) {
             if message.kind == .response {
-                miniAgentMark
+                miniAgentMark(snapshot)
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                sectionLabel(
-                    message.kind == .thought
-                        ? "Thinking"
-                        : model.snapshot?.providerName ?? "Agent",
-                    symbol: message.kind == .thought ? "brain.head.profile" : "sparkles")
+                if message.kind == .thought {
+                    sectionLabel("Thinking", symbol: "brain.head.profile")
+                } else {
+                    Label {
+                        Text(snapshot.profileName)
+                    } icon: {
+                        ProfileIconGlyph(icon: snapshot.profileIcon)
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
                 AgentMarkdownView(
                     markdown: message.text,
                     accent: accent,

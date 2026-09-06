@@ -188,6 +188,8 @@ struct AgentRunPanelPresenterTests {
         snapshot = AgentRunSnapshot(
             runID: snapshot.runID,
             profileID: snapshot.profileID,
+            profileName: snapshot.profileName,
+            profileIcon: snapshot.profileIcon,
             accent: snapshot.accent,
             prompt: snapshot.prompt,
             providerName: snapshot.providerName,
@@ -495,6 +497,8 @@ struct AgentRunPanelPresenterTests {
         AgentRunSnapshot(
             runID: runID,
             profileID: UUID(),
+            profileName: "Sneek",
+            profileIcon: .emoji("✨"),
             accent: .purple,
             prompt: "Do the work",
             providerName: "Codex",
@@ -531,6 +535,8 @@ struct AgentRunPanelPresenterTests {
         return AgentRunSnapshot(
             runID: runID,
             profileID: UUID(),
+            profileName: "Computer",
+            profileIcon: .defaultValue,
             accent: .purple,
             prompt: "Inspect",
             providerName: "Codex",
@@ -556,6 +562,8 @@ struct AgentRunPanelPresenterTests {
         AgentRunSnapshot(
             runID: snapshot.runID,
             profileID: snapshot.profileID,
+            profileName: snapshot.profileName,
+            profileIcon: snapshot.profileIcon,
             accent: snapshot.accent,
             prompt: snapshot.prompt,
             providerName: snapshot.providerName,
@@ -581,6 +589,8 @@ struct AgentRunPanelPresenterTests {
         AgentRunSnapshot(
             runID: snapshot.runID,
             profileID: snapshot.profileID,
+            profileName: snapshot.profileName,
+            profileIcon: snapshot.profileIcon,
             accent: snapshot.accent,
             prompt: snapshot.prompt,
             providerName: snapshot.providerName,
@@ -606,6 +616,8 @@ struct AgentRunPanelPresenterTests {
         AgentRunSnapshot(
             runID: snapshot.runID,
             profileID: snapshot.profileID,
+            profileName: snapshot.profileName,
+            profileIcon: snapshot.profileIcon,
             accent: snapshot.accent,
             prompt: snapshot.prompt,
             providerName: snapshot.providerName,

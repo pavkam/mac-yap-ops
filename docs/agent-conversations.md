@@ -32,6 +32,10 @@ including ACP startup. Provider-exposed reasoning, plans, and tool activity
 collect inside that card. The next answer settles and collapses it; select the
 card to inspect its retained details.
 
+The initiating profile's name, icon, and accent identify the conversation in
+the menu, panel header, compact pill, and response cards. The ACP provider name
+is implementation detail except while reporting connection progress.
+
 Responses render with a native GitHub-flavored Markdown parser, including
 headings, nested and task lists, tables, block quotes, links, inline code, and
 fenced code blocks. Text remains selectable. HTTPS Markdown images load directly
@@ -113,7 +117,7 @@ identities reject late callbacks and stale pointer actions.
 
 ## Minimize, restore, close, and delete
 
-Drag the provider header to move the expanded panel. The minimize button morphs
+Drag the profile header to move the expanded panel. The minimize button morphs
 it into a movable live-status pill below the menu bar at the screen's top-right.
 Restoring returns to the saved expanded location, adjusted only to stay visible
 on the current screen.

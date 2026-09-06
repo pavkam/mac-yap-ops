@@ -45,6 +45,24 @@ struct AgentRunPresentationTests {
         #expect(thinking.isWorking)
     }
 
+    @MainActor @Test func start_WhenProfileHasIdentity_PinsItToTheConversation() throws {
+        let presentation = AgentRunPresentation(startsElapsedTimer: false)
+        let profile = try makeAgentProfile(
+            name: "Sneek",
+            icon: .emoji("✨"))
+
+        let runID = UUID()
+        presentation.start(runID: runID, profile: profile, prompt: "Inspect")
+        presentation.receive(
+            runID: runID,
+            event: .connected(agentName: "Codex harness", sessionID: "session"))
+
+        let snapshot = try #require(presentation.snapshot)
+        #expect(snapshot.profileName == "Sneek")
+        #expect(snapshot.profileIcon == .emoji("✨"))
+        #expect(snapshot.providerName == "Codex harness")
+    }
+
     @MainActor @Test func beginTurn_WhenFollowUpStarts_ShowsThinkingBeforeProviderOutput()
         throws
     {
@@ -637,8 +655,13 @@ struct AgentRunPresentationTests {
         #expect(publications.last?.output == String(repeating: "x", count: 100))
     }
 
-    private func makeAgentProfile() throws -> WakeProfile {
+    private func makeAgentProfile(
+        name: String = "Computer",
+        icon: ProfileIcon = .defaultValue
+    ) throws -> WakeProfile {
         try WakeProfile(
+            name: name,
+            icon: icon,
             wakePhrase: "computer",
             action: .agent(AgentHarnessConfiguration(
                 preset: .codex,

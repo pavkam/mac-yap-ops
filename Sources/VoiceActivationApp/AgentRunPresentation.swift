@@ -26,12 +26,22 @@ final class AgentRunPresentation {
 
     /// The current immutable view of the active or retained terminal conversation.
     var snapshot: AgentRunSnapshot? {
-        guard let runID, let profileID, let accent, let prompt, let providerName, let phase else {
+        guard let runID,
+              let profileID,
+              let profileName,
+              let profileIcon,
+              let accent,
+              let prompt,
+              let providerName,
+              let phase
+        else {
             return nil
         }
         return AgentRunSnapshot(
             runID: runID,
             profileID: profileID,
+            profileName: profileName,
+            profileIcon: profileIcon,
             accent: accent,
             prompt: prompt,
             providerName: providerName,
@@ -57,6 +67,8 @@ final class AgentRunPresentation {
     let clock = ContinuousClock()
     var runID: UUID?
     var profileID: UUID?
+    var profileName: String?
+    var profileIcon: ProfileIcon?
     var accent: WakeProfileAccent?
     var prompt: String?
     var providerName: String?
@@ -118,6 +130,8 @@ final class AgentRunPresentation {
         cancelTimers()
         self.runID = runID
         profileID = profile.id
+        profileName = profile.name
+        profileIcon = profile.icon
         accent = profile.accent
         self.prompt = prompt
         if case .agent(let configuration) = profile.action {
@@ -394,6 +408,8 @@ final class AgentRunPresentation {
         cancelTimers()
         runID = nil
         profileID = nil
+        profileName = nil
+        profileIcon = nil
         accent = nil
         prompt = nil
         providerName = nil

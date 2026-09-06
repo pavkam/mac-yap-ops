@@ -113,14 +113,14 @@ struct AgentRunPanelView: View {
     func header(_ snapshot: AgentRunSnapshot) -> some View {
         HStack(spacing: 12) {
             HStack(spacing: 10) {
-                Image(systemName: phaseSymbol(snapshot.phase))
+                ProfileIconGlyph(icon: snapshot.profileIcon)
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(phaseTint(snapshot.phase))
+                    .foregroundStyle(accent)
                     .frame(width: 22)
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(snapshot.providerName)
+                    Text(snapshot.profileName)
                         .font(.headline)
                     Text(phaseLabel(snapshot.phase))
                         .font(.caption)
@@ -153,14 +153,14 @@ struct AgentRunPanelView: View {
     func compactContent(_ snapshot: AgentRunSnapshot) -> some View {
         HStack(spacing: 12) {
             HStack(spacing: 10) {
-                Image(systemName: phaseSymbol(snapshot.phase))
+                ProfileIconGlyph(icon: snapshot.profileIcon)
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(phaseTint(snapshot.phase))
+                    .foregroundStyle(accent)
                     .frame(width: 22)
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(snapshot.providerName)
+                    Text(snapshot.profileName)
                         .font(.headline)
                         .lineLimit(1)
                     Text(compactStatus(snapshot))
@@ -196,8 +196,4 @@ struct AgentRunPanelView: View {
         reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98))
     }
 
-    private func phaseTint(_ phase: AgentRunPhase) -> Color {
-        if case .failed = phase { return .red }
-        return accent
-    }
 }

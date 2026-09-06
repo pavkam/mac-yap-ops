@@ -154,7 +154,11 @@ struct MenuContentView: View {
     private func agentRunControls(_ snapshot: AgentRunSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Label(snapshot.providerName, systemImage: "sparkles")
+                Label {
+                    Text(snapshot.profileName)
+                } icon: {
+                    ProfileIconGlyph(icon: snapshot.profileIcon)
+                }
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .foregroundStyle(snapshot.accent.swiftUIColor)
                 Spacer()
@@ -393,12 +397,7 @@ private struct MenuProfileRow: View {
     @ViewBuilder
     private var profileIcon: some View {
         if profile.isEnabled {
-            switch profile.icon {
-            case .systemSymbol(let name):
-                Image(systemName: name)
-            case .emoji(let value):
-                Text(value)
-            }
+            ProfileIconGlyph(icon: profile.icon)
         } else {
             Image(systemName: "slash.circle")
         }

@@ -254,6 +254,8 @@ struct AgentArtifactActionsTests {
         AgentRunSnapshot(
             runID: runID,
             profileID: UUID(),
+            profileName: "Computer",
+            profileIcon: .defaultValue,
             accent: .blue,
             prompt: "Render",
             providerName: "Codex",

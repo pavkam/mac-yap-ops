@@ -119,6 +119,8 @@ struct AgentRunPanelArtifactActionTests {
         AgentRunSnapshot(
             runID: runID,
             profileID: UUID(),
+            profileName: "Computer",
+            profileIcon: .defaultValue,
             accent: .purple,
             prompt: "Render",
             providerName: "Codex",

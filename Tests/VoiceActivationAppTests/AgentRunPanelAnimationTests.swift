@@ -97,6 +97,8 @@ struct AgentRunPanelAnimationTests {
         AgentRunSnapshot(
             runID: runID,
             profileID: UUID(),
+            profileName: "Computer",
+            profileIcon: .defaultValue,
             accent: .purple,
             prompt: "Question",
             providerName: "Codex",
@@ -122,6 +124,8 @@ struct AgentRunPanelAnimationTests {
         AgentRunSnapshot(
             runID: snapshot.runID,
             profileID: snapshot.profileID,
+            profileName: snapshot.profileName,
+            profileIcon: snapshot.profileIcon,
             accent: snapshot.accent,
             prompt: snapshot.prompt,
             providerName: snapshot.providerName,

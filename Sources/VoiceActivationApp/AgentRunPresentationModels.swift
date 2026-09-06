@@ -171,6 +171,8 @@ enum AgentRunTimelineItem: Equatable, Identifiable, Sendable {
 struct AgentRunSnapshot: Equatable, Sendable {
     let runID: UUID
     let profileID: UUID
+    let profileName: String
+    let profileIcon: ProfileIcon
     let accent: WakeProfileAccent
     let prompt: String
     let providerName: String
@@ -192,6 +194,8 @@ struct AgentRunSnapshot: Equatable, Sendable {
     init(
         runID: UUID,
         profileID: UUID,
+        profileName: String,
+        profileIcon: ProfileIcon,
         accent: WakeProfileAccent,
         prompt: String,
         providerName: String,
@@ -212,6 +216,8 @@ struct AgentRunSnapshot: Equatable, Sendable {
     {
         self.runID = runID
         self.profileID = profileID
+        self.profileName = profileName
+        self.profileIcon = profileIcon
         self.accent = accent
         self.prompt = prompt
         self.providerName = providerName
