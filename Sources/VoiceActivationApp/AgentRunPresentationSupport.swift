@@ -181,7 +181,8 @@ func enforceAgentRunTimelineBounds(
     _ timeline: inout [AgentRunTimelineItem],
     hasOmittedActivity: inout Bool,
     maximumTextBytes: Int,
-    maximumItems: Int
+    maximumItems: Int,
+    onOmission: (AgentRunTimelineItem) -> Void = { _ in }
 ) {
     var retainedTextBytes = timeline.reduce(into: 0) { count, item in
         guard item.containsText else { return }
@@ -191,6 +192,7 @@ func enforceAgentRunTimelineBounds(
     while retainedTextBytes > maximumTextBytes,
         let index = timeline.firstIndex(where: \AgentRunTimelineItem.containsText)
     {
+        onOmission(timeline[index])
         let originalByteCount = timeline[index].text.utf8.count
         let excessByteCount = retainedTextBytes - maximumTextBytes
         if originalByteCount <= excessByteCount {
@@ -220,11 +222,22 @@ func enforceAgentRunTimelineBounds(
             return true
         })
     {
+        onOmission(timeline[index])
         timeline.remove(at: index)
         hasOmittedActivity = true
         if !timeline.contains(.omitted) {
             timeline.insert(.omitted, at: timeline.startIndex)
         }
+    }
+}
+
+func normalizeAgentRunTimelineOmissionMarker(
+    _ timeline: inout [AgentRunTimelineItem],
+    isRequired: Bool
+) {
+    timeline.removeAll { $0 == .omitted }
+    if isRequired {
+        timeline.insert(.omitted, at: timeline.startIndex)
     }
 }
 

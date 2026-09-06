@@ -72,7 +72,8 @@ final class AgentRunPresentation {
     var historicalPlan: [AgentPlanEntry] = []
     var historicalTools: [AgentToolPresentation] = []
     var timeline: [AgentRunTimelineItem] = []
-    var timelineHasOmittedActivity = false
+    var historicalTimelineHasOmittedActivity = false
+    var liveTimelineHasOmittedActivity = false
     var permissions: [AgentPermissionPresentation] = []
     var notices: [String] = []
     var elapsedSeconds = 0
@@ -134,7 +135,8 @@ final class AgentRunPresentation {
         historicalTools = []
         timeline = []
         _ = activeThinkingGroup()
-        timelineHasOmittedActivity = false
+        historicalTimelineHasOmittedActivity = false
+        liveTimelineHasOmittedActivity = false
         permissions = []
         notices = []
         elapsedSeconds = 0
@@ -406,7 +408,8 @@ final class AgentRunPresentation {
         historicalPlan.removeAll(keepingCapacity: false)
         historicalTools.removeAll(keepingCapacity: false)
         timeline.removeAll(keepingCapacity: false)
-        timelineHasOmittedActivity = false
+        historicalTimelineHasOmittedActivity = false
+        liveTimelineHasOmittedActivity = false
         permissions.removeAll(keepingCapacity: false)
         notices.removeAll(keepingCapacity: false)
         elapsedSeconds = 0

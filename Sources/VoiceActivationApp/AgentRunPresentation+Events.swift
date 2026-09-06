@@ -78,7 +78,7 @@ extension AgentRunPresentation {
         if tools.count == Self.maximumTools {
             let removedTool = tools.remove(at: tools.startIndex)
             if removeTimelineTool(id: removedTool.presentationID) {
-                markTimelineOmitted()
+                markLiveTimelineOmitted()
             }
             evictedToolCount = saturatingIncrement(evictedToolCount)
         }
@@ -227,15 +227,50 @@ extension AgentRunPresentation {
     }
 
     func enforceTimelineBounds() {
+        let historicalIDs: Set<AgentRunTimelineItemID>
+        if let boundaryIndex = timeline.lastIndex(of: .historyBoundary) {
+            historicalIDs = Set(timeline[..<boundaryIndex].map(\.id))
+        } else {
+            historicalIDs = []
+        }
+        var historicalHasOmissions = historicalTimelineHasOmittedActivity
+        var liveHasOmissions = liveTimelineHasOmittedActivity
+        var hasOmissions = historicalHasOmissions || liveHasOmissions
         enforceAgentRunTimelineBounds(
             &timeline,
-            hasOmittedActivity: &timelineHasOmittedActivity,
+            hasOmittedActivity: &hasOmissions,
             maximumTextBytes: Self.maximumTimelineTextBytes,
-            maximumItems: Self.maximumTimelineItems)
+            maximumItems: Self.maximumTimelineItems,
+            onOmission: { item in
+                switch item {
+                case .omitted, .historyBoundary:
+                    break
+                case .message, .userMessage, .thinking:
+                    if historicalIDs.contains(item.id) {
+                        historicalHasOmissions = true
+                    } else {
+                        liveHasOmissions = true
+                    }
+                }
+            })
+        historicalTimelineHasOmittedActivity = historicalHasOmissions
+        liveTimelineHasOmittedActivity = liveHasOmissions
+        normalizeAgentRunTimelineOmissionMarker(
+            &timeline,
+            isRequired: historicalHasOmissions || liveHasOmissions)
     }
 
-    func markTimelineOmitted() {
-        timelineHasOmittedActivity = true
+    func markLiveTimelineOmitted() {
+        liveTimelineHasOmittedActivity = true
+        ensureTimelineOmissionMarker()
+    }
+
+    func markHistoricalTimelineOmitted() {
+        historicalTimelineHasOmittedActivity = true
+        ensureTimelineOmissionMarker()
+    }
+
+    private func ensureTimelineOmissionMarker() {
         guard
             !timeline.contains(where: { item in
                 if case .omitted = item { return true }

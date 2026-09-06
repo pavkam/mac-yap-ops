@@ -140,12 +140,16 @@ extension AgentRunPresentation {
             ignoredToolUpdateCount,
             stage.ignoredToolUpdateCount)
 
+        var historicalHasOmissions = stage.timelineHasOmittedActivity
+        var liveHasOmissions = liveTimelineHasOmittedActivity
         timeline = mergedTimeline(
             historical: stage.timeline,
-            historicalHasOmissions: stage.timelineHasOmittedActivity,
+            historicalHasOmissions: &historicalHasOmissions,
+            liveHasOmissions: &liveHasOmissions,
             includesHistoryBoundary: stage.hasVisibleHistory,
             replacesExistingHistory: true)
-        timelineHasOmittedActivity = timeline.contains(.omitted)
+        historicalTimelineHasOmittedActivity = historicalHasOmissions
+        liveTimelineHasOmittedActivity = liveHasOmissions
         if liveOutputWasEmpty {
             needsResponseSeparator = !stage.outputBuffer.value.isEmpty
         }
@@ -180,9 +184,13 @@ extension AgentRunPresentation {
 
     var sourceQualifiedTimeline: [AgentRunTimelineItem] {
         guard let stage = restorationState?.stage else { return timeline }
+        var historicalHasOmissions = historicalTimelineHasOmittedActivity
+            || stage.timelineHasOmittedActivity
+        var liveHasOmissions = liveTimelineHasOmittedActivity
         return mergedTimeline(
             historical: stage.timeline,
-            historicalHasOmissions: stage.timelineHasOmittedActivity,
+            historicalHasOmissions: &historicalHasOmissions,
+            liveHasOmissions: &liveHasOmissions,
             includesHistoryBoundary: false,
             replacesExistingHistory: false)
     }
@@ -226,7 +234,7 @@ extension AgentRunPresentation {
                 let removed = historicalTools.removeFirst()
                 evictedToolCount = saturatingIncrement(evictedToolCount)
                 if removeTimelineTool(id: removed.presentationID) {
-                    markTimelineOmitted()
+                    markHistoricalTimelineOmitted()
                 }
             } else if restorationState?.stage.evictOldestTool() == nil {
                 break
@@ -255,7 +263,8 @@ extension AgentRunPresentation {
 
     private func mergedTimeline(
         historical: [AgentRunTimelineItem],
-        historicalHasOmissions: Bool,
+        historicalHasOmissions: inout Bool,
+        liveHasOmissions: inout Bool,
         includesHistoryBoundary: Bool,
         replacesExistingHistory: Bool
     ) -> [AgentRunTimelineItem] {
@@ -284,7 +293,9 @@ extension AgentRunPresentation {
             live = retainedLiveSlice.filter { !isSentinel($0) }
         }
 
-        var result = historical.filter { !isSentinel($0) } + priorHistory
+        historicalHasOmissions = historicalHasOmissions || historical.contains(.omitted)
+        let retainedHistory = historical.filter { !isSentinel($0) } + priorHistory
+        var result = retainedHistory
         if includesHistoryBoundary
             || historical.contains(.historyBoundary)
             || (existingBoundaryIndex != nil && !replacesExistingHistory)
@@ -292,15 +303,28 @@ extension AgentRunPresentation {
             result.append(.historyBoundary)
         }
         result.append(contentsOf: live)
-        var hasOmissions = historicalHasOmissions
-            || historical.contains(.omitted)
-            || retainedLiveSlice.contains(.omitted)
-            || (existingBoundaryIndex == nil && timelineHasOmittedActivity)
+        let historicalIDs = Set(retainedHistory.map(\.id))
+        var hasOmissions = historicalHasOmissions || liveHasOmissions
         enforceAgentRunTimelineBounds(
             &result,
             hasOmittedActivity: &hasOmissions,
             maximumTextBytes: Self.maximumTimelineTextBytes,
-            maximumItems: Self.maximumTimelineItems)
+            maximumItems: Self.maximumTimelineItems,
+            onOmission: { item in
+                switch item {
+                case .omitted, .historyBoundary:
+                    break
+                case .message, .userMessage, .thinking:
+                    if historicalIDs.contains(item.id) {
+                        historicalHasOmissions = true
+                    } else {
+                        liveHasOmissions = true
+                    }
+                }
+            })
+        normalizeAgentRunTimelineOmissionMarker(
+            &result,
+            isRequired: historicalHasOmissions || liveHasOmissions)
         return result
     }
 

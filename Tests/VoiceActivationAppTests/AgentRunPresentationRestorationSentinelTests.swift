@@ -126,6 +126,64 @@ struct AgentRunPresentationRestorationSentinelTests {
         } == livePresentationIDs)
     }
 
+    @MainActor @Test
+    func historyCompletion_WhenLiveWasTruncatedBeforeRepeatedLoads_PreservesOmission()
+        throws
+    {
+        let presentation = AgentRunPresentation(startsElapsedTimer: false)
+        let runID = UUID()
+        presentation.start(
+            runID: runID,
+            profile: try makeAgentProfile(),
+            prompt: "Current request")
+        for index in 0...AgentRunPresentation.maximumTimelineItems {
+            presentation.receive(
+                runID: runID,
+                event: .toolCall(AgentToolCall(
+                    id: "live-tool-\(index)",
+                    title: "Live tool \(index)",
+                    kind: .read,
+                    status: .completed)))
+        }
+        presentation.receive(
+            runID: runID,
+            event: .agentMessageDelta(messageID: "live-2", text: "Live tail"))
+        let retainedLive = try #require(presentation.snapshot).timeline.filter { item in
+            item != .omitted
+        }
+        #expect(presentation.snapshot?.timeline.first == .omitted)
+
+        for (token, messageID, text) in [
+            (AgentRestorationToken(), "history-1", "History one"),
+            (AgentRestorationToken(), "history-2", "History two"),
+        ] {
+            presentation.beginHistoryRestoration(
+                runID: runID,
+                token: token,
+                sessionID: "saved-session")
+            presentation.receiveRestored(
+                runID: runID,
+                token: token,
+                event: .userMessageDelta(messageID: messageID, text: text))
+            presentation.completeHistoryRestoration(
+                runID: runID,
+                token: token,
+                activation: .loaded(sessionID: "saved-session"))
+        }
+
+        let snapshot = try #require(presentation.snapshot)
+        #expect(snapshot.timeline.count == 5)
+        #expect(snapshot.timeline.first == .omitted)
+        #expect(snapshot.timeline.filter { $0 == .omitted }.count == 1)
+        #expect(snapshot.timeline.filter { $0 == .historyBoundary }.count == 1)
+        #expect(snapshot.timeline.compactMap { item -> String? in
+            guard case .userMessage(let message) = item else { return nil }
+            return message.text
+        } == ["History two"])
+        #expect(Array(snapshot.timeline.suffix(retainedLive.count)) == retainedLive)
+        #expect(Set(snapshot.timeline.map(\.id)).count == snapshot.timeline.count)
+    }
+
     @MainActor
     private func timelineLabel(_ item: AgentRunTimelineItem) -> String {
         switch item {
