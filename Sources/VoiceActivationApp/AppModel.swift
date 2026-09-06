@@ -123,11 +123,14 @@ final class AppModel {
         [TextToSpeechBackendID: UInt64] = [:]
     @ObservationIgnored var agentLifecycleSequence: UInt64 = 0
     @ObservationIgnored var settingsSaveGeneration: UInt64 = 0
-    @ObservationIgnored var startupPhase: AppModelStartupPhase = .idle
+    @ObservationIgnored var startupGeneration: UInt64 = 0
+    var startupPhase: AppModelStartupPhase = .idle
     @ObservationIgnored var isShutdown = false
     @ObservationIgnored var permissionGranted = false
     @ObservationIgnored var permissionTask: Task<Bool, Never>?
-    @ObservationIgnored var credentialLoadTask: Task<Void, Never>?
+    @ObservationIgnored var permissionAuthorization: AppModelEffectAuthorization?
+    @ObservationIgnored var credentialLoadTask: Task<String?, any Error>?
+    @ObservationIgnored var credentialLoadGeneration: UInt64?
     @ObservationIgnored var heldHotKeyProfileID: UUID?
     @ObservationIgnored var recordingShortcut = false
     @ObservationIgnored var activeProfile: WakeProfile?
@@ -350,6 +353,7 @@ final class AppModel {
     /// Synthesizes and plays a short sample for one profile or default cloud voice.
     func previewElevenLabsVoice(voiceID requestedVoiceID: String) async {
         diagnostics.record(category: .ui, event: "app_model.voice_preview_requested")
+        guard let startupAuthorization = readyEffectAuthorization else { return }
         guard !isPreviewingElevenLabsVoice else {
             diagnostics.record(
                 category: .ui,
@@ -382,12 +386,15 @@ final class AppModel {
         defer { isPreviewingElevenLabsVoice = false }
         do {
             try await elevenLabsVoicePreview.play(apiKey: apiKey, voiceID: voiceID)
+            guard isEffectAuthorized(startupAuthorization), !Task.isCancelled else { return }
             elevenLabsVoiceStatus = "Voice preview finished."
             diagnostics.record(category: .ui, event: "app_model.voice_preview_finished")
         } catch is CancellationError {
+            guard isEffectAuthorized(startupAuthorization) else { return }
             elevenLabsVoicePreview.stop()
             diagnostics.record(category: .ui, event: "app_model.voice_preview_cancelled")
         } catch {
+            guard isEffectAuthorized(startupAuthorization), !Task.isCancelled else { return }
             elevenLabsVoiceError = error.localizedDescription
             diagnostics.record(
                 category: .ui,

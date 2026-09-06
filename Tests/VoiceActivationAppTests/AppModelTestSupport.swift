@@ -94,6 +94,12 @@ extension AppModelTests {
                 startsAutomatically: false,
                 diagnostics: diagnostics)
         }
+
+        func startForExternalActions() async {
+            #expect(await model.start())
+            shortcut.resetObservations()
+            macContextAccess.resetObservations()
+        }
     }
 
     func makeAgentProfile(
@@ -242,6 +248,11 @@ final class MacContextAccessSpy: MacContextAccessControlling {
         if let statusAfterPrompt {
             status = statusAfterPrompt
         }
+    }
+
+    func resetObservations() {
+        statusChecks = 0
+        promptingChecks = 0
     }
 }
 

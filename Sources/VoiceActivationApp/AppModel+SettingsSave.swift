@@ -6,6 +6,7 @@ import VoiceActivationCore
 
 private struct AppModelSettingsSaveSnapshot {
     let generation: UInt64
+    let effectAuthorization: AppModelEffectAuthorization
     let drafts: [WakeProfileDraft]
     let activeProfiles: [WakeProfile]
     let localeID: String
@@ -32,6 +33,10 @@ extension AppModel {
     /// - Returns: `true` after the captured snapshot commits; otherwise `false`.
     @discardableResult
     func saveSettings() async -> Bool {
+        guard let effectAuthorization = readyEffectAuthorization else {
+            settingsError = "Voice Activation is still starting. Try again."
+            return false
+        }
         guard !isSavingSettings else {
             diagnostics.record(
                 category: .settings,
@@ -42,7 +47,9 @@ extension AppModel {
         isSavingSettings = true
         defer { isSavingSettings = false }
         settingsSaveGeneration &+= 1
-        let snapshot = settingsSaveSnapshot(generation: settingsSaveGeneration)
+        let snapshot = settingsSaveSnapshot(
+            generation: settingsSaveGeneration,
+            effectAuthorization: effectAuthorization)
         diagnostics.record(
             category: .settings,
             event: "settings.save_started",
@@ -77,6 +84,7 @@ extension AppModel {
         guard
             !Task.isCancelled,
             !isShutdown,
+            isEffectAuthorized(snapshot.effectAuthorization),
             settingsSaveGeneration == snapshot.generation,
             settingsEditorsMatch(snapshot)
         else {
@@ -85,7 +93,9 @@ extension AppModel {
         }
 
         do {
-            try registerShortcuts(profiles)
+            try registerShortcuts(
+                profiles,
+                authorization: snapshot.effectAuthorization)
         } catch {
             settingsError = error.localizedDescription
             recordSettingsSaveFailure(stage: "hot_key_registration", error: error)
@@ -93,11 +103,20 @@ extension AppModel {
         }
 
         credentialLoadTask?.cancel()
+        guard isEffectAuthorized(snapshot.effectAuthorization), !Task.isCancelled else {
+            try? registerShortcuts(
+                snapshot.activeProfiles,
+                authorization: snapshot.effectAuthorization)
+            recordAbortedSettingsSave(stage: "before_credential_storage")
+            return false
+        }
         do {
             try agentSpeechCredentialStore.saveElevenLabsAPIKey(
                 snapshot.normalizedAPIKey.isEmpty ? nil : snapshot.normalizedAPIKey)
         } catch {
-            try? registerShortcuts(snapshot.activeProfiles)
+            try? registerShortcuts(
+                snapshot.activeProfiles,
+                authorization: snapshot.effectAuthorization)
             settingsError = error.localizedDescription
             recordSettingsSaveFailure(stage: "credential_storage", error: error)
             return false
@@ -125,9 +144,13 @@ extension AppModel {
         return true
     }
 
-    private func settingsSaveSnapshot(generation: UInt64) -> AppModelSettingsSaveSnapshot {
+    private func settingsSaveSnapshot(
+        generation: UInt64,
+        effectAuthorization: AppModelEffectAuthorization
+    ) -> AppModelSettingsSaveSnapshot {
         AppModelSettingsSaveSnapshot(
             generation: generation,
+            effectAuthorization: effectAuthorization,
             drafts: wakeProfiles,
             activeProfiles: activeWakeProfiles,
             localeID: localeID,

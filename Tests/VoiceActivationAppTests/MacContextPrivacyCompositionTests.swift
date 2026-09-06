@@ -23,6 +23,7 @@ extension AppModelTests {
             macContextCapturer: capturer,
             isExecutableFile: { _ in true },
             isDirectory: { _ in true })
+        await fixture.startForExternalActions()
         fixture.model.wakeProfiles[0].agentHarness.executablePath = "/agents/changed"
         fixture.model.capturesMacContext = false
 
@@ -45,6 +46,7 @@ extension AppModelTests {
         let target = macContextTarget()
         let capturer = MacContextCapturerSpy(target: target)
         let fixture = try Fixture(macContextCapturer: capturer)
+        await fixture.startForExternalActions()
         fixture.model.capturesMacContext = false
         fixture.shortcut.failNextStart = true
 
@@ -64,6 +66,7 @@ extension AppModelTests {
         let fixture = try Fixture(
             agentSpeechCredentialStore: FailingMacContextCredentialStore(),
             macContextCapturer: capturer)
+        await fixture.startForExternalActions()
         fixture.model.capturesMacContext = false
 
         let saved = await fixture.model.saveSettings()

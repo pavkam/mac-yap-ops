@@ -22,6 +22,9 @@ extension AppModelTests {
         let speech = AppModelSpeechSessionSpy()
         let shortcut = ShortcutSpy()
         let permission = PermissionRequestGate()
+        let credentials = AgentSpeechCredentialStoreSpy(apiKey: "startup-key")
+        let catalog = AppModelElevenLabsVoiceCatalogSpy(voices: [])
+        let preview = AppModelElevenLabsVoicePreviewSpy()
         let composition = VoiceActivationAppComposition.make(
             continuityStore: store,
             activationMonitor: ApplicationActivationMonitor(
@@ -39,9 +42,9 @@ extension AppModelTests {
                     permissionRequest: { await permission.request() },
                     soundPlayer: SilentCaptureSoundPlayer(),
                     agentConversationAudioPlayer: SilentAgentConversationAudioPlayer(),
-                    agentSpeechCredentialStore: AgentSpeechCredentialStoreSpy(),
-                    elevenLabsVoiceCatalog: AppModelElevenLabsVoiceCatalogSpy(voices: []),
-                    elevenLabsVoicePreview: AppModelElevenLabsVoicePreviewSpy(),
+                    agentSpeechCredentialStore: credentials,
+                    elevenLabsVoiceCatalog: catalog,
+                    elevenLabsVoicePreview: preview,
                     macContextAccess: access,
                     macContextCapturer: MacContextCapturerSpy(),
                     isExecutableFile: { _ in true },
@@ -54,11 +57,27 @@ extension AppModelTests {
         notificationCenter.post(name: NSApplication.didBecomeActiveNotification, object: nil)
         composition.model.setPassiveEnabled(true)
         composition.model.pushToTalkPressed(profileID: profile.id)
+        composition.model.settingsDidAppear()
+        composition.model.requestMacContextAccess()
+        composition.model.setPushToTalkShortcutRecording(true)
+        composition.model.setPushToTalkShortcutRecording(false)
+        composition.model.elevenLabsAPIKey = "draft-key"
+        composition.model.elevenLabsVoiceID = "draft-voice"
+        let earlySave = await composition.model.saveSettings()
+        await composition.model.loadTextToSpeechVoices(for: .elevenLabs)
+        await composition.model.previewElevenLabsVoice()
+        #expect(!earlySave)
         #expect(access.statusChecks == 0)
+        #expect(access.promptingChecks == 0)
         #expect(permission.requestCount == 0)
         #expect(shortcut.startedProfiles.isEmpty)
+        #expect(shortcut.stopCount == 0)
         #expect(speech.startCount == 0)
         #expect(composition.model.heldHotKeyProfileID == nil)
+        #expect(credentials.loadCount == 0)
+        #expect(credentials.savedKeys.isEmpty)
+        #expect(await catalog.requestedAPIKeys.isEmpty)
+        #expect(preview.requests.isEmpty)
 
         await store.releaseReconciliation()
         await permission.waitUntilWaiting()
@@ -70,85 +89,20 @@ extension AppModelTests {
         #expect(speech.startCount == 1)
         notificationCenter.post(name: NSApplication.didBecomeActiveNotification, object: nil)
         #expect(access.statusChecks == 2)
-    }
 
-    @MainActor @Test
-    func compositionPrompt_WhenInterrupted_UsesSameStoreAndConsumesOnlyAfterFrameAndAck()
-        async throws
-    {
-        let profile = try makeAgentProfile(pushToTalkHotKey: .defaultValue)
-        let marker = AgentInterruptedWorkMarker(
-            key: AgentInterruptedWorkKey(
-                profileID: profile.id,
-                sessionID: "saved-session",
-                occurrenceID: UUID()),
-            state: .interruptedByProcessExit)
-        let store = AppModelContinuityStoreSpy(markers: [marker])
-        let frame = CompositionRunGate()
-        let acknowledgement = CompositionRunGate()
-        var runnerStoreWasShared = false
-        var modelStoreWasShared = false
-        var composedRunner: CompositionContinuityRunner?
-        let preferences = try compositionPreferences(profiles: [profile], passiveEnabled: false)
-        let speech = AppModelSpeechSessionSpy()
-        let panel = AppModelAgentPanelSpy()
-        let composition = VoiceActivationAppComposition.make(
-            continuityStore: store,
-            activationMonitor: ApplicationActivationMonitor(
-                notificationCenter: NotificationCenter()),
-            makeAgentRunner: { sharedStore in
-                runnerStoreWasShared = (sharedStore as? AppModelContinuityStoreSpy) === store
-                let runner = CompositionContinuityRunner(
-                    continuityStore: sharedStore,
-                    frame: frame,
-                    acknowledgement: acknowledgement)
-                composedRunner = runner
-                return runner
-            },
-            makeModel: { runner, sharedStore in
-                modelStoreWasShared = (sharedStore as? AppModelContinuityStoreSpy) === store
-                return AppModel(
-                    preferences: preferences,
-                    recordingOverlay: AppModelOverlayStub(),
-                    agentRunPanel: panel,
-                    shortcut: ShortcutSpy(),
-                    speechSession: speech,
-                    agentRunner: runner,
-                    continuityStore: sharedStore,
-                    permissionRequest: { true },
-                    soundPlayer: SilentCaptureSoundPlayer(),
-                    agentConversationAudioPlayer: SilentAgentConversationAudioPlayer(),
-                    agentSpeechCredentialStore: AgentSpeechCredentialStoreSpy(),
-                    elevenLabsVoiceCatalog: AppModelElevenLabsVoiceCatalogSpy(voices: []),
-                    elevenLabsVoicePreview: AppModelElevenLabsVoicePreviewSpy(),
-                    macContextAccess: MacContextAccessSpy(),
-                    macContextCapturer: MacContextCapturerSpy(),
-                    isExecutableFile: { _ in true },
-                    isDirectory: { _ in true },
-                    startsAutomatically: false)
-            })
-        #expect(await composition.startup.run())
-        let runner = try #require(composedRunner)
-
-        composition.model.coordinator.pushToTalkPressed(profileID: profile.id)
-        speech.emit("continue")
-        composition.model.coordinator.pushToTalkReleased()
-        await frame.waitUntilEntered()
-
-        #expect(runnerStoreWasShared)
-        #expect(modelStoreWasShared)
-        #expect(composition.model.interruptedAgentWork == [marker])
-        #expect((await store.snapshot()).interruptedWork == [marker])
-        await frame.open()
-        await acknowledgement.waitUntilEntered()
-        #expect(composition.model.interruptedAgentWork == [marker])
-        #expect((await store.snapshot()).interruptedWork == [marker])
-
-        await acknowledgement.open()
-        await runner.waitUntilFinished()
-        await panel.waitUntilPhase(.listening)
-        #expect(composition.model.interruptedAgentWork.isEmpty)
-        #expect((await store.snapshot()).interruptedWork.isEmpty)
+        composition.model.settingsDidAppear()
+        composition.model.requestMacContextAccess()
+        composition.model.setPushToTalkShortcutRecording(true)
+        composition.model.setPushToTalkShortcutRecording(false)
+        #expect(await composition.model.saveSettings())
+        await composition.model.loadTextToSpeechVoices(for: .elevenLabs)
+        await composition.model.previewElevenLabsVoice()
+        #expect(access.statusChecks == 3)
+        #expect(access.promptingChecks == 1)
+        #expect(shortcut.stopCount == 1)
+        #expect(!credentials.savedKeys.isEmpty)
+        #expect(await catalog.requestedAPIKeys.count == 1)
+        #expect(preview.requests.map(\.voiceID) == ["draft-voice"])
     }
 
     @MainActor
@@ -163,89 +117,5 @@ extension AppModelTests {
         preferences.wakeProfiles = profiles
         preferences.passiveEnabled = passiveEnabled
         return preferences
-    }
-}
-
-private actor CompositionRunGate {
-    private var entered = false
-    private var isOpen = false
-    private var entryWaiters: [CheckedContinuation<Void, Never>] = []
-    private var blocked: [CheckedContinuation<Void, Never>] = []
-
-    func wait() async {
-        entered = true
-        let waiters = entryWaiters
-        entryWaiters.removeAll()
-        waiters.forEach { $0.resume() }
-        guard !isOpen else { return }
-        await withCheckedContinuation { blocked.append($0) }
-    }
-
-    func waitUntilEntered() async {
-        guard !entered else { return }
-        await withCheckedContinuation { entryWaiters.append($0) }
-    }
-
-    func open() {
-        isOpen = true
-        let waiters = blocked
-        blocked.removeAll()
-        waiters.forEach { $0.resume() }
-    }
-}
-
-private actor CompositionContinuityRunner: AgentHarnessRunning {
-    private let continuityStore: any AgentContinuityStoring
-    private let frame: CompositionRunGate
-    private let acknowledgement: CompositionRunGate
-    private var finished = false
-    private var finishWaiters: [CheckedContinuation<Void, Never>] = []
-
-    init(
-        continuityStore: any AgentContinuityStoring,
-        frame: CompositionRunGate,
-        acknowledgement: CompositionRunGate
-    ) {
-        self.continuityStore = continuityStore
-        self.frame = frame
-        self.acknowledgement = acknowledgement
-    }
-
-    func run(
-        admission: AgentRunAdmission,
-        profileID: UUID,
-        configuration: AgentHarnessConfiguration,
-        prompt: AgentPrompt,
-        restorationNeed: AgentSessionRestorationNeed,
-        runContinuity: AgentRunContinuityRequest,
-        onEvent: @escaping @Sendable (AgentRunStreamEvent) async -> Void
-    ) async throws -> AgentRunResult {
-        guard admission.claim() else { throw CancellationError() }
-        await frame.wait()
-        await acknowledgement.wait()
-        try await continuityStore.acknowledgeInterruptedWork(
-            runContinuity.ordinaryInterruptedWorkKeys)
-        await runContinuity.confirmPublishedAcknowledgement(
-            runContinuity.ordinaryInterruptedWorkKeys)
-        finished = true
-        let waiters = finishWaiters
-        finishWaiters.removeAll()
-        waiters.forEach { $0.resume() }
-        return AgentRunResult(stopReason: .endTurn)
-    }
-
-    func resolvePermission(
-        turnToken: AgentTurnToken,
-        requestID: ACPRequestID,
-        optionID: String?
-    ) async {}
-
-    func cancel() async {}
-    func reset(profileIDs: Set<UUID>) async {}
-    func shutdown() async {}
-
-    func waitUntilFinished() async {
-        guard !finished else { return }
-        await withCheckedContinuation { finishWaiters.append($0) }
     }
 }

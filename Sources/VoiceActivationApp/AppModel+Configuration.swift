@@ -7,6 +7,12 @@ import VoiceActivationCore
 extension AppModel {
     /// Refreshes the displayed Accessibility state without showing a system prompt.
     func refreshMacContextAccessStatus() {
+        guard let authorization = readyEffectAuthorization else { return }
+        refreshMacContextAccessStatus(authorization: authorization)
+    }
+
+    func refreshMacContextAccessStatus(authorization: AppModelEffectAuthorization) {
+        guard isEffectAuthorized(authorization) else { return }
         macContextAccessStatus = macContextAccess.currentStatus()
     }
 
@@ -23,18 +29,24 @@ extension AppModel {
 
     /// Requests the system Accessibility prompt only in response to the Settings action.
     func requestMacContextAccess() {
+        guard isStartupReady else { return }
         macContextAccess.requestMacContextAccess()
     }
 
     /// Coalesces concurrent speech authorization requests into one shared task.
     func ensurePermissions() async -> Bool {
-        guard !isShutdown else {
+        guard let authorization = readyEffectAuthorization else {
             diagnostics.record(
                 category: .app,
                 event: "permissions.request_ignored",
-                fields: ["reason": "shutdown"])
+                fields: ["reason": "startup_not_ready"])
             return false
         }
+        return await ensurePermissions(authorization: authorization)
+    }
+
+    func ensurePermissions(authorization: AppModelEffectAuthorization) async -> Bool {
+        guard isEffectAuthorized(authorization), !Task.isCancelled else { return false }
         if permissionGranted {
             diagnostics.record(
                 category: .app,
@@ -42,42 +54,34 @@ extension AppModel {
                 fields: ["granted": "true"])
             return true
         }
-        if let permissionTask {
+        if let permissionTask, permissionAuthorization == authorization {
             diagnostics.record(category: .app, event: "permissions.joined_pending_request")
             let granted = await permissionTask.value
-            return isShutdown ? false : granted
+            return isEffectAuthorized(authorization) && !Task.isCancelled ? granted : false
         }
+        permissionTask?.cancel()
+        permissionTask = nil
+        permissionAuthorization = nil
 
         diagnostics.record(
             category: .app,
             event: "permissions.request_started",
             fields: ["task_priority": String(Task.currentPriority.rawValue)])
-        let diagnostics = diagnostics
-        let task = Task(priority: .userInitiated) { @MainActor [permissionRequest] in
-            let startedAtUptime = DispatchTime.now().uptimeNanoseconds
-            diagnostics.record(
-                category: .app,
-                event: "permissions.request_task_started",
-                fields: ["task_priority": String(Task.currentPriority.rawValue)])
-            let granted = await permissionRequest()
-            let finishedAtUptime = DispatchTime.now().uptimeNanoseconds
-            let duration = finishedAtUptime >= startedAtUptime
-                ? (finishedAtUptime - startedAtUptime) / 1_000_000
-                : 0
-            diagnostics.record(
-                category: .app,
-                event: "permissions.request_task_finished",
-                fields: [
-                    "duration_ms": String(duration),
-                    "granted": String(granted),
-                    "task_priority": String(Task.currentPriority.rawValue),
-                ])
-            return granted
+        let task = Task(priority: .userInitiated) { @MainActor [weak self, permissionRequest] in
+            guard let self,
+                self.isEffectAuthorized(authorization),
+                !Task.isCancelled
+            else { return false }
+            return await permissionRequest()
         }
         permissionTask = task
+        permissionAuthorization = authorization
         let granted = await task.value
-        permissionTask = nil
-        guard !isShutdown else { return false }
+        guard isEffectAuthorized(authorization), !Task.isCancelled else { return false }
+        if permissionAuthorization == authorization {
+            permissionTask = nil
+            permissionAuthorization = nil
+        }
         permissionGranted = granted
         diagnostics.record(
             category: .app,

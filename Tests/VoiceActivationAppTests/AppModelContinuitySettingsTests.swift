@@ -76,6 +76,7 @@ extension AppModelTests {
             continuityStore: store,
             isExecutableFile: { _ in true },
             isDirectory: { _ in true })
+        await fixture.startForExternalActions()
         fixture.model.wakeProfiles = [WakeProfileDraft(profile: retained)]
 
         let saved = await fixture.model.saveSettings()
@@ -102,6 +103,7 @@ extension AppModelTests {
             continuityStore: store,
             isExecutableFile: { _ in true },
             isDirectory: { _ in true })
+        await fixture.startForExternalActions()
         fixture.model.wakeProfiles[0].agentHarness.executablePath = "/agents/replacement"
 
         let saved = await fixture.model.saveSettings()
@@ -124,6 +126,7 @@ extension AppModelTests {
             continuityStore: store,
             isExecutableFile: { _ in true },
             isDirectory: { _ in true })
+        await fixture.startForExternalActions()
         fixture.model.wakeProfiles[0].wakePhrase = "renamed agent"
 
         let saved = await fixture.model.saveSettings()
@@ -147,6 +150,7 @@ extension AppModelTests {
             continuityStore: store,
             isExecutableFile: { _ in true },
             isDirectory: { _ in true })
+        await fixture.startForExternalActions()
         fixture.model.wakeProfiles[0].agentHarness.displayName = "After"
         fixture.model.wakeProfiles[0].agentHarness.permissionPolicy = .rejectAlways
         fixture.model.wakeProfiles[0].accent = .green
@@ -171,6 +175,7 @@ extension AppModelTests {
             continuityStore: store,
             isExecutableFile: { _ in false },
             isDirectory: { _ in true })
+        await fixture.startForExternalActions()
         fixture.model.wakeProfiles[0].agentHarness.executablePath = "/agents/invalid"
 
         #expect(!(await fixture.model.saveSettings()))
@@ -190,6 +195,7 @@ extension AppModelTests {
             continuityStore: store,
             isExecutableFile: { _ in true },
             isDirectory: { _ in true })
+        await fixture.startForExternalActions()
         fixture.model.wakeProfiles[0].agentHarness.executablePath = "/agents/replacement"
         fixture.shortcut.failNextStart = true
 
@@ -211,6 +217,7 @@ extension AppModelTests {
             agentSpeechCredentialStore: ContinuityCredentialStoreFailure(),
             isExecutableFile: { _ in true },
             isDirectory: { _ in true })
+        await fixture.startForExternalActions()
         fixture.model.wakeProfiles[0].agentHarness.executablePath = "/agents/replacement"
 
         #expect(!(await fixture.model.saveSettings()))
@@ -237,6 +244,7 @@ extension AppModelTests {
             isExecutableFile: { _ in true },
             isDirectory: { _ in true },
             diagnostics: diagnostics)
+        await fixture.startForExternalActions()
         fixture.model.wakeProfiles[0].agentHarness.executablePath = "/agents/replacement"
 
         let saved = await fixture.model.saveSettings()
@@ -266,6 +274,7 @@ extension AppModelTests {
             continuityStore: store,
             isExecutableFile: { _ in true },
             isDirectory: { _ in true })
+        await fixture.startForExternalActions()
         fixture.model.wakeProfiles[0].agentHarness.executablePath = "/agents/replacement"
         let entry = AppModelSaveEntryGate()
         let save = Task { @MainActor in
@@ -303,6 +312,7 @@ extension AppModelTests {
             agentSpeechCredentialStore: credentials,
             isExecutableFile: { _ in true },
             isDirectory: { _ in true })
+        await fixture.startForExternalActions()
         fixture.model.wakeProfiles[0].agentHarness.executablePath = "/agents/first-draft"
         fixture.model.capturesMacContext = false
         fixture.model.elevenLabsAPIKey = " captured-key "
@@ -339,6 +349,7 @@ extension AppModelTests {
             profiles: [command],
             agentRunner: runner,
             isExecutableFile: { _ in true })
+        await fixture.startForExternalActions()
         fixture.model.wakeProfiles[0].executablePath = "/usr/bin/printf"
 
         #expect(await fixture.model.saveSettings())

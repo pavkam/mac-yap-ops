@@ -23,7 +23,7 @@ struct SettingsView: View {
                 }
                 .padding(28)
             }
-            .disabled(model.isSavingSettings)
+            .disabled(model.isSavingSettings || !model.isStartupReady)
 
             Divider()
             footer
@@ -40,7 +40,8 @@ struct SettingsView: View {
         .onChange(of: model.capturesMacContext) { saved = false }
         .onChange(of: model.defaultSpeechVoice) { saved = false }
         .onChange(of: model.elevenLabsAPIKey) { saved = false }
-        .task {
+        .task(id: model.isStartupReady) {
+            guard model.isStartupReady else { return }
             await launchAtLogin.refresh()
         }
     }
@@ -209,7 +210,7 @@ struct SettingsView: View {
             }
             .keyboardShortcut(.defaultAction)
             .controlSize(.large)
-            .disabled(model.isSavingSettings)
+            .disabled(model.isSavingSettings || !model.isStartupReady)
         }
     }
 

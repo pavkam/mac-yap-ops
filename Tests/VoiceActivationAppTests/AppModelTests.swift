@@ -35,6 +35,11 @@ final class ShortcutSpy: PushToTalkShortcutManaging {
         stopCount += 1
     }
 
+    func resetObservations() {
+        startedProfiles.removeAll()
+        stopCount = 0
+    }
+
     func press(_ profileID: UUID) {
         onPressed?(profileID)
     }
