@@ -9,12 +9,12 @@ import json
 import subprocess
 import sys
 
+from probe_process_group import terminate
 from probe_initialize_support import (
     MAX_FRAME_BYTES,
     decode_message,
     read_frame,
     summarize,
-    terminate,
 )
 
 
@@ -40,6 +40,7 @@ def main(command: list[str]) -> None:
         stderr=subprocess.DEVNULL,
         start_new_session=True,
     )
+    process_group_id = process.pid
     try:
         assert process.stdin is not None
         assert process.stdout is not None
@@ -58,7 +59,7 @@ def main(command: list[str]) -> None:
             raise RuntimeError("initialize result was not an object")
         print(json.dumps(summarize(result), indent=2, sort_keys=True))
     finally:
-        terminate(process)
+        terminate(process, process_group_id)
 
 
 if __name__ == "__main__":

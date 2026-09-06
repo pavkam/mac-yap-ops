@@ -73,6 +73,7 @@ Run the deterministic framing, privacy-shape, and process-lifecycle tests first:
 ```bash
 python3 .agents/skills/acp-integration/scripts/test-probe-initialize.py
 python3 .agents/skills/acp-integration/scripts/test-probe-initialize-output.py
+python3 .agents/skills/acp-integration/scripts/test-probe-process-group.py
 ```
 
 ## Battle-tested ACP failure signatures

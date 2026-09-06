@@ -7,8 +7,6 @@ from collections.abc import Callable
 import json
 import os
 import selectors
-import signal
-import subprocess
 import time
 from typing import BinaryIO
 
@@ -16,21 +14,6 @@ from typing import BinaryIO
 MAX_FRAME_BYTES = 1_048_576
 READ_TIMEOUT_SECONDS = 20.0
 READ_CHUNK_BYTES = 65_536
-
-
-def terminate(process: subprocess.Popen[bytes]) -> None:
-    try:
-        os.killpg(process.pid, signal.SIGTERM)
-    except ProcessLookupError:
-        pass
-    try:
-        process.wait(timeout=3)
-    except subprocess.TimeoutExpired:
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        process.wait(timeout=3)
 
 
 def read_frame(
