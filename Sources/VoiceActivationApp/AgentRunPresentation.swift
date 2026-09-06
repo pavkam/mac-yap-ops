@@ -15,6 +15,7 @@ final class AgentRunPresentation {
     static let maximumDiagnosticBytes = 16 * 1_024
     static let maximumTools = 32
     static let maximumPlanEntries = 64
+    static let maximumNotices = 16
     static let maximumTimelineTextBytes = 64 * 1_024
     static let maximumTimelineItems = 256
     static let maximumThinkingDetailsPerGroup = 128
@@ -33,16 +34,16 @@ final class AgentRunPresentation {
             profileID: profileID,
             accent: accent,
             prompt: prompt,
-            providerName: providerName,
+            providerName: sourceQualifiedProviderName ?? providerName,
             phase: phase,
             voiceInput: voiceInput,
-            output: outputBuffer.value,
-            timeline: timeline,
-            diagnostics: diagnosticBuffer.value,
+            output: sourceQualifiedOutput,
+            timeline: sourceQualifiedTimeline,
+            diagnostics: sourceQualifiedDiagnostics,
             plan: sourceQualifiedPlan,
             tools: sourceQualifiedTools,
             permissions: permissions,
-            notices: notices,
+            notices: sourceQualifiedNotices,
             elapsedSeconds: elapsedSeconds,
             evictedToolCount: sourceQualifiedEvictedToolCount,
             ignoredToolUpdateCount: sourceQualifiedIgnoredToolUpdateCount)
@@ -172,6 +173,9 @@ final class AgentRunPresentation {
                 "delta_character_count": String(event.presentationCharacterCount),
                 "task_priority": String(Task.currentPriority.rawValue),
             ])
+        if case .connected = event {
+            restorationState?.hasLiveProviderUpdate = true
+        }
         if event.isTokenDelta {
             apply(event)
             publishTokenUpdate(runID: runID)

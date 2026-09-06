@@ -177,6 +177,66 @@ extension AgentRunTimelineItem {
     }
 }
 
+func enforceAgentRunTimelineBounds(
+    _ timeline: inout [AgentRunTimelineItem],
+    hasOmittedActivity: inout Bool,
+    maximumTextBytes: Int,
+    maximumItems: Int
+) {
+    var retainedTextBytes = timeline.reduce(into: 0) { count, item in
+        guard item.containsText else { return }
+        let byteCount = item.text.utf8.count
+        count = count > Int.max - byteCount ? Int.max : count + byteCount
+    }
+    while retainedTextBytes > maximumTextBytes,
+        let index = timeline.firstIndex(where: \AgentRunTimelineItem.containsText)
+    {
+        let originalByteCount = timeline[index].text.utf8.count
+        let excessByteCount = retainedTextBytes - maximumTextBytes
+        if originalByteCount <= excessByteCount {
+            timeline.remove(at: index)
+            retainedTextBytes -= originalByteCount
+        } else {
+            timeline[index] = timeline[index].droppingTextPrefix(
+                atLeast: excessByteCount,
+                using: droppingAgentRunUTF8Prefix)
+            retainedTextBytes -= originalByteCount - timeline[index].text.utf8.count
+        }
+        hasOmittedActivity = true
+    }
+
+    if hasOmittedActivity,
+        !timeline.contains(where: { item in
+            if case .omitted = item { return true }
+            return false
+        })
+    {
+        timeline.insert(.omitted, at: timeline.startIndex)
+    }
+
+    while timeline.count > maximumItems,
+        let index = timeline.firstIndex(where: { item in
+            if case .omitted = item { return false }
+            return true
+        })
+    {
+        timeline.remove(at: index)
+        hasOmittedActivity = true
+        if !timeline.contains(.omitted) {
+            timeline.insert(.omitted, at: timeline.startIndex)
+        }
+    }
+}
+
+private func droppingAgentRunUTF8Prefix(_ text: String, atLeast byteCount: Int) -> String {
+    let data = Data(text.utf8)
+    var retainedStart = min(max(0, byteCount), data.count)
+    while retainedStart < data.count, data[retainedStart] & 0xC0 == 0x80 {
+        retainedStart += 1
+    }
+    return String(decoding: data[retainedStart...], as: UTF8.self)
+}
+
 func saturatingIncrement(_ value: UInt64) -> UInt64 {
     value == UInt64.max ? UInt64.max : value + 1
 }

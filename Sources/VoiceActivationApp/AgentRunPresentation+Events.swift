@@ -64,7 +64,7 @@ extension AgentRunPresentation {
     func appendNotice(_ message: String) {
         guard notices.last != message else { return }
         notices.append(message)
-        if notices.count > 16 {
+        if notices.count > Self.maximumNotices {
             notices.remove(at: notices.startIndex)
         }
     }
@@ -227,50 +227,11 @@ extension AgentRunPresentation {
     }
 
     func enforceTimelineBounds() {
-        var retainedTextBytes = timelineTextByteCount
-        while retainedTextBytes > Self.maximumTimelineTextBytes,
-            let index = timeline.firstIndex(where: \AgentRunTimelineItem.containsText)
-        {
-            let originalByteCount = timeline[index].text.utf8.count
-            let excessByteCount = retainedTextBytes - Self.maximumTimelineTextBytes
-            if originalByteCount <= excessByteCount {
-                timeline.remove(at: index)
-                retainedTextBytes -= originalByteCount
-            } else {
-                timeline[index] = timeline[index].droppingTextPrefix(
-                    atLeast: excessByteCount,
-                    using: droppingUTF8Prefix)
-                retainedTextBytes -= originalByteCount - timeline[index].text.utf8.count
-            }
-            markTimelineOmitted()
-        }
-
-        if timelineHasOmittedActivity,
-            !timeline.contains(where: { item in
-                if case .omitted = item { return true }
-                return false
-            })
-        {
-            timeline.insert(.omitted, at: timeline.startIndex)
-        }
-
-        while timeline.count > Self.maximumTimelineItems,
-            let index = timeline.firstIndex(where: { item in
-                if case .omitted = item { return false }
-                return true
-            })
-        {
-            timeline.remove(at: index)
-            markTimelineOmitted()
-        }
-    }
-
-    var timelineTextByteCount: Int {
-        timeline.reduce(into: 0) { count, item in
-            guard item.containsText else { return }
-            let byteCount = item.text.utf8.count
-            count = count > Int.max - byteCount ? Int.max : count + byteCount
-        }
+        enforceAgentRunTimelineBounds(
+            &timeline,
+            hasOmittedActivity: &timelineHasOmittedActivity,
+            maximumTextBytes: Self.maximumTimelineTextBytes,
+            maximumItems: Self.maximumTimelineItems)
     }
 
     func markTimelineOmitted() {
@@ -282,15 +243,6 @@ extension AgentRunPresentation {
             })
         else { return }
         timeline.insert(.omitted, at: timeline.startIndex)
-    }
-
-    func droppingUTF8Prefix(_ text: String, atLeast byteCount: Int) -> String {
-        let data = Data(text.utf8)
-        var retainedStart = min(max(0, byteCount), data.count)
-        while retainedStart < data.count, data[retainedStart] & 0xC0 == 0x80 {
-            retainedStart += 1
-        }
-        return String(decoding: data[retainedStart...], as: UTF8.self)
     }
 
 }

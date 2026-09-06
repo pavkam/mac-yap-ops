@@ -8,6 +8,159 @@ import Testing
 
 @Suite(.timeLimit(.minutes(1)))
 struct AgentRunPresentationRestorationOwnershipTests {
+    @MainActor @Test(arguments: [RestorationDiscard.abort, .unsupportedFallback])
+    func historyDiscard_WhenLiveStateArrivesDuringReplay_PreservesEveryLiveSurface(
+        discard: RestorationDiscard
+    ) throws {
+        let presentation = AgentRunPresentation(startsElapsedTimer: false)
+        let runID = UUID()
+        let token = AgentRestorationToken()
+        presentation.start(
+            runID: runID,
+            profile: try makeAgentProfile(),
+            prompt: "Current request")
+        presentation.beginHistoryRestoration(
+            runID: runID,
+            token: token,
+            sessionID: "saved-session")
+
+        presentation.receiveRestored(
+            runID: runID,
+            token: token,
+            event: .connected(agentName: "Historical Provider", sessionID: "saved-session"))
+        presentation.receiveRestored(
+            runID: runID,
+            token: token,
+            event: .userMessageDelta(messageID: "history-request", text: "Partial request"))
+        presentation.receiveRestored(
+            runID: runID,
+            token: token,
+            event: .agentMessageDelta(messageID: "history-response", text: "Partial response"))
+        presentation.receiveRestored(
+            runID: runID,
+            token: token,
+            event: .thoughtDelta(messageID: "history-thought", text: "Partial thought"))
+        presentation.receiveRestored(
+            runID: runID,
+            token: token,
+            event: .metadata(
+                kind: AgentRunMetadataKind.sessionRecovered,
+                summary: "Historical notice"))
+        presentation.receiveRestored(
+            runID: runID,
+            token: token,
+            event: .diagnostic("Historical diagnostic"))
+
+        presentation.receive(
+            runID: runID,
+            event: .connected(agentName: "Live Provider", sessionID: "live-session"))
+        presentation.receive(
+            runID: runID,
+            event: .agentMessageDelta(messageID: "live-response", text: "Live response"))
+        presentation.receive(
+            runID: runID,
+            event: .thoughtDelta(messageID: "live-thought", text: "Live thought"))
+        presentation.receive(
+            runID: runID,
+            event: .metadata(
+                kind: AgentRunMetadataKind.sessionRecovered,
+                summary: "Live notice"))
+        presentation.receive(
+            runID: runID,
+            event: .permissionRequested(permissionRequest(id: "live-permission")))
+        presentation.receive(runID: runID, event: .diagnostic("Live diagnostic"))
+        presentation.receive(
+            runID: runID,
+            event: .unknown(discriminator: "live-metadata", summary: "Live metadata"))
+
+        switch discard {
+        case .abort:
+            presentation.abortHistoryRestoration(runID: runID, token: token)
+        case .unsupportedFallback:
+            presentation.completeHistoryRestoration(
+                runID: runID,
+                token: token,
+                activation: .freshBecauseRestorationUnsupported(sessionID: "fresh-session"))
+        }
+
+        let snapshot = try #require(presentation.snapshot)
+        #expect(snapshot.providerName == "Live Provider")
+        #expect(snapshot.output == "Live response")
+        #expect(snapshot.diagnostics == "Live diagnostic\n[live-metadata] Live metadata\n")
+        #expect(snapshot.permissions.map(\.key.requestID) == [.string("live-permission")])
+        #expect(snapshot.notices == discard.expectedNotices)
+        #expect(snapshot.timeline.compactMap { item -> String? in
+            guard case .message(let message) = item else { return nil }
+            return message.text
+        } == ["Live response"])
+        #expect(snapshot.timeline.compactMap { item -> String? in
+            guard case .thinking(let thinking) = item else { return nil }
+            return thinking.details.compactMap { detail -> String? in
+                guard case .thought(let message) = detail else { return nil }
+                return message.text
+            }.first
+        } == ["Live thought"])
+        #expect(snapshot.timeline.contains(.historyBoundary) == false)
+    }
+
+    @MainActor @Test
+    func historyCompletion_WhenHistoricalAndLiveToolsShareMoment_SettlesOnlyHistoryGroup()
+        throws
+    {
+        let presentation = AgentRunPresentation(startsElapsedTimer: false)
+        let runID = UUID()
+        let token = AgentRestorationToken()
+        presentation.start(
+            runID: runID,
+            profile: try makeAgentProfile(),
+            prompt: "Current request")
+        presentation.beginHistoryRestoration(
+            runID: runID,
+            token: token,
+            sessionID: "saved-session")
+        presentation.receiveRestored(
+            runID: runID,
+            token: token,
+            event: .toolCall(AgentToolCall(
+                id: "historical-tool",
+                title: "Historical tool",
+                kind: .read,
+                status: .inProgress)))
+        presentation.receive(
+            runID: runID,
+            event: .toolCall(AgentToolCall(
+                id: "live-tool",
+                title: "Live tool",
+                kind: .execute,
+                status: .inProgress)))
+
+        presentation.completeHistoryRestoration(
+            runID: runID,
+            token: token,
+            activation: .loaded(sessionID: "saved-session"))
+
+        let snapshot = try #require(presentation.snapshot)
+        let groups = snapshot.timeline.compactMap { item -> AgentThinkingPresentation? in
+            guard case .thinking(let thinking) = item else { return nil }
+            return thinking
+        }
+        let historicalGroup = try #require(groups.first { group in
+            group.details.contains { detail in
+                guard case .tool(let tool) = detail else { return false }
+                return tool.id == "historical-tool"
+            }
+        })
+        let liveGroup = try #require(groups.first { group in
+            group.details.contains { detail in
+                guard case .tool(let tool) = detail else { return false }
+                return tool.id == "live-tool"
+            }
+        })
+        #expect(historicalGroup.isWorking == false)
+        #expect(liveGroup.isWorking)
+        #expect(snapshot.tools.map(\.status) == [.interrupted, .inProgress])
+    }
+
     @MainActor @Test
     func historyCompletion_WhenToolIDAndPlanCollide_PreservesBothSourcesExactly() throws {
         let presentation = AgentRunPresentation(startsElapsedTimer: false)
@@ -348,5 +501,36 @@ struct AgentRunPresentationRestorationOwnershipTests {
                 workingDirectory: "/tmp",
                 permissionPolicy: .ask)),
             accent: .purple)
+    }
+
+    private func permissionRequest(id: String) -> AgentPermissionRequest {
+        AgentPermissionRequest(
+            turnToken: AgentTurnToken(),
+            requestID: .string(id),
+            toolCall: AgentToolCallUpdate(
+                id: "permission-tool",
+                title: "Permission tool",
+                kind: .execute,
+                status: .inProgress),
+            options: [
+                AgentPermissionOption(id: "allow", label: "Allow", kind: .allowOnce),
+            ])
+    }
+}
+
+enum RestorationDiscard: Sendable {
+    case abort
+    case unsupportedFallback
+
+    var expectedNotices: [String] {
+        switch self {
+        case .abort:
+            ["Live notice"]
+        case .unsupportedFallback:
+            [
+                "Live notice",
+                "This provider cannot restore previous history, so a fresh conversation was started.",
+            ]
+        }
     }
 }
