@@ -419,7 +419,12 @@ extension VoiceActivationCoordinator {
             onAgentRunEvent?(.turnFailed(runID: runID, message: message))
             executionTask = nil
             activeAgentInput = nil
-            state = .executing
+            steeringBlockedGeneration = nil
+            if pendingAgentPrompts.isEmpty {
+                state = .executing
+            } else {
+                startNextAgentPrompt()
+            }
             return
         }
         agentTurnHadActivity = false

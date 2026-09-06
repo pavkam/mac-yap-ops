@@ -77,6 +77,42 @@ extension VoiceActivationCoordinatorTests {
         await fixture.agentRunner.complete(runIndex: 1)
     }
 
+    @MainActor
+    @Test func execution_WhenActiveTurnFailsAfterActivity_StartsQueuedPromptExactlyOnce()
+        async throws
+    {
+        let fixture = try Fixture(profiles: [try makeAgentProfile()])
+        await fixture.agentRunner.enqueueMidTurnResults([.promptRequired])
+        var events: [AgentRunLifecycleEvent] = []
+        fixture.coordinator.onAgentRunEvent = { events.append($0) }
+        fixture.coordinator.setPassiveEnabled(true)
+        fixture.speech.emit("agent first", isFinal: true)
+        await waitUntil { await fixture.agentRunner.recordedInvocations().count == 1 }
+        await fixture.agentRunner.emit(
+            .agentMessageDelta(messageID: "progress", text: "Useful output."),
+            from: 0)
+        fixture.speech.emit("queued next", isFinal: true)
+        await waitUntil { await fixture.agentRunner.recordedMidTurnOffers().count == 1 }
+
+        await fixture.agentRunner.fail(
+            runIndex: 0,
+            error: ControlledAgentRunnerError.runFailed)
+        await waitUntil(timeout: .milliseconds(300)) {
+            await fixture.agentRunner.recordedInvocations().count == 2
+        }
+
+        #expect(await fixture.agentRunner.recordedInvocations().map(\.prompt.request) == [
+            "first", "queued next",
+        ])
+        #expect(events.filter { event in
+            guard case .followUpDispositionChanged(_, _, .prompted) = event else {
+                return false
+            }
+            return true
+        }.count == 1)
+        await fixture.agentRunner.complete(runIndex: 1)
+    }
+
     @MainActor @Test func agentCompletion_WhenFollowUpIsQueued_StartsOneNextTurn() async throws {
         let profile = try makeAgentProfile()
         let fixture = try Fixture(profiles: [profile])
