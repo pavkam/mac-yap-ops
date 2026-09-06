@@ -3,6 +3,82 @@
 
 import Foundation
 
+/// A single-use gate that linearizes whether an agent run may begin side effects.
+///
+/// The owner invalidates a pending admission when its input, run, or generation
+/// retires. The runner claims it as its first operation. Once claimed, later
+/// invalidation is handled by ordinary active-run cancellation.
+public final class AgentRunAdmission: @unchecked Sendable {
+    private enum State {
+        case standalonePending
+        case unbound(inputID: UUID)
+        case pending(inputID: UUID, runID: UUID, executionGeneration: Int)
+        case claimed
+        case invalidated
+    }
+
+    // The lock protects coordinator binding and the single admission outcome across actors.
+    private let lock = NSLock()
+    private var state: State
+
+    /// Creates one pending, single-use run admission.
+    public init() {
+        state = .standalonePending
+    }
+
+    init(inputID: UUID) {
+        state = .unbound(inputID: inputID)
+    }
+
+    func bind(inputID: UUID, runID: UUID, executionGeneration: Int) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard case .unbound(let expectedInputID) = state,
+              expectedInputID == inputID
+        else { return false }
+        state = .pending(
+            inputID: inputID,
+            runID: runID,
+            executionGeneration: executionGeneration)
+        return true
+    }
+
+    /// Atomically claims this admission before the runner performs any side effect.
+    ///
+    /// - Returns: `true` only for the first claim while admission is pending.
+    @discardableResult
+    public func claim() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        switch state {
+        case .standalonePending, .pending:
+            break
+        case .unbound, .claimed, .invalidated:
+            return false
+        }
+        state = .claimed
+        return true
+    }
+
+    /// Atomically invalidates this admission if the runner has not claimed it.
+    ///
+    /// - Returns: `true` when invalidation won the race, or `false` after a
+    ///   claim or earlier invalidation already established the outcome.
+    @discardableResult
+    public func invalidate() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        switch state {
+        case .standalonePending, .unbound, .pending:
+            break
+        case .claimed, .invalidated:
+            return false
+        }
+        state = .invalidated
+        return true
+    }
+}
+
 /// The ACP stop reason that completed an agent turn.
 public enum AgentStopReason: String, Codable, Equatable, Sendable {
     /// The agent deliberately finished the turn.
@@ -35,6 +111,7 @@ public protocol AgentHarnessRunning: Sendable {
     /// Runs one prompt in the profile's reusable conversation session.
     ///
     /// - Parameters:
+    ///   - admission: The single-use gate claimed before any runner side effect.
     ///   - profileID: The wake profile that owns the cached session.
     ///   - configuration: The harness launch and permission configuration.
     ///   - prompt: The typed user request and its optional captured Mac context.
@@ -42,6 +119,7 @@ public protocol AgentHarnessRunning: Sendable {
     /// - Returns: The turn's terminal stop reason.
     /// - Throws: A transport, protocol, launch, or cancellation error.
     func run(
+        admission: AgentRunAdmission,
         profileID: UUID,
         configuration: AgentHarnessConfiguration,
         prompt: AgentPrompt,
@@ -66,4 +144,24 @@ public protocol AgentHarnessRunning: Sendable {
     func reset(profileIDs: Set<UUID>) async
     /// Cancels active work and closes every cached harness process.
     func shutdown() async
+}
+
+extension AgentHarnessRunning {
+    /// Runs one independently admitted prompt outside coordinator ownership.
+    ///
+    /// This convenience overload creates a fresh single-use admission and is
+    /// intended for direct runner clients and tests.
+    public func run(
+        profileID: UUID,
+        configuration: AgentHarnessConfiguration,
+        prompt: AgentPrompt,
+        onEvent: @escaping @Sendable (AgentRunEvent) async -> Void
+    ) async throws -> AgentRunResult {
+        try await run(
+            admission: AgentRunAdmission(),
+            profileID: profileID,
+            configuration: configuration,
+            prompt: prompt,
+            onEvent: onEvent)
+    }
 }

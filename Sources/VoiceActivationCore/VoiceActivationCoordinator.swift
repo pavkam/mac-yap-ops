@@ -113,7 +113,7 @@ public final class VoiceActivationCoordinator {
     var executingAction: WakeProfileAction?
     var activeAgentRunID: UUID? {
         didSet {
-            guard activeAgentRunID != oldValue else { return }
+            guard oldValue != nil, activeAgentRunID != oldValue else { return }
             activeAgentInput?.invalidateAdmission()
         }
     }

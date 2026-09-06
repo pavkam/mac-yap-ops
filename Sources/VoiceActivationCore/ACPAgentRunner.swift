@@ -146,6 +146,7 @@ public actor ACPAgentRunner: AgentHarnessRunning {
     /// Runs a prompt using the profile's cached session, recovering stale sessions once.
     ///
     /// - Parameters:
+    ///   - admission: The single-use gate claimed before any runner side effect.
     ///   - profileID: The owner of the reusable ACP session.
     ///   - configuration: The validated process and permission configuration.
     ///   - prompt: The typed request and optional Mac context sent to the harness.
@@ -153,6 +154,7 @@ public actor ACPAgentRunner: AgentHarnessRunning {
     /// - Returns: The terminal result reported by the harness.
     /// - Throws: ``ACPAgentRunnerError`` or an underlying transport/protocol error.
     public func run(
+        admission: AgentRunAdmission,
         profileID: UUID,
         configuration: AgentHarnessConfiguration,
         prompt: AgentPrompt,
@@ -160,6 +162,7 @@ public actor ACPAgentRunner: AgentHarnessRunning {
     ) async throws
         -> AgentRunResult
     {
+        guard admission.claim() else { throw CancellationError() }
         guard !isShutDown else {
             diagnostics.record(
                 category: .agent,

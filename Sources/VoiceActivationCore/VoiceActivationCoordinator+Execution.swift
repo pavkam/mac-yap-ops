@@ -234,17 +234,17 @@ extension VoiceActivationCoordinator {
         generation: Int
     ) {
         agentTurnHadActivity = false
-        input.activateAdmission(runID: runID, generation: generation)
-        let promptWithoutContext: AgentPrompt?
-        if input.contextCapture == nil,
-           executionGeneration == generation,
-           activeAgentRunID == runID,
-           activeAgentInput?.id == input.id
-        {
-            promptWithoutContext = AgentPrompt(request: input.text, context: nil)
-        } else {
-            promptWithoutContext = nil
-        }
+        guard
+            executionGeneration == generation,
+            activeAgentRunID == runID,
+            activeAgentInput?.id == input.id,
+            input.bindAdmission(
+                runID: runID,
+                executionGeneration: generation)
+        else { return }
+        let promptWithoutContext = input.contextCapture == nil
+            ? AgentPrompt(request: input.text, context: nil)
+            : nil
         let scheduledAtUptime = DispatchTime.now().uptimeNanoseconds
         diagnostics.record(
             category: .agent,
@@ -303,9 +303,8 @@ extension VoiceActivationCoordinator {
                     prompt = resolvedPrompt
                 }
                 try Task.checkCancellation()
-                guard input.isAdmitted(runID: runID, generation: generation) else { return }
-                try Task.checkCancellation()
                 let result = try await agentRunner.run(
+                    admission: input.admission,
                     profileID: profile.id,
                     configuration: configuration,
                     prompt: prompt,

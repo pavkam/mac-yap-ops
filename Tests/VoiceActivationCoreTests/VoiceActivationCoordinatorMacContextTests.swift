@@ -101,22 +101,54 @@ extension VoiceActivationCoordinatorTests {
     @Test func agentTurn_WhenGenerationRetiresAtRunnerAdmission_NeverEntersRunner()
         async throws
     {
-        let gate = AgentAdmissionDiagnosticGate()
+        let readyGate = AgentAdmissionDiagnosticGate()
+        let actorBarrier = AgentRunnerActorBarrier()
         let fixture = try Fixture(
             profiles: [try makeAgentProfile()],
-            diagnostics: gate)
+            diagnostics: readyGate)
         await fixture.agentRunner.completeRunsImmediately()
+        let barrierTask = Task.detached {
+            await fixture.agentRunner.blockActor(using: actorBarrier)
+        }
+        await waitUntil { actorBarrier.isEntered() }
+        readyGate.release()
         fixture.coordinator.setPassiveEnabled(true)
         fixture.speech.emit("agent stale turn", isFinal: true)
-        await waitUntil { gate.isBlocked() }
+        await waitUntil { readyGate.isBlocked() }
+        await Task.yield()
 
         fixture.coordinator.executionGeneration &+= 1
         let executionTask = fixture.coordinator.executionTask
-        gate.release()
+        actorBarrier.release()
+        await barrierTask.value
         await executionTask?.value
 
         #expect(await fixture.agentRunner.recordedRunAttemptCount() == 0)
         fixture.coordinator.stop()
+    }
+
+    @MainActor
+    @Test func cancelAgentRun_WhenAdmissionClaimAlreadyWon_CancelsActiveRunner()
+        async throws
+    {
+        let postClaimBarrier = AgentRunnerActorBarrier()
+        let fixture = try Fixture(profiles: [try makeAgentProfile()])
+        await fixture.agentRunner.completeRunsImmediately()
+        await fixture.agentRunner.blockAfterAdmissionClaim(using: postClaimBarrier)
+        fixture.coordinator.setPassiveEnabled(true)
+        fixture.speech.emit("agent claimed turn", isFinal: true)
+        await waitUntil { postClaimBarrier.isEntered() }
+
+        fixture.coordinator.cancelAgentRun()
+        postClaimBarrier.release()
+        await waitUntil {
+            let attempts = await fixture.agentRunner.recordedRunAttemptCount()
+            let cancellations = await fixture.agentRunner.cancelCount
+            return attempts == 1 && cancellations == 1
+        }
+
+        #expect(await fixture.agentRunner.recordedRunAttemptCount() == 1)
+        #expect(await fixture.agentRunner.cancelCount == 1)
     }
 
     @MainActor

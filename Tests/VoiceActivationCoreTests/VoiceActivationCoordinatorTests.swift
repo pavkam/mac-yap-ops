@@ -154,13 +154,24 @@ actor ControlledAgentRunner: AgentHarnessRunning {
     private var delaysCancellation = false
     private var completesImmediately = false
     private var cancellationWaiters: [CheckedContinuation<Void, Never>] = []
+    private var postClaimBarrier: AgentRunnerActorBarrier?
+
+    func blockActor(using barrier: AgentRunnerActorBarrier) {
+        barrier.block()
+    }
 
     func run(
+        admission: AgentRunAdmission,
         profileID: UUID,
         configuration: AgentHarnessConfiguration,
         prompt: AgentPrompt,
         onEvent: @escaping @Sendable (AgentRunEvent) async -> Void
     ) async throws -> AgentRunResult {
+        guard admission.claim() else { throw CancellationError() }
+        if let postClaimBarrier {
+            postClaimBarrier.block()
+            self.postClaimBarrier = nil
+        }
         runAttempts += 1
         guard activeRunIndex == nil else {
             throw ControlledAgentRunnerError.turnAlreadyActive
@@ -228,6 +239,10 @@ actor ControlledAgentRunner: AgentHarnessRunning {
 
     func completeRunsImmediately() {
         completesImmediately = true
+    }
+
+    func blockAfterAdmissionClaim(using barrier: AgentRunnerActorBarrier) {
+        postClaimBarrier = barrier
     }
 
     func releaseCancellation() {
@@ -377,6 +392,30 @@ final class AgentAdmissionDiagnosticGate: VoiceActivationDiagnosticRecording,
         released = true
         condition.broadcast()
         condition.unlock()
+    }
+}
+
+final class AgentRunnerActorBarrier: @unchecked Sendable {
+    private let condition = NSCondition()
+    private let releaseSemaphore = DispatchSemaphore(value: 0)
+    private var entered = false
+
+    func block() {
+        condition.lock()
+        entered = true
+        condition.broadcast()
+        condition.unlock()
+        releaseSemaphore.wait()
+    }
+
+    func isEntered() -> Bool {
+        condition.lock()
+        defer { condition.unlock() }
+        return entered
+    }
+
+    func release() {
+        releaseSemaphore.signal()
     }
 }
 

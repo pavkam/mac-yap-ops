@@ -3,57 +3,21 @@
 
 import Foundation
 
-final class PendingAgentInputAdmission: @unchecked Sendable {
-    // The lock lets detached runner startup validate the MainActor-owned lease
-    // without hopping back to an actor that synchronous speech startup may occupy.
-    private let lock = NSLock()
-    private let inputID: UUID
-    private var runID: UUID?
-    private var generation: Int?
-
-    init(inputID: UUID) {
-        self.inputID = inputID
-    }
-
-    func activate(runID: UUID, generation: Int) {
-        lock.lock()
-        self.runID = runID
-        self.generation = generation
-        lock.unlock()
-    }
-
-    func invalidate() {
-        lock.lock()
-        runID = nil
-        generation = nil
-        lock.unlock()
-    }
-
-    func matches(inputID: UUID, runID: UUID, generation: Int) -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return self.inputID == inputID
-            && self.runID == runID
-            && self.generation == generation
-    }
-}
-
 struct PendingAgentInput: Sendable {
     let id: UUID
     let text: String
     let contextCapture: Task<MacContextSnapshot?, Never>?
-    let admission: PendingAgentInputAdmission
+    let admission: AgentRunAdmission
 
-    func activateAdmission(runID: UUID, generation: Int) {
-        admission.activate(runID: runID, generation: generation)
+    func bindAdmission(runID: UUID, executionGeneration: Int) -> Bool {
+        admission.bind(
+            inputID: id,
+            runID: runID,
+            executionGeneration: executionGeneration)
     }
 
     func invalidateAdmission() {
         admission.invalidate()
-    }
-
-    func isAdmitted(runID: UUID, generation: Int) -> Bool {
-        admission.matches(inputID: id, runID: runID, generation: generation)
     }
 
     func cancelContextCapture() {
@@ -80,7 +44,7 @@ extension VoiceActivationCoordinator {
             id: id,
             text: text,
             contextCapture: contextCapture,
-            admission: PendingAgentInputAdmission(inputID: id))
+            admission: AgentRunAdmission(inputID: id))
     }
 
     func resolveAgentPrompt(

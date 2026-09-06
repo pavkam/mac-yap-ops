@@ -130,11 +130,13 @@ actor AppModelAgentRunnerSpy: AgentHarnessRunning {
     }
 
     func run(
+        admission: AgentRunAdmission,
         profileID: UUID,
         configuration: AgentHarnessConfiguration,
         prompt: AgentPrompt,
         onEvent: @escaping @Sendable (AgentRunEvent) async -> Void
     ) async throws -> AgentRunResult {
+        guard admission.claim() else { throw CancellationError() }
         invocations.append(
             Invocation(
                 profileID: profileID,
@@ -186,11 +188,13 @@ actor AppModelPermissionAgentRunnerSpy: AgentHarnessRunning {
     private var continuation: CheckedContinuation<AgentRunResult, Never>?
 
     func run(
+        admission: AgentRunAdmission,
         profileID: UUID,
         configuration: AgentHarnessConfiguration,
         prompt: AgentPrompt,
         onEvent: @escaping @Sendable (AgentRunEvent) async -> Void
     ) async throws -> AgentRunResult {
+        guard admission.claim() else { throw CancellationError() }
         await onEvent(
             .permissionRequested(
                 AgentPermissionRequest(
