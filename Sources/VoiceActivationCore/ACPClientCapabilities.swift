@@ -7,16 +7,16 @@ import Foundation
 public enum ACPClientCapabilitiesError: Error, Equatable, LocalizedError, Sendable {
     /// A contribution was not a JSON object.
     case contributionMustBeObject
-    /// Two contributions supplied incompatible values for the same object path.
-    case conflictingValues(path: String)
+    /// Two contributions supplied incompatible values at the same object path.
+    case conflictingValues
 
-    /// A concise description that names only the JSON path, never contributed data.
+    /// A concise description that never exposes contributed keys, paths, or values.
     public var errorDescription: String? {
         switch self {
         case .contributionMustBeObject:
             "ACP client capabilities must be JSON objects."
-        case .conflictingValues(let path):
-            "ACP client capability contributions conflict at \(path)."
+        case .conflictingValues:
+            "ACP client capability contributions conflict."
         }
     }
 }
@@ -38,7 +38,7 @@ public enum ACPClientCapabilities {
             guard case .object(let object) = fragment else {
                 throw ACPClientCapabilitiesError.contributionMustBeObject
             }
-            composed = try merge(composed, with: object, path: [])
+            composed = try merge(composed, with: object)
         }
 
         return .object(composed)
@@ -46,32 +46,30 @@ public enum ACPClientCapabilities {
 
     private static func merge(
         _ existing: [String: ACPJSONValue],
-        with contribution: [String: ACPJSONValue],
-        path: [String]
+        with contribution: [String: ACPJSONValue]
     ) throws -> [String: ACPJSONValue] {
         var result = existing
 
-        for (key, contributionValue) in contribution {
+        for key in contribution.keys.sorted() {
+            guard let contributionValue = contribution[key] else {
+                continue
+            }
             guard let existingValue = result[key] else {
                 result[key] = contributionValue
                 continue
             }
 
-            let valuePath = path + [key]
             switch (existingValue, contributionValue) {
             case (.object(let existingObject), .object(let contributionObject)):
                 result[key] = .object(try merge(
                     existingObject,
-                    with: contributionObject,
-                    path: valuePath))
+                    with: contributionObject))
             case (.object, _), (_, .object):
-                throw ACPClientCapabilitiesError.conflictingValues(
-                    path: valuePath.joined(separator: "."))
+                throw ACPClientCapabilitiesError.conflictingValues
             case _ where existingValue == contributionValue:
                 continue
             default:
-                throw ACPClientCapabilitiesError.conflictingValues(
-                    path: valuePath.joined(separator: "."))
+                throw ACPClientCapabilitiesError.conflictingValues
             }
         }
 

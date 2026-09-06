@@ -81,6 +81,30 @@ public struct AgentInterruptedWorkMarker: Codable, Equatable, Sendable {
     }
 }
 
+/// The versioned, identifier-only continuity state persisted for all profiles.
+///
+/// Storage owns validation, bounds, and atomic updates. This value only groups
+/// bookmarks and interrupted-work markers without retaining conversation content.
+public struct AgentContinuityEnvelope: Codable, Equatable, Sendable {
+    /// The persistence schema version used to validate this envelope.
+    public let schemaVersion: Int
+    /// The persisted bookmarks, mutable only for storage's bounded replacement policy.
+    public var bookmarks: [AgentSessionBookmark]
+    /// The persisted interrupted-work markers, mutable only for storage reconciliation.
+    public var interruptedWork: [AgentInterruptedWorkMarker]
+
+    /// Creates a versioned identifier-only continuity envelope.
+    public init(
+        schemaVersion: Int,
+        bookmarks: [AgentSessionBookmark],
+        interruptedWork: [AgentInterruptedWorkMarker]
+    ) {
+        self.schemaVersion = schemaVersion
+        self.bookmarks = bookmarks
+        self.interruptedWork = interruptedWork
+    }
+}
+
 /// The optional restoration methods advertised by an ACP agent at initialization.
 public struct ACPSessionRestorationCapabilities: Equatable, Sendable {
     /// Whether the agent supports `session/load` and its visible-history replay.
