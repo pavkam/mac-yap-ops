@@ -376,7 +376,8 @@ struct AgentRunPresentationRestorationState {
 extension AgentRunEvent {
     fileprivate var isRestorationTextDelta: Bool {
         switch self {
-        case .userMessageDelta, .agentMessageDelta, .thoughtDelta:
+        case .userMessageDelta, .agentMessageDelta, .agentSpokenMessageDelta,
+            .agentDisplayMessageDelta, .thoughtDelta:
             true
         default:
             false

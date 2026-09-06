@@ -11,7 +11,9 @@ extension AgentRunPresentation {
             providerName = agentName
         case .userMessageDelta:
             break
-        case .agentMessageDelta(let messageID, let text):
+        case .agentMessageDelta(let messageID, let text),
+            .agentSpokenMessageDelta(let messageID, let text),
+            .agentDisplayMessageDelta(let messageID, let text):
             if needsResponseSeparator, !text.isEmpty {
                 outputBuffer.append("\n\n")
                 needsResponseSeparator = false

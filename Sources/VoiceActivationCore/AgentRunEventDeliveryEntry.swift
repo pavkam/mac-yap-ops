@@ -7,6 +7,8 @@ import Foundation
 enum AgentRunEventDeliveryTextKind: Equatable {
     case userMessage(String?)
     case agentMessage(String?)
+    case agentSpokenMessage(String?)
+    case agentDisplayMessage(String?)
     case thought(String?)
     case diagnostic
 }
@@ -33,6 +35,10 @@ struct AgentRunEventDeliveryEntry {
             .userMessageDelta(messageID: messageID, text: textBuffer.value)
         case let .agentMessage(messageID):
             .agentMessageDelta(messageID: messageID, text: textBuffer.value)
+        case let .agentSpokenMessage(messageID):
+            .agentSpokenMessageDelta(messageID: messageID, text: textBuffer.value)
+        case let .agentDisplayMessage(messageID):
+            .agentDisplayMessageDelta(messageID: messageID, text: textBuffer.value)
         case let .thought(messageID):
             .thoughtDelta(messageID: messageID, text: textBuffer.value)
         case .diagnostic:
@@ -71,6 +77,7 @@ struct AgentRunEventDeliveryEntry {
         textBuffer = buffer
         switch textKind {
         case let .userMessage(messageID), let .agentMessage(messageID),
+            let .agentSpokenMessage(messageID), let .agentDisplayMessage(messageID),
             let .thought(messageID):
             outputBytes = buffer.count
             artifactBytes = 0
@@ -97,7 +104,7 @@ struct AgentRunEventDeliveryEntry {
         }
         let discarded = textBuffer!.append(otherBuffer.value)
         switch kind {
-        case .userMessage, .agentMessage, .thought:
+        case .userMessage, .agentMessage, .agentSpokenMessage, .agentDisplayMessage, .thought:
             outputBytes = textBuffer!.count
         case .diagnostic:
             diagnosticBytes = textBuffer!.count
@@ -111,7 +118,7 @@ struct AgentRunEventDeliveryEntry {
         }
         let discarded = textBuffer!.discardPrefix(atLeast: byteCount)
         switch kind {
-        case .userMessage, .agentMessage, .thought:
+        case .userMessage, .agentMessage, .agentSpokenMessage, .agentDisplayMessage, .thought:
             outputBytes = textBuffer!.count
         case .diagnostic:
             diagnosticBytes = textBuffer!.count
@@ -135,6 +142,8 @@ struct AgentRunEventDeliveryEntry {
             return agentName.utf8.count + sessionID.utf8.count
         case let .userMessageDelta(messageID, _),
             let .agentMessageDelta(messageID, _),
+            let .agentSpokenMessageDelta(messageID, _),
+            let .agentDisplayMessageDelta(messageID, _),
             let .thoughtDelta(messageID, _):
             return messageID?.utf8.count ?? 0
         case .artifact:

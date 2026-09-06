@@ -37,7 +37,9 @@ struct AgentRunPresentationRestorationStage {
         case .userMessageDelta(let messageID, let text):
             hasVisibleHistory = !text.isEmpty || hasVisibleHistory
             appendUserMessage(text, messageID: messageID)
-        case .agentMessageDelta(let messageID, let text):
+        case .agentMessageDelta(let messageID, let text),
+            .agentSpokenMessageDelta(let messageID, let text),
+            .agentDisplayMessageDelta(let messageID, let text):
             hasVisibleHistory = !text.isEmpty || hasVisibleHistory
             outputBuffer.append(text)
             settleActiveThinkingGroup()

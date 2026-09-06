@@ -347,6 +347,10 @@ public enum AgentRunEvent: Equatable, Sendable {
     case userMessageDelta(messageID: String?, text: String)
     /// A streaming fragment of user-visible Markdown from the agent.
     case agentMessageDelta(messageID: String?, text: String)
+    /// A streaming plain-text fragment the agent explicitly authored for speech.
+    case agentSpokenMessageDelta(messageID: String?, text: String)
+    /// A streaming rich-text fragment the agent explicitly authored for display.
+    case agentDisplayMessageDelta(messageID: String?, text: String)
     /// A streaming fragment of agent reasoning that may be collapsed in the UI.
     case thoughtDelta(messageID: String?, text: String)
     /// A file, image, or document result produced by the agent.

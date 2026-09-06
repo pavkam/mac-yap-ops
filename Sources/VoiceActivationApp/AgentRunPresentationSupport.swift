@@ -7,7 +7,8 @@ import VoiceActivationCore
 extension AgentRunEvent {
     var isTokenDelta: Bool {
         switch self {
-        case .agentMessageDelta, .thoughtDelta:
+        case .agentMessageDelta, .agentSpokenMessageDelta, .agentDisplayMessageDelta,
+            .thoughtDelta:
             true
         default:
             false
@@ -19,6 +20,8 @@ extension AgentRunEvent {
         case .connected: "connected"
         case .userMessageDelta: "user_message_delta"
         case .agentMessageDelta: "agent_message_delta"
+        case .agentSpokenMessageDelta: "agent_spoken_message_delta"
+        case .agentDisplayMessageDelta: "agent_display_message_delta"
         case .thoughtDelta: "thought_delta"
         case .artifact: "artifact"
         case .toolCall: "tool_call"
@@ -34,7 +37,8 @@ extension AgentRunEvent {
 
     var presentationCharacterCount: Int {
         switch self {
-        case .agentMessageDelta(_, let text), .thoughtDelta(_, let text):
+        case .agentMessageDelta(_, let text), .agentSpokenMessageDelta(_, let text),
+            .agentDisplayMessageDelta(_, let text), .thoughtDelta(_, let text):
             text.count
         case .diagnostic(let message):
             message.count
@@ -57,8 +61,9 @@ extension AgentRunEvent {
             update.content.artifactMetrics
         case let .permissionRequested(request):
             request.toolCall.content.artifactMetrics
-        case .connected, .userMessageDelta, .agentMessageDelta, .thoughtDelta, .plan, .metadata,
-            .diagnostic, .unknown, .deliveryNotice:
+        case .connected, .userMessageDelta, .agentMessageDelta, .agentSpokenMessageDelta,
+            .agentDisplayMessageDelta, .thoughtDelta, .plan, .metadata, .diagnostic, .unknown,
+            .deliveryNotice:
             (0, 0)
         }
     }

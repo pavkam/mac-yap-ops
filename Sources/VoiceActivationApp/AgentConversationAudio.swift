@@ -359,6 +359,9 @@ final class AgentConversationAudioPresenter {
                 narration.append(messageID: messageID, text: text)
             }
             updateWorking(true)
+        case .agentSpokenMessageDelta, .agentDisplayMessageDelta:
+            narration.markSemanticBoundary()
+            updateWorking(true)
         case .permissionRequested:
             narration.markSemanticBoundary()
             updateWorking(false)
@@ -527,6 +530,8 @@ extension AgentRunEvent {
         case .connected: "connected"
         case .userMessageDelta: "user_message_delta"
         case .agentMessageDelta: "agent_message_delta"
+        case .agentSpokenMessageDelta: "agent_spoken_message_delta"
+        case .agentDisplayMessageDelta: "agent_display_message_delta"
         case .thoughtDelta: "thought_delta"
         case .artifact: "artifact"
         case .toolCall: "tool_call"
