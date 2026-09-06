@@ -32,6 +32,11 @@ struct MenuContentView: View {
         }
         .frame(width: 356)
         .background(panelBackground)
+        .background {
+            MenuWindowShadowRefreshView(layoutIdentity: layoutIdentity)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
     }
 
     private var statusHeader: some View {
@@ -305,6 +310,20 @@ struct MenuContentView: View {
 
     private var headerAccent: Color {
         model.activeWakeProfiles.first(where: \.isEnabled)?.accent.swiftUIColor ?? .secondary
+    }
+
+    private var layoutIdentity: MenuContentLayoutIdentity {
+        let agentControls: MenuContentLayoutIdentity.AgentControls
+        if let snapshot = model.agentRunSnapshot {
+            agentControls = snapshot.phase.isTerminal ? .terminal : .active
+        } else {
+            agentControls = .hidden
+        }
+        return MenuContentLayoutIdentity(
+            showsLastCommand: !model.lastTranscript.isEmpty,
+            agentControls: agentControls,
+            profileCount: model.activeWakeProfiles.count,
+            showsCaptureCancellation: model.state == .capturing)
     }
 }
 
