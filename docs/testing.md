@@ -115,6 +115,11 @@ The `🎙️ Swift CI` workflow runs four gates for pushes and pull requests to
 `main`: repository quality, warning-as-error build plus tests, Thread Sanitizer,
 and app packaging after the first three pass.
 
+The repository-quality gate runs independently from a fresh checkout.
+`make check-documentation` builds the test modules before extracting symbol
+graphs because SwiftPM includes the generated test runner in that extraction.
+It then checks documentation for public `YapOpsCore` symbols.
+
 The local CI-equivalent sequence is:
 
 ```bash

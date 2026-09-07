@@ -54,6 +54,12 @@ The useful question is “which owner had the value and did not hand it off?”
 | Launch at Login fails | Bundle path, signature, `SMAppService.mainApp` observed state | Test injected service first; manually use a stable `/Applications` copy |
 | Permission/signing/resource failure | Real bundle, `Info.plist`, signature, stable path | Build with `make app`; `swift run` is the wrong experiment |
 
+If repository quality fails to load `YapOpsPackageTests` during symbol graph
+extraction, reproduce `make check` in a fresh checkout. SwiftPM includes the
+generated test runner but its normal build does not compile that module.
+The documentation checker must build tests before extraction; a successful
+check after `swift test` can hide this missing prerequisite.
+
 For intentionally suppressed queued work, do not wait for the work that must
 never start. Put a controlled executor behind a pre-operation handshake, retire
 the owner, then release the executor and assert that the guarded operation was

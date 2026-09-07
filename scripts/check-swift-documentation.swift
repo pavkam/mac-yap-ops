@@ -6,6 +6,21 @@
 import Foundation
 
 let projectDirectory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+
+// SwiftPM includes the generated test runner when dumping package symbol graphs.
+// Build it explicitly so this check also works before tests have been built.
+let build = Process()
+build.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+build.arguments = ["swift", "build", "--build-tests"]
+build.currentDirectoryURL = projectDirectory
+try build.run()
+build.waitUntilExit()
+
+guard build.terminationReason == .exit, build.terminationStatus == 0 else {
+    fputs("Could not build the modules required for the public Swift symbol graph.\n", stderr)
+    exit(1)
+}
+
 let dump = Process()
 dump.executableURL = URL(fileURLWithPath: "/usr/bin/env")
 dump.arguments = [
