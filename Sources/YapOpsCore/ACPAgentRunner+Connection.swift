@@ -559,7 +559,7 @@ extension ACPAgentRunner {
             return
         }
         if let connection = record.connection {
-            await connection.waitForInputCompletion()
+            await connection.waitForInputAndEventCompletion()
         }
 
         guard records[profileID]?.id == recordID else {

@@ -341,6 +341,11 @@ Prompt completion does not publish success until every accepted event has
 drained through both delivery stages. This preserves wire order even when the
 consumer is slower than the provider.
 
+At process exit, the runner retains the connection record until input reading
+and both prompt and session event callbacks finish. The record becomes
+ineligible for reuse as soon as exit is observed, while decoded final events
+keep their valid owner until delivery completes.
+
 ## Route spoken and display responses
 
 ACP v1 has no standard spoken-response channel. Its `agent_message_chunk`

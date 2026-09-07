@@ -306,14 +306,26 @@ extension ACPAgentRunnerTests {
         for _ in 0..<20 {
             await Task.yield()
         }
-        try await transport.feed(agentMessageUpdate(text: "final output"))
+        let finalChunks = (0..<32).map { "final output \($0) " }
+        var finalFrames = Data()
+        for text in finalChunks {
+            finalFrames.append(try JSONEncoder().encode(agentMessageUpdate(text: text)))
+            finalFrames.append(0x0A)
+        }
+        finalFrames.append(try JSONEncoder().encode(
+            promptResponse(id: 3, stopReason: "end_turn")))
+        finalFrames.append(0x0A)
+        await transport.feedRaw(finalFrames)
         await transport.feedDiagnostic("final stderr 🧪")
-        try await transport.feed(promptResponse(id: 3, stopReason: "end_turn"))
         await transport.finishStreams()
 
         #expect(try await activeRun.value == AgentRunResult(stopReason: .endTurn))
         let events = await recorder.recordedEvents()
-        #expect(events.contains(.agentMessageDelta(messageID: nil, text: "final output")))
+        let finalOutput = events.compactMap { event -> String? in
+            guard case let .agentMessageDelta(_, text) = event else { return nil }
+            return text
+        }.joined()
+        #expect(finalOutput == finalChunks.joined())
         #expect(events.contains(.diagnostic("final stderr 🧪")))
         await runner.shutdown()
     }

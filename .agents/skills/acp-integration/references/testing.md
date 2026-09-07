@@ -100,6 +100,11 @@ and the receive loop legitimately omits that event. The regression
 `connect_WhenLoadDeliveryIsBlockedAndOutputEnds_RejectsReadyClosedConnection`
 asserts closure, token retirement, and rejection of late replay directly.
 
+Missing final message chunks after a successful exit can mean the cache record
+was removed after EOF but before decoded-event callbacks drained. Wait for input
+and prompt/session delivery before removing that record. The runner's final-read
+regression sends a burst in one frame batch and verifies every chunk in order.
+
 1. Inspect redacted lifecycle diagnostics and correlate connection, session,
    request, run, and turn identifiers.
 2. Capture the smallest malformed frame shape without recording its content.

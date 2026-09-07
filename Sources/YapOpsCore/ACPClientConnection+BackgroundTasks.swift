@@ -27,8 +27,14 @@ extension ACPClientConnection {
         return true
     }
 
-    func waitForInputCompletion() async {
+    func waitForInputAndEventCompletion() async {
         _ = await receiveTask?.result
+        // EOF can arrive before the decoded-event consumers have finished.
+        // Keep the runner's record alive until those callbacks reach it.
+        let promptDelivery = activeEventDelivery
+        let sessionDelivery = sessionEventDelivery
+        await promptDelivery?.finish(.drain)
+        await sessionDelivery?.finish(.drain)
     }
 
     /// Replaces the bounded observer for negotiated events that arrive between prompts.
