@@ -85,6 +85,14 @@ loading Thread Sanitizer after `dlopen` leaves its interceptors unusable.
 
 ## macOS state boundaries
 
+When a file selection has no resource links, inspect whether the selected AX row
+is a wrapper around a cell or text field that owns the URL. The collector must
+walk only the selected item's structural children, stop at its first link, and
+skip unselected nested rows. `SystemAccessibilityContextReaderTests` guards
+nested links, duplicate/cyclic elements, explicit parent-child selection order,
+and the node/time bounds. A visible permission switch alone does not prove a
+normal app request captured context; verify the app's own capture outcome.
+
 Build and reproduce from the signed app bundle for microphone, speech, Keychain,
 resources, Service Management, and menu-bar lifecycle. Do not automate TCC
 resets, real login-item changes, audible output, provider authentication, or

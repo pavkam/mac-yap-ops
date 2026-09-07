@@ -112,6 +112,10 @@ The snapshot can contain the application, focused window title, document URL,
 selected text, and selected resource links. A selected item that exposes only an
 absolute filename is converted to a file link; relative or malformed filenames
 are omitted. The app does not open the file to build this link.
+For selections such as Finder list rows, YapOps looks through the selected
+item's structural children to find its file link. It stops at the first link
+for each selected item and skips unselected nested rows. This lookup is bounded
+to three child levels, 64 elements total, and the capture's 500 ms time budget.
 The snapshot does not include screenshots,
 clipboard data, file contents, a full Accessibility tree, or background updates.
 YapOps neither persists nor logs snapshot values or content; it may
