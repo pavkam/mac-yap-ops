@@ -15,10 +15,10 @@ struct SettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     header
+                    MacContextSettingsSection(model: model)
                     voiceSection
                     conversationSection
                     applicationSection
-                    MacContextSettingsSection(model: model)
                     privacyNote
                 }
                 .padding(28)
@@ -54,7 +54,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("YapOps")
                     .font(.title2.weight(.semibold))
-                Text("Turn speech into a command, hands free or on demand.")
+                Text("Use your voice to work with what’s on your Mac.")
                     .foregroundStyle(.secondary)
             }
 
@@ -115,7 +115,7 @@ struct SettingsView: View {
     private var conversationSection: some View {
         SettingsCard(
             title: "Speech and activity",
-            subtitle: "Set the inherited voice and global backend credentials.",
+            subtitle: "Choose how your assistants sound and when they speak.",
             systemImage: SettingsSectionSymbol.agentConversation.rawValue)
         {
             SpeechSettingsContent(model: model)

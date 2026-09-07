@@ -84,6 +84,12 @@ wire and lifecycle contract.
 
 ## Focused Mac context and Accessibility
 
+The Mac context card appears near the top of Settings. **Ready for Mac context**
+means capture is enabled and Accessibility is authorized. **App name only**
+means the agent can identify the focused app, but needs Accessibility access for
+window details and selections. **Mac context is off** means capture is disabled.
+Save Settings to apply a changed toggle.
+
 **Include focused Mac context in agent requests** defaults to On. After a
 successful **Save Settings**, each admitted ACP request may include a one-shot
 snapshot for the app that was frontmost when that utterance was admitted. It is
@@ -103,12 +109,14 @@ application name and bundle identifier with
 `captureState: "accessibility_not_authorized"` when a target is available.
 
 The snapshot can contain the application, focused window title, document URL,
-selected text, and selected resource links. It does not include screenshots,
+selected text, and selected resource links. A selected item that exposes only an
+absolute filename is converted to a file link; relative or malformed filenames
+are omitted. The app does not open the file to build this link.
+The snapshot does not include screenshots,
 clipboard data, file contents, a full Accessibility tree, or background updates.
 YapOps neither persists nor logs snapshot values or content; it may
 record safe capture metadata. The selected ACP provider receives the prompt
-blocks and may retain or replay them under its own session policy; Voice
-Activation does not restore an old snapshot after restart.
+blocks and may retain or replay them under its own session policy; YapOps does not restore an old snapshot after restart.
 See [ACP agent harness](agent-harness.md) for the exact schema and bounds.
 
 ## Validation summary

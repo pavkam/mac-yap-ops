@@ -190,11 +190,25 @@ extension AppModelTests {
         let authorized = MacContextSettingsPresentation(accessStatus: .authorized)
 
         #expect(unauthorized.toggleLabel == "Include focused Mac context in agent requests")
-        #expect(unauthorized.accessStatusText == "Accessibility not authorized")
+        #expect(unauthorized.accessStatusText == "App name only")
         #expect(unauthorized.showsEnableAccessibilityButton)
-        #expect(authorized.accessStatusText == "Accessibility authorized")
+        #expect(authorized.accessStatusText == "Ready for Mac context")
         #expect(!authorized.showsEnableAccessibilityButton)
         #expect(unauthorized.disclosureText == "When enabled, YapOps sends the focused app’s name and bundle identifier, focused window title and document URL, selected text, and up to eight selected resource links outside YapOps to the selected ACP provider.")
+    }
+
+    @Test(arguments: [MacContextAccessStatus.authorized, .notAuthorized])
+    func macContextSettingsPresentation_WhenDisabled_DoesNotRequestUnusedPermission(
+        accessStatus: MacContextAccessStatus
+    ) {
+        let presentation = MacContextSettingsPresentation(
+            accessStatus: accessStatus,
+            isEnabled: false)
+
+        #expect(presentation.state == .off)
+        #expect(presentation.accessStatusText == "Mac context is off")
+        #expect(!presentation.showsEnableAccessibilityButton)
+        #expect(presentation.detailText.contains("only what you say"))
     }
 
     @MainActor @Test func setPushToTalkHotKey_WhenRecorded_ChangesOnlyThatProfileDraft() throws {

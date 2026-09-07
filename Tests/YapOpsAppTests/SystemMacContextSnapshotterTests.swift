@@ -10,6 +10,43 @@ import YapOpsCore
 
 @Suite(.serialized)
 struct SystemMacContextSnapshotterTests {
+    @MainActor @Test
+    func capture_WhenSelectedItemHasOnlyAbsoluteFilename_PreservesAgentPromptLink() async throws {
+        let native = NativeAccessibilityFake(
+            processExists: [true],
+            selectedChildCount: 1,
+            resourceAttributes: [NSNull(), NSNull(), "/tmp/Project Notes.md" as NSString])
+
+        let subject = SystemMacContextSnapshotter(
+            workspace: WorkspaceReaderStub(target: .editor),
+            accessibility: SystemAccessibilityContextReader(native: native))
+        let result = await subject.capture(.editor)
+
+        #expect(result.resources == [
+            MacContextResource(uri: "file:///tmp/Project%20Notes.md", name: "Project Notes.md"),
+        ])
+        let prompt = try MacContextPromptEncoder.content(
+            for: AgentPrompt(request: "Summarize this file", context: result),
+            systemInstruction: "Use the supplied context.")
+        #expect(prompt.contains(.resourceLink(
+            role: .macResource,
+            uri: "file:///tmp/Project%20Notes.md",
+            name: "Project Notes.md")))
+    }
+
+    @Test(arguments: ["notes.md", "~/notes.md", "", "https://example.test/file", "/tmp/a\0b"])
+    func nativeRead_WhenFilenameCannotIdentifyAbsoluteFile_OmitsResource(filename: String) {
+        let native = NativeAccessibilityFake(
+            processExists: [true],
+            selectedChildCount: 1,
+            resourceAttributes: [NSNull(), NSNull(), filename as NSString])
+
+        let result = SystemAccessibilityContextReader(native: native)
+            .readContext(processIdentifier: 42)
+
+        #expect(result.resources.isEmpty)
+    }
+
     @MainActor @Test func capture_WhenAccessibilityIsTrusted_MapsFocusedValuesInOrder()
         async throws
     {
@@ -522,6 +559,7 @@ private final class NativeAccessibilityFake: AccessibilityNativeReading, @unchec
     private let window = AXUIElementCreateApplication(9_002)
     private let focusedElement = AXUIElementCreateApplication(9_003)
     private let timeoutError: AXError
+    private let resourceAttributes: [AnyObject]?
     private var processExistence: [Bool]
     private var resourceNamesByElement: [ObjectIdentifier: String] = [:]
     private var selectedChildren: [AXUIElement] = []
@@ -533,10 +571,12 @@ private final class NativeAccessibilityFake: AccessibilityNativeReading, @unchec
         processExists: [Bool],
         timeoutError: AXError = .success,
         selectedChildCount: Int = 0,
-        selectedRowCount: Int = 0
+        selectedRowCount: Int = 0,
+        resourceAttributes: [AnyObject]? = nil
     ) {
         processExistence = processExists
         self.timeoutError = timeoutError
+        self.resourceAttributes = resourceAttributes
         for index in 0..<selectedChildCount {
             let element = AXUIElementCreateApplication(Int32(10_000 + index))
             selectedChildren.append(element)
@@ -624,7 +664,7 @@ private final class NativeAccessibilityFake: AccessibilityNativeReading, @unchec
         }
         lock.withLock { recordedResourceReadOrder.append(name) }
         return MultipleRead(
-            values: [
+            values: resourceAttributes ?? [
                 "file:///tmp/\(name).txt" as NSString,
                 name as NSString,
                 NSNull(),

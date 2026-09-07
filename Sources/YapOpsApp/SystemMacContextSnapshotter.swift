@@ -518,11 +518,16 @@ struct SystemAccessibilityContextReader: AccessibilityContextReading {
                 return .init(status: .notAuthorized)
             }
             hadFailure = hadFailure || read.hadFailure
-            guard let uri = Self.urlString(from: read.values[safe: 0]) else {
+            let filename = Self.string(from: read.values[safe: 2])
+            let fileURI = filename.flatMap { path -> String? in
+                guard path.hasPrefix("/"), !path.contains("\0") else { return nil }
+                return URL(fileURLWithPath: path, isDirectory: false).absoluteString
+            }
+            guard let uri = Self.urlString(from: read.values[safe: 0]) ?? fileURI else {
                 continue
             }
             let name = Self.string(from: read.values[safe: 1])
-                ?? Self.string(from: read.values[safe: 2])
+                ?? filename.map { ($0 as NSString).lastPathComponent }
                 ?? URL(string: uri)?.lastPathComponent
                 ?? ""
             resources.append(.init(uri: uri, name: name))
