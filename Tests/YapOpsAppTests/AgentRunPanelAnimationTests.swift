@@ -26,10 +26,10 @@ struct AgentRunPanelAnimationTests {
     private static let testFilter =
         "actionDock_WhenAgentFinishes_AnimatesOutgoingAndIncomingButtons"
 
-    @MainActor @Test
+    @MainActor @Test(.timeLimit(.minutes(1)))
     func actionDock_WhenAgentFinishes_AnimatesOutgoingAndIncomingButtons() async throws {
         guard ProcessInfo.processInfo.environment[Self.childEnvironmentKey] == "1" else {
-            try IsolatedAppKitTestProcess.run(
+            try await IsolatedAppKitTestProcess.run(
                 environmentKey: Self.childEnvironmentKey,
                 testFilter: Self.testFilter)
             return

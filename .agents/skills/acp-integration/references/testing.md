@@ -94,6 +94,12 @@ decoding before publication; tests awaiting acknowledgement or listening then
 hang. `YapOpsAppContinuityCompositionTests` covers the complete fake handshake
 and both durable-publication failure paths.
 
+For EOF during blocked replay delivery, await the startup task's typed failure.
+Do not wait for `acp_client.receive_finished`: startup cleanup may close first,
+and the receive loop legitimately omits that event. The regression
+`connect_WhenLoadDeliveryIsBlockedAndOutputEnds_RejectsReadyClosedConnection`
+asserts closure, token retirement, and rejection of late replay directly.
+
 1. Inspect redacted lifecycle diagnostics and correlate connection, session,
    request, run, and turn identifiers.
 2. Capture the smallest malformed frame shape without recording its content.

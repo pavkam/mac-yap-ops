@@ -321,10 +321,11 @@ struct AgentRunPanelPresenterTests {
         #expect(!panel.isMovableByWindowBackground)
     }
 
-    @MainActor @Test func panel_WhenReduceMotionIsEnabled_CompletesHandoffWithoutAnimation() throws {
+    @MainActor @Test(.timeLimit(.minutes(1)))
+    func panel_WhenReduceMotionIsEnabled_CompletesHandoffWithoutAnimation() async throws {
         let childEnvironmentKey = "YAPOPS_REDUCED_MOTION_PANEL_TEST_CHILD"
         guard ProcessInfo.processInfo.environment[childEnvironmentKey] == "1" else {
-            try IsolatedAppKitTestProcess.run(
+            try await IsolatedAppKitTestProcess.run(
                 environmentKey: childEnvironmentKey,
                 testFilter: "panel_WhenReduceMotionIsEnabled_CompletesHandoffWithoutAnimation")
             return

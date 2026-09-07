@@ -42,6 +42,12 @@ it serializes tests inside that suite, not unrelated suites. Prefer child
 process isolation for truly process-wide state. Add a bounded `.timeLimit` to
 tests that can wait on external process termination.
 
+Always await `IsolatedAppKitTestProcess.run`. Its dedicated serial worker drains
+the child pipe and waits for exit without blocking the main actor or a Swift
+executor. A synchronous wait starves unrelated speech and timer tests under
+Thread Sanitizer. `run_WhenWaitingForChild_AllowsParentMainActorProgress` fails
+with that old wait and guards this boundary.
+
 ## Deterministic asynchronous tests
 
 Prefer controlled continuations, actor-backed recorders, fake sleepers/clocks,

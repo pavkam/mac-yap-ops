@@ -15,10 +15,10 @@ struct AgentRunPanelInteractionTests {
     private static let testFilter =
         "deleteButton_WhenClicked_EmitsDeleteAction"
 
-    @MainActor @Test
+    @MainActor @Test(.timeLimit(.minutes(1)))
     func deleteButton_WhenClicked_EmitsDeleteAction() async throws {
         guard ProcessInfo.processInfo.environment[Self.childEnvironmentKey] == "1" else {
-            try IsolatedAppKitTestProcess.run(
+            try await IsolatedAppKitTestProcess.run(
                 environmentKey: Self.childEnvironmentKey,
                 testFilter: Self.testFilter)
             return

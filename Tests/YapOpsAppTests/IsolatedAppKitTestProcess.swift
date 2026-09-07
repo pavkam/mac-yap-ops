@@ -6,13 +6,13 @@ import MachO
 import Testing
 
 enum IsolatedAppKitTestProcess {
-    static func run(environmentKey: String, testFilter: String) throws {
+    private static let childProcessQueue = DispatchQueue(label: "dev.alex.yapops.tests.appkit-child")
+
+    static func run(environmentKey: String, testFilter: String) async throws {
         let testExecutable = try #require(CommandLine.arguments.first { argument in
             argument.contains(".xctest/Contents/MacOS/")
         })
         let helperExecutable = URL(fileURLWithPath: CommandLine.arguments[0])
-        let process = Process()
-        let output = Pipe()
         var environment = ProcessInfo.processInfo.environment
         environment[environmentKey] = "1"
         let sanitizerPaths = loadedSanitizerRuntimePaths()
@@ -24,25 +24,40 @@ enum IsolatedAppKitTestProcess {
             }
             environment["DYLD_INSERT_LIBRARIES"] = insertionPaths.joined(separator: ":")
         }
-        process.executableURL = helperExecutable
-        process.arguments = [
+        let arguments = [
             "--test-bundle-path", testExecutable,
             "--filter", testFilter,
             testExecutable,
             "--testing-library", "swift-testing",
         ]
-        process.environment = environment
-        process.standardOutput = output
-        process.standardError = output
-
-        try process.run()
-        process.waitUntilExit()
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        let details = String(decoding: data, as: UTF8.self)
+        let childEnvironment = environment
+        let outcome: (succeeded: Bool, details: String) = try await withCheckedThrowingContinuation {
+            continuation in
+            childProcessQueue.async {
+                let process = Process()
+                let output = Pipe()
+                process.executableURL = helperExecutable
+                process.arguments = arguments
+                process.environment = childEnvironment
+                process.standardOutput = output
+                process.standardError = output
+                do {
+                    try process.run()
+                    // Drain while the child runs so a full pipe cannot prevent its exit.
+                    let data = output.fileHandleForReading.readDataToEndOfFile()
+                    process.waitUntilExit()
+                    continuation.resume(returning: (
+                        process.terminationReason == .exit && process.terminationStatus == 0,
+                        String(decoding: data, as: UTF8.self)))
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
 
         #expect(
-            process.terminationReason == .exit && process.terminationStatus == 0,
-            Comment(rawValue: details))
+            outcome.succeeded,
+            Comment(rawValue: outcome.details))
     }
 
     private static func loadedSanitizerRuntimePaths() -> [String] {

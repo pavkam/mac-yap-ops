@@ -90,10 +90,10 @@ struct MenuContentViewTests {
         #expect(message.transportPresentation?.accessibilityValue == "Queued for next turn")
     }
 
-    @MainActor @Test
+    @MainActor @Test(.timeLimit(.minutes(1)))
     func render_WhenConversationControlsCollapse_LeavesNoSystemWindowShadow() async throws {
         guard ProcessInfo.processInfo.environment[Self.childEnvironmentKey] == "1" else {
-            try IsolatedAppKitTestProcess.run(
+            try await IsolatedAppKitTestProcess.run(
                 environmentKey: Self.childEnvironmentKey,
                 testFilter: Self.testFilter)
             return

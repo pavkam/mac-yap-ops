@@ -286,11 +286,11 @@ extension ACPClientConnectionTests {
         #expect(await transport.observedTerminationCount() == 1)
     }
 
-    @Test func connect_WhenLoadDeliveryIsBlockedAndOutputEnds_RejectsReadyClosedConnection()
+    @Test(.timeLimit(.minutes(1)))
+    func connect_WhenLoadDeliveryIsBlockedAndOutputEnds_RejectsReadyClosedConnection()
         async throws
     {
         let transport = FakeACPTransport()
-        let diagnostics = SignallingConnectionDiagnosticRecorder()
         let token = AgentRestorationToken(
             rawValue: try #require(UUID(uuidString: "44444444-4444-4444-4444-444444444444")))
         let request = try AgentSessionRestorationRequest(
@@ -308,8 +308,7 @@ extension ACPClientConnectionTests {
                     onRestoredEvent: { callbackToken, event in
                         await preRecipientGate.pause()
                         await recipient.receive(token: callbackToken, event: event)
-                    },
-                    diagnostics: diagnostics)
+                    })
             } catch {
                 await recipient.retire()
                 throw error
@@ -328,7 +327,6 @@ extension ACPClientConnectionTests {
         await preRecipientGate.waitUntilEntered()
 
         await transport.finishStreams()
-        await diagnostics.wait(for: "acp_client.receive_finished")
         await #expect(throws: ACPClientError.connectionClosed) { try await task.value }
         #expect(!(await recipient.owns(token)))
         await preRecipientGate.open()
