@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT
 
 # Privacy and security
 
-Voice Activation has no application server or account. It runs as the signed-in
+YapOps has no application server or account. It runs as the signed-in
 macOS user, keeps ordinary configuration on the Mac, and communicates only with
 services or processes needed for the action the user selected.
 
@@ -22,7 +22,7 @@ services or processes needed for the action the user selected.
 
 The local ACP process may read files, modify the working folder, or contact its
 own services according to that provider's implementation and authentication.
-Voice Activation does not proxy, inspect, or replace those provider policies.
+YapOps does not proxy, inspect, or replace those provider policies.
 
 Only user-facing agent reply text is eligible for speech synthesis. Thoughts,
 plans, tool payloads, permissions, diagnostics, code-block contents, prompts,
@@ -34,7 +34,7 @@ segment to that service.
 ## Direct-process trust
 
 Command and agent targets run directly through `Foundation.Process` with an
-absolute executable and an explicit argument array. Voice Activation does not
+absolute executable and an explicit argument array. YapOps does not
 invoke a shell, expand wildcards or environment syntax, or interpret recognized
 punctuation as shell code.
 
@@ -52,7 +52,7 @@ and provider permission policies as trusted configuration.
 - macOS Keychain stores the optional ElevenLabs API key as a device-local
   generic-password item. It is never stored in preferences or process arguments.
 - The structured diagnostic trace is stored under
-  `~/Library/Logs/VoiceActivation/` and rotates locally.
+  `~/Library/Logs/YapOps/` and rotates locally.
 - One strict schema-1 `UserDefaults` value stores identifier-only ACP
   continuity: profile/session bookmarks, a provider compatibility fingerprint,
   access ordinals, and exact work markers made from profile, session,
@@ -60,7 +60,7 @@ and provider permission policies as trusted configuration.
   state. It contains no conversation content or authorization.
 
 Preferences and diagnostic files use the signed-in user's normal filesystem
-protection; Voice Activation does not add application-level encryption to them.
+protection; YapOps does not add application-level encryption to them.
 Do not put credentials in a profile system prompt, executable argument, or
 working-folder path.
 
@@ -71,7 +71,7 @@ provider, tool state, permission requests, background-task display content,
 narration text, synthesized audio, reusable ACP processes, and Mac-context
 snapshot values are held only for the
 active application process. Opaque ACP bookmarks can restore provider-owned
-context or bounded replay, but Voice Activation does not maintain a durable
+context or bounded replay, but YapOps does not maintain a durable
 conversation-history database or write captured audio to disk. The provider
 owns the actual conversation content and its retention.
 
@@ -79,7 +79,7 @@ Focused Mac context is on by default for admitted ACP requests and can be
 disabled in Settings; direct commands never receive it. The normal status check
 does not prompt for Accessibility. Only **Enable Accessibility…** can request
 that grant. Until then, a request can carry frozen app identity but not protected
-window, document, selection, or resource values. Voice Activation does not
+window, document, selection, or resource values. YapOps does not
 persist or log those snapshot values or content, though it records safe capture
 metadata. A provider may independently retain or replay submitted context blocks
 as part of its session or account history; use the provider's controls when that
@@ -87,12 +87,12 @@ matters.
 
 An initial request begins only after an explicit matched wake phrase or a
 profile's push-to-talk release. An active ACP conversation may accept its own
-follow-ups; Voice Activation does not continuously observe the Mac.
+follow-ups; YapOps does not continuously observe the Mac.
 
 Minimizing or hiding the non-activating panel does not cancel provider work.
 Sessions with active tasks remain listed, and close/delete stays disabled until
 their tasks are terminal. Ending a conversation does not erase an active task.
-After process exit, the app shows only **Interrupted when Voice Activation
+After process exit, the app shows only **Interrupted when YapOps
 exited**; it does not claim the task survived or resumed.
 
 Closing a completed panel hides its retained presentation. Deleting it releases
@@ -158,7 +158,7 @@ and timings. Provider-owned replay remains content and is never diagnostic data.
 Fields whose names suggest sensitive content are replaced with `<redacted>` at
 the file boundary. That is defense in depth, not a content filter: paths and
 other operational metadata can still reveal usernames or project names. Review
-and minimize a trace before sharing it. Voice Activation does not upload the
+and minimize a trace before sharing it. YapOps does not upload the
 trace automatically.
 
 ## Security limitations
@@ -167,7 +167,7 @@ trace automatically.
 - Provider authentication and remote data handling belong to the provider CLI.
 - Apple Speech and ElevenLabs data handling are governed by their respective
   platform or service policies when those boundaries are used.
-- Voice Activation does not provide remote administration, account isolation,
+- YapOps does not provide remote administration, account isolation,
   encrypted conversation archives, or a permission model beyond the choices
   exposed by the configured ACP provider.
 

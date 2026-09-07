@@ -23,7 +23,7 @@ silently replace the saved absolute executable with an interactive-shell alias.
 
 The server speaks newline-delimited JSON-RPC over stdio. Its documented flow is
 initialize, optional authentication, new session, prompt, streamed updates, and
-permission requests. Voice Activation uses ambient CLI authentication and does
+permission requests. YapOps uses ambient CLI authentication and does
 not drive Cursor's interactive login method.
 
 Cursor also exposes extensions. The current client deliberately cancels the
@@ -48,7 +48,7 @@ session restoration as survival of an in-flight prompt.
 
 The safe probe sends only `initialize`. For interactive troubleshooting, first
 confirm `cursor-agent --version` and `cursor-agent acp --help`; authenticate with
-the provider's own CLI outside Voice Activation.
+the provider's own CLI outside YapOps.
 
 ## Primary source
 

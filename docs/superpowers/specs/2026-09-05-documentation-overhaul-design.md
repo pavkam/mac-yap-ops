@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 ## Purpose
 
-Voice Activation has grown from a wake-phrase command launcher into a menu-bar
+YapOps has grown from a wake-phrase command launcher into a menu-bar
 application with per-profile shortcuts, persistent agent conversations, ACP
 provider integration, streamed presentation, narration, sound feedback,
 diagnostics, bounded resource handling, and substantial lifecycle policy. The
@@ -39,7 +39,7 @@ names where they remain useful entry points.
 
 - Changing application behavior, settings, protocol support, or dependencies.
 - Publishing a generated API reference or duplicating public DocC comments.
-- Documenting provider behavior that Voice Activation neither controls nor
+- Documenting provider behavior that YapOps neither controls nor
   verifies.
 - Creating a deep documentation directory hierarchy for a repository of this
   size.
@@ -56,7 +56,7 @@ other's material:
    privacy, ACP, diagnostics, tests, packaging, and documentation maintenance.
 
 `README.md` remains the product landing page. `docs/index.md` becomes the full
-task-based map and groups guides under **Use Voice Activation**, **Understand the
+task-based map and groups guides under **Use YapOps**, **Understand the
 system**, and **Contribute**. Topic files remain directly under `docs/`; a flat
 layout keeps links short and makes discovery with `rg --files docs` immediate.
 

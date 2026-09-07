@@ -93,7 +93,7 @@ the provider receives the normal instruction and request blocks only.
 
 An initial request starts only after an explicit matched wake phrase or a
 profile's push-to-talk release. An active ACP conversation may accept its own
-follow-ups; Voice Activation does not continuously observe the foreground app.
+follow-ups; YapOps does not continuously observe the foreground app.
 
 The Settings status check and lifecycle refresh only ask macOS whether
 Accessibility is already authorized; neither can show a privacy prompt.
@@ -105,7 +105,7 @@ application name and bundle identifier with
 The snapshot can contain the application, focused window title, document URL,
 selected text, and selected resource links. It does not include screenshots,
 clipboard data, file contents, a full Accessibility tree, or background updates.
-Voice Activation neither persists nor logs snapshot values or content; it may
+YapOps neither persists nor logs snapshot values or content; it may
 record safe capture metadata. The selected ACP provider receives the prompt
 blocks and may retain or replay them under its own session policy; Voice
 Activation does not restore an old snapshot after restart.
@@ -124,7 +124,7 @@ A valid saved configuration has:
   bounded system prompt.
 
 If shortcut registration fails because another application owns a combination,
-Voice Activation restores the previously saved binding set.
+YapOps restores the previously saved binding set.
 
 ## Persistence and credentials
 
@@ -151,7 +151,7 @@ permission policy are excluded. Wake phrase,
 enabled state, icon, accent, shortcut, speech settings, activity sounds, and the
 focused-Mac-context preference or captured values are outside the fingerprint.
 
-After a successful Settings application, Voice Activation resets one profile's
+After a successful Settings application, YapOps resets one profile's
 live and durable ACP continuity only when that agent profile is removed, changed
 to a direct command, or one of those fingerprint inputs changes. Display,
 permission, wake, shortcut, speech, audio, and Mac-context-only edits preserve
@@ -159,7 +159,7 @@ the bookmark. Validation, shortcut-registration, and credential-storage failures
 happen before reset and preserve existing continuity. Direct-command edits do
 not touch agent continuity.
 
-Voice Activation does not persist conversation prompts, Mac-context snapshot
+YapOps does not persist conversation prompts, Mac-context snapshot
 values or content, agent output, reasoning, raw tool or permission payloads,
 audio, or provider credentials. The provider owns actual conversation content
 and retention. See

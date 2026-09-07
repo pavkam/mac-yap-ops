@@ -12,23 +12,23 @@ concurrency, privacy, and user-workflow details.
 ## Package boundaries
 
 ```text
-Sources/VoiceActivationCore/       Framework-independent policy and execution
+Sources/YapOpsCore/       Framework-independent policy and execution
   Profiles/                        Profile identity and validation
   TextToSpeech/                    Persisted backend and voice selections
-Sources/VoiceActivationApp/        macOS adapters, composition, presentation
+Sources/YapOpsApp/        macOS adapters, composition, presentation
   Profiles/                        Profile presentation and editing models
   Settings/                        Settings composition and profile editors
   TextToSpeech/                    Registry, adapters, credentials, playback
-Tests/VoiceActivationCoreTests/    Core and protocol contracts
-Tests/VoiceActivationAppTests/     App, presentation, and adapter contracts
+Tests/YapOpsCoreTests/    Core and protocol contracts
+Tests/YapOpsAppTests/     App, presentation, and adapter contracts
 ```
 
-`VoiceActivationCore` owns state transitions, matching, validation, command
+`YapOpsCore` owns state transitions, matching, validation, command
 templates and execution, ACP framing and lifecycle, bounded event delivery,
 main-run-loop scheduling, diagnostics interfaces, and non-secret preferences.
 It does not import SwiftUI or AppKit.
 
-`VoiceActivationApp` owns dependency composition, Apple Speech and permissions,
+`YapOpsApp` owns dependency composition, Apple Speech and permissions,
 Carbon shortcuts, Service Management, Keychain, ElevenLabs, JSONL diagnostics,
 SwiftUI views, and non-activating AppKit panels.
 
@@ -45,16 +45,16 @@ activity, chrome, and placement.
 
 ## Runtime composition
 
-`VoiceActivationApp` is the composition root. It builds `AppModel`, which
+`YapOpsApp` is the composition root. It builds `AppModel`, which
 bridges menu and Settings state to the main-actor
-`VoiceActivationCoordinator`. Replaceable boundaries keep framework calls out
+`YapOpsCoordinator`. Replaceable boundaries keep framework calls out
 of Core policy and tests:
 
 ```text
-VoiceActivationApp
+YapOpsApp
   ├─ UserDefaultsAgentContinuityStore
   └─ AppModel ← shared continuity store
-      ├─ VoiceActivationCoordinator
+      ├─ YapOpsCoordinator
       │   ├─ SpeechSessionProtocol → AppleSpeechSession
       │   ├─ CommandRunning → CommandRunner
       │   └─ AgentHarnessRunning → ACPAgentRunner
@@ -72,7 +72,7 @@ VoiceActivationApp
       │   └─ AgentActivitySoundLoop
       ├─ PushToTalkShortcut
       ├─ LaunchAtLoginSetting
-      └─ JSONLVoiceActivationDiagnosticRecorder
+      └─ JSONLYapOpsDiagnosticRecorder
 ```
 
 Application startup is an app-wide readiness barrier. `AppModel` reconciles
@@ -84,7 +84,7 @@ attempt reaches ready; cancelled or stale attempts cannot re-arm runtime work.
 
 ## Speech and capture
 
-`VoiceActivationCoordinator` owns exactly one speech mode at a time: passive
+`YapOpsCoordinator` owns exactly one speech mode at a time: passive
 wake, command capture, push-to-talk, or agent conversation. `AppleSpeechSession`
 adapts `SFSpeechRecognizer` and `AVAudioEngine`; `SpeechRequestPolicy` chooses
 on-device requirements; `SpeechVoiceProcessingPolicy` requests best-effort echo
@@ -130,7 +130,7 @@ lifecycles. A bounded two-stage delivery path preserves order and backpressure
 between transport ingestion and the app.
 
 ACP v1 has no standard spoken-response channel. `ACPEventDecoder` recognizes the
-optional `ciobanu.org.voiceActivation` version-1 metadata on text content blocks,
+optional `ciobanu.org.yapOps` version-1 metadata on text content blocks,
 then `AgentResponseChannelRouter` passes typed content literally or recognizes
 the exact current-adapter marker stream. Unmarked text, malformed metadata, and
 marker mismatches retain their original legacy event and text. Routed events then
@@ -203,7 +203,7 @@ See [Configuration reference](configuration.md) for fields and persistence.
 
 ## Diagnostics
 
-Core services depend on `VoiceActivationDiagnosticRecording`, a metadata-only
+Core services depend on `YapOpsDiagnosticRecording`, a metadata-only
 interface. The app supplies a bounded rotating JSONL recorder. Call sites emit
 typed lifecycle events, counts, identifiers, outcomes, and timings—not prompts,
 transcripts, credentials, provider content, or audio.

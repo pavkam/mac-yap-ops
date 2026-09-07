@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT
 
 # Development
 
-Voice Activation is a native SwiftPM macOS 15 menu-bar application using Swift
+YapOps is a native SwiftPM macOS 15 menu-bar application using Swift
 tools 6.2. Keep platform-independent policy in Core, isolate macOS frameworks in
 App, and make the smallest change that proves the intended behavior.
 
@@ -29,16 +29,16 @@ for Instruments and other Xcode-only manual workflows.
 ## Repository layout
 
 ```text
-Sources/VoiceActivationCore/       State, validation, commands, ACP, preferences
+Sources/YapOpsCore/       State, validation, commands, ACP, preferences
   Profiles/                        Profile identity and validation
   TextToSpeech/                    Persisted backend and voice selections
-Sources/VoiceActivationApp/        macOS adapters, composition, UI, audio, logs
+Sources/YapOpsApp/        macOS adapters, composition, UI, audio, logs
   Profiles/                        Profile presentation and editing models
   Settings/                        Settings composition and profile editors
   TextToSpeech/                    Registry, adapters, credentials, playback
-Tests/VoiceActivationCoreTests/    Core behavior and protocol contracts
-Tests/VoiceActivationAppTests/     App, presentation, and adapter contracts
-Sources/VoiceActivationApp/Resources/ Bundle plist, icon, and sounds
+Tests/YapOpsCoreTests/    Core behavior and protocol contracts
+Tests/YapOpsAppTests/     App, presentation, and adapter contracts
+Sources/YapOpsApp/Resources/ Bundle plist, icon, and sounds
 scripts/                           Packaging and repository checks
 .github/workflows/swift.yml        Build, test, sanitizer, and packaging CI
 docs/                              User, architecture, operations, and contributor guides
@@ -58,7 +58,7 @@ make run                   # Build and open the app bundle
 make check-license         # SPDX, MIT, binary metadata, and app copyright
 make check-agent-guidance  # Guidance routing and 150-line limit
 make check-structure       # 700-line Swift source and test limit
-make check-documentation   # Public VoiceActivationCore DocC coverage
+make check-documentation   # Public YapOpsCore DocC coverage
 make check                 # All repository quality checks
 ```
 
@@ -88,9 +88,9 @@ make a test easier or add guessed sleeps to make an asynchronous race quieter.
   formatter over unrelated code.
 - Keep every Swift file under `Sources/` and `Tests/` at or below 700 physical
   lines. Split at an ownership or behavior boundary before reaching the limit.
-- Put framework-independent policy in `VoiceActivationCore`. Keep SwiftUI,
+- Put framework-independent policy in `YapOpsCore`. Keep SwiftUI,
   AppKit, Security, Speech, Carbon, Service Management, and concrete audio or
-  filesystem adapters in `VoiceActivationApp`.
+  filesystem adapters in `YapOpsApp`.
 - Keep main-actor presentation state isolated. Move blocking foreign APIs and
   I/O off the main actor and Swift cooperative executor.
 - Use `Foundation.Process` with an absolute executable and explicit arguments.
@@ -106,7 +106,7 @@ asynchronous ownership.
 
 ## Public Core documentation
 
-Every public `VoiceActivationCore` symbol needs a useful `///` DocC comment.
+Every public `YapOpsCore` symbol needs a useful `///` DocC comment.
 Document purpose, ownership, concurrency, side effects, failure, parameters,
 and results where relevant instead of restating the declaration.
 

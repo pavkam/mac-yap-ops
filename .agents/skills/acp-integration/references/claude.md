@@ -20,9 +20,9 @@ metadata, the cached package, and the installed CLIs on 2026-09-05.
 
 The native `claude` CLI is not the configured ACP server and had no ACP
 subcommand in the validated environment. The adapter is a stdio server built on
-the Claude Agent SDK. Provider authentication remains outside Voice Activation.
+the Claude Agent SDK. Provider authentication remains outside YapOps.
 
-The adapter advertises features beyond Voice Activation's current client,
+The adapter advertises features beyond YapOps's current client,
 including MCP, session loading, terminals, slash commands, and extensions.
 Advertised support does not authorize sending optional requests: add client
 behavior only after capability gating, lifecycle design, bounds, and tests.
@@ -34,13 +34,12 @@ effects merely from a label or option kind.
 
 ## AIR async-task contract
 
-The pinned adapter's JetBrains AIR extension is nonstandard ACP. Voice
-Activation enables it only when preset, initialized package name, exact version
+The pinned adapter's JetBrains AIR extension is nonstandard ACP. YapOps enables it only when preset, initialized package name, exact version
 `0.73.0`, client advertisement, and provider advertisement all match AIR version
 1 with `asyncTasks`. It then accepts typed spawn/progress/state events between
 turns and may send `_session/async_task/stop` with exact opaque IDs.
 
-The adapter process owns the task. Quitting Voice Activation or losing that
+The adapter process owns the task. Quitting YapOps or losing that
 process marks identifier-only work interrupted; it does not prove task survival.
 Any pin upgrade must review the tagged AIR sources, rerun capability, decoder,
 and connection fixtures, then rerun the initialize-only probe before changing
@@ -49,14 +48,13 @@ the allowlist.
 ## Host-owned steering contract
 
 The pinned 0.73.0 adapter advertises top-level
-`_meta.steering.supported: true` and accepts `_session/steering`. Voice
-Activation enables that extension only when the current process's `initialize`
+`_meta.steering.supported: true` and accepts `_session/steering`. YapOps enables that extension only when the current process's `initialize`
 result also reports the exact package name and version and the profile preset is
 Claude. The request supplies `idleBehavior: "promptRequired"`, which keeps idle
 input locally owned instead of starting an unowned turn.
 
 `injected` means the active turn accepted the opaque input. `promptRequired`
-means Voice Activation may retain it for one normal `session/prompt`. A legacy
+means YapOps may retain it for one normal `session/prompt`. A legacy
 `startedNewTurn`, `failed`, unknown or malformed result, cancellation, or
 transport failure is ambiguous: close the connection and never replay the
 utterance automatically. Tagged-source fixtures prove this steering contract;

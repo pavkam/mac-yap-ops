@@ -57,7 +57,7 @@ playback together.
 
 All six committed effects are mono, 48 kHz, 16-bit PCM WAV files. Runtime cue
 playback never contacts a network service. The bundle script copies each file
-into `VoiceActivation.app/Contents/Resources`; missing agent effects fall back
+into `YapOps.app/Contents/Resources`; missing agent effects fall back
 to the mapped macOS system sound.
 
 The effects were generated once with the ElevenLabs

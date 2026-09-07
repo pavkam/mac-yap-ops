@@ -19,8 +19,7 @@ drift-prone local or registry version.
 | Node.js | `22.18.0` |
 | npm / npx | `11.6.4` |
 
-The native Codex and Claude CLIs exposed no ACP server subcommand. Voice
-Activation correctly used the pinned npm adapters instead.
+The native Codex and Claude CLIs exposed no ACP server subcommand. YapOps correctly used the pinned npm adapters instead.
 
 ## Initialize-only probes
 

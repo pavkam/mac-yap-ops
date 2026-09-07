@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-FileCopyrightText: 2026 Alexandru Ciobanu (alex+git@ciobanu.org) -->
+<!-- SPDX-License-Identifier: MIT -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleExecutable</key>
+    <string>YapOps</string>
+    <key>CFBundleDisplayName</key>
+    <string>YapOps</string>
+    <key>CFBundleGetInfoString</key>
+    <string>Voice-first commands and live agent conversations from the macOS menu bar.</string>
+    <key>CFBundleIconFile</key>
+    <string>YapOps</string>
+    <key>CFBundleIdentifier</key>
+    <string>dev.alex.yapops</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>YapOps</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.utilities</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>15.0</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>YapOps uses the microphone for wake phrases, push-to-talk commands, live agent follow-ups, and spoken permission choices.</string>
+    <key>NSHumanReadableCopyright</key>
+    <string>Copyright © 2026 Alexandru Ciobanu (alex+git@ciobanu.org)</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>YapOps transcribes your speech to run configured commands and continue live agent conversations.</string>
+</dict>
+</plist>

@@ -10,8 +10,8 @@ has today.
 
 ## Ownership map
 
-- Domain state and legal transitions belong to `VoiceActivationCore`, as in
-  `ActivationState` and `VoiceActivationCoordinator`.
+- Domain state and legal transitions belong to `YapOpsCore`, as in
+  `ActivationState` and `YapOpsCoordinator`.
 - App-wide UI coordination belongs to `@MainActor AppModel` and its lifecycle,
   configuration, and conversation extensions.
 - State-to-copy and symbol mapping belongs in pure presentation values such as

@@ -9,7 +9,7 @@ SPDX-License-Identifier: MIT
 
 **Goal:** Preserve generated ACP images, PDFs, and documents as usable results and make the agent conversation panel a quiet, result-first macOS surface.
 
-**Architecture:** Decode bounded structured artifacts in `VoiceActivationCore`, carry them through the existing ordered delivery queue, and reduce them into stable presentation state. App-owned thumbnail and file-action adapters handle Quick Look, Image I/O, Finder, `NSWorkspace`, and temporary files; SwiftUI renders a dedicated Results shelf without making the floating panel activating.
+**Architecture:** Decode bounded structured artifacts in `YapOpsCore`, carry them through the existing ordered delivery queue, and reduce them into stable presentation state. App-owned thumbnail and file-action adapters handle Quick Look, Image I/O, Finder, `NSWorkspace`, and temporary files; SwiftUI renders a dedicated Results shelf without making the floating panel activating.
 
 **Tech Stack:** Swift 6.2, Swift Testing, SwiftUI, AppKit, QuickLookThumbnailing, ImageIO, UniformTypeIdentifiers, Foundation
 
@@ -26,16 +26,16 @@ SPDX-License-Identifier: MIT
 - Streaming preserves stable identity and the existing 50 ms publication cadence.
 - File I/O, base64 decoding, image decoding, and Quick Look work stay off the main actor and Swift cooperative executor.
 - Tests never open Finder, Preview, a browser, or the network.
-- Preserve the separately active Markdown-rendering work in `/Users/alex/Development/voice-activation`; do not stage, stash, rewrite, or discard it.
+- Preserve the separately active Markdown-rendering work in `/Users/alex/Development/yapops`; do not stage, stash, rewrite, or discard it.
 
 ---
 
 ### Task 1: Decode ACP artifact content
 
 **Files:**
-- Modify: `Sources/VoiceActivationCore/AgentRunEvent.swift`
-- Modify: `Sources/VoiceActivationCore/ACPEventDecoder.swift`
-- Test: `Tests/VoiceActivationCoreTests/ACPEventDecoderTests.swift`
+- Modify: `Sources/YapOpsCore/AgentRunEvent.swift`
+- Modify: `Sources/YapOpsCore/ACPEventDecoder.swift`
+- Test: `Tests/YapOpsCoreTests/ACPEventDecoderTests.swift`
 
 **Interfaces:**
 - Produces: `AgentArtifactPayload`, `AgentArtifact`, and `AgentToolCallContent` public Core values.
@@ -97,7 +97,7 @@ Add malformed fixtures for invalid base64, negative `size`, URI over 4 KiB, MIME
 Run:
 
 ```bash
-swift test --filter 'VoiceActivationCoreTests.ACPEventDecoderTests'
+swift test --filter 'YapOpsCoreTests.ACPEventDecoderTests'
 ```
 
 Expected: compilation fails because the artifact types, event case, and tool content do not exist.
@@ -197,7 +197,7 @@ Keep audio as a validated metadata summary. Never retain annotations, `rawInput`
 Run:
 
 ```bash
-swift test --filter 'VoiceActivationCoreTests.ACPEventDecoderTests'
+swift test --filter 'YapOpsCoreTests.ACPEventDecoderTests'
 ```
 
 Expected: all decoder tests pass with structured image/resource events and tool content.
@@ -205,7 +205,7 @@ Expected: all decoder tests pass with structured image/resource events and tool 
 - [ ] **Step 7: Commit the decoder contract**
 
 ```bash
-git add Sources/VoiceActivationCore/AgentRunEvent.swift Sources/VoiceActivationCore/ACPEventDecoder.swift Tests/VoiceActivationCoreTests/ACPEventDecoderTests.swift
+git add Sources/YapOpsCore/AgentRunEvent.swift Sources/YapOpsCore/ACPEventDecoder.swift Tests/YapOpsCoreTests/ACPEventDecoderTests.swift
 git commit -m "feat: decode ACP artifact content"
 ```
 
@@ -214,12 +214,12 @@ git commit -m "feat: decode ACP artifact content"
 ### Task 2: Carry artifacts through bounded ordered delivery
 
 **Files:**
-- Modify: `Sources/VoiceActivationCore/AgentRunEvent.swift`
-- Modify: `Sources/VoiceActivationCore/AgentRunEventNormalization.swift`
-- Modify: `Sources/VoiceActivationCore/AgentRunEventDeliveryEntry.swift`
-- Modify: `Sources/VoiceActivationCore/AgentRunEventDeliveryQueue.swift`
-- Modify: `Sources/VoiceActivationCore/AgentRunEventDelivery.swift`
-- Test: `Tests/VoiceActivationCoreTests/AgentRunEventDeliveryTests.swift`
+- Modify: `Sources/YapOpsCore/AgentRunEvent.swift`
+- Modify: `Sources/YapOpsCore/AgentRunEventNormalization.swift`
+- Modify: `Sources/YapOpsCore/AgentRunEventDeliveryEntry.swift`
+- Modify: `Sources/YapOpsCore/AgentRunEventDeliveryQueue.swift`
+- Modify: `Sources/YapOpsCore/AgentRunEventDelivery.swift`
+- Test: `Tests/YapOpsCoreTests/AgentRunEventDeliveryTests.swift`
 
 **Interfaces:**
 - Consumes: `AgentRunEvent.artifact` and artifact-bearing tool events from Task 1.
@@ -246,7 +246,7 @@ Use the file's `DeliveryHandlerGate` and `DeliveryEventRecorder` to hold the con
 Run:
 
 ```bash
-swift test --filter 'VoiceActivationCoreTests.AgentRunEventDeliveryTests'
+swift test --filter 'YapOpsCoreTests.AgentRunEventDeliveryTests'
 ```
 
 Expected: compilation fails because artifact counters and notice kind are missing.
@@ -287,7 +287,7 @@ static let maximumPendingArtifactBytes = 4 * 1_024 * 1_024
 Run:
 
 ```bash
-swift test --filter 'VoiceActivationCoreTests.AgentRunEventDeliveryTests'
+swift test --filter 'YapOpsCoreTests.AgentRunEventDeliveryTests'
 ```
 
 Expected: ordered splitting, bounded counters, truncation notices, and existing text/control behavior all pass.
@@ -295,7 +295,7 @@ Expected: ordered splitting, bounded counters, truncation notices, and existing 
 - [ ] **Step 6: Commit ordered artifact delivery**
 
 ```bash
-git add Sources/VoiceActivationCore/AgentRunEvent.swift Sources/VoiceActivationCore/AgentRunEventNormalization.swift Sources/VoiceActivationCore/AgentRunEventDeliveryEntry.swift Sources/VoiceActivationCore/AgentRunEventDeliveryQueue.swift Sources/VoiceActivationCore/AgentRunEventDelivery.swift Tests/VoiceActivationCoreTests/AgentRunEventDeliveryTests.swift
+git add Sources/YapOpsCore/AgentRunEvent.swift Sources/YapOpsCore/AgentRunEventNormalization.swift Sources/YapOpsCore/AgentRunEventDeliveryEntry.swift Sources/YapOpsCore/AgentRunEventDeliveryQueue.swift Sources/YapOpsCore/AgentRunEventDelivery.swift Tests/YapOpsCoreTests/AgentRunEventDeliveryTests.swift
 git commit -m "feat: bound ACP artifact delivery"
 ```
 
@@ -304,12 +304,12 @@ git commit -m "feat: bound ACP artifact delivery"
 ### Task 3: Reduce artifacts into result presentation
 
 **Files:**
-- Modify: `Sources/VoiceActivationApp/AgentRunPresentationModels.swift`
-- Modify: `Sources/VoiceActivationApp/AgentRunPresentation.swift`
-- Modify: `Sources/VoiceActivationApp/AgentRunPresentation+Events.swift`
-- Modify: `Sources/VoiceActivationApp/AgentRunPresentation+Publication.swift`
-- Modify: `Sources/VoiceActivationApp/AgentRunPresentationSupport.swift`
-- Create: `Tests/VoiceActivationAppTests/AgentRunPresentationArtifactTests.swift`
+- Modify: `Sources/YapOpsApp/AgentRunPresentationModels.swift`
+- Modify: `Sources/YapOpsApp/AgentRunPresentation.swift`
+- Modify: `Sources/YapOpsApp/AgentRunPresentation+Events.swift`
+- Modify: `Sources/YapOpsApp/AgentRunPresentation+Publication.swift`
+- Modify: `Sources/YapOpsApp/AgentRunPresentationSupport.swift`
+- Create: `Tests/YapOpsAppTests/AgentRunPresentationArtifactTests.swift`
 
 **Interfaces:**
 - Consumes: ordered artifact events and text-only tool content from Task 2.
@@ -372,7 +372,7 @@ private func pdf(title: String) -> AgentArtifact {
 Run:
 
 ```bash
-swift test --filter 'VoiceActivationAppTests.AgentRunPresentationArtifactTests'
+swift test --filter 'YapOpsAppTests.AgentRunPresentationArtifactTests'
 ```
 
 Expected: compilation fails because snapshot artifact state does not exist.
@@ -433,8 +433,8 @@ Update event diagnostic switches for `.artifact`; record counts and byte totals 
 Run:
 
 ```bash
-swift test --filter 'VoiceActivationAppTests.AgentRunPresentationArtifactTests'
-swift test --filter 'VoiceActivationAppTests.AgentRunPresentationTests'
+swift test --filter 'YapOpsAppTests.AgentRunPresentationArtifactTests'
+swift test --filter 'YapOpsAppTests.AgentRunPresentationTests'
 ```
 
 Expected: new artifact tests and all existing presentation behavior pass.
@@ -442,7 +442,7 @@ Expected: new artifact tests and all existing presentation behavior pass.
 - [ ] **Step 7: Commit result presentation**
 
 ```bash
-git add Sources/VoiceActivationApp/AgentRunPresentationModels.swift Sources/VoiceActivationApp/AgentRunPresentation.swift Sources/VoiceActivationApp/AgentRunPresentation+Events.swift Sources/VoiceActivationApp/AgentRunPresentation+Publication.swift Sources/VoiceActivationApp/AgentRunPresentationSupport.swift Tests/VoiceActivationAppTests/AgentRunPresentationArtifactTests.swift
+git add Sources/YapOpsApp/AgentRunPresentationModels.swift Sources/YapOpsApp/AgentRunPresentation.swift Sources/YapOpsApp/AgentRunPresentation+Events.swift Sources/YapOpsApp/AgentRunPresentation+Publication.swift Sources/YapOpsApp/AgentRunPresentationSupport.swift Tests/YapOpsAppTests/AgentRunPresentationArtifactTests.swift
 git commit -m "feat: present generated agent results"
 ```
 
@@ -451,11 +451,11 @@ git commit -m "feat: present generated agent results"
 ### Task 4: Generate previews without stale callbacks
 
 **Files:**
-- Create: `Sources/VoiceActivationApp/AgentArtifactPreview.swift`
-- Modify: `Sources/VoiceActivationApp/AgentRunPanelModel.swift`
-- Modify: `Sources/VoiceActivationApp/AgentRunPanelController.swift`
-- Create: `Tests/VoiceActivationAppTests/AgentArtifactPreviewTests.swift`
-- Create: `Tests/VoiceActivationAppTests/AgentRunPanelModelArtifactTests.swift`
+- Create: `Sources/YapOpsApp/AgentArtifactPreview.swift`
+- Modify: `Sources/YapOpsApp/AgentRunPanelModel.swift`
+- Modify: `Sources/YapOpsApp/AgentRunPanelController.swift`
+- Create: `Tests/YapOpsAppTests/AgentArtifactPreviewTests.swift`
+- Create: `Tests/YapOpsAppTests/AgentRunPanelModelArtifactTests.swift`
 
 **Interfaces:**
 - Consumes: `AgentArtifactPresentation` from Task 3.
@@ -538,8 +538,8 @@ private func onePixelImage() throws -> CGImage {
 Run:
 
 ```bash
-swift test --filter 'VoiceActivationAppTests.AgentArtifactPreviewTests'
-swift test --filter 'VoiceActivationAppTests.AgentRunPanelModelArtifactTests'
+swift test --filter 'YapOpsAppTests.AgentArtifactPreviewTests'
+swift test --filter 'YapOpsAppTests.AgentRunPanelModelArtifactTests'
 ```
 
 Expected: compilation fails because the preview policy and injected loader do not exist.
@@ -612,8 +612,8 @@ match the current snapshot. Cancel every task when a new run begins.
 Run:
 
 ```bash
-swift test --filter 'VoiceActivationAppTests.AgentArtifactPreviewTests'
-swift test --filter 'VoiceActivationAppTests.AgentRunPanelModelArtifactTests'
+swift test --filter 'YapOpsAppTests.AgentArtifactPreviewTests'
+swift test --filter 'YapOpsAppTests.AgentRunPanelModelArtifactTests'
 ```
 
 Expected: source policy, cancellation, stable previews, and stale-run rejection pass.
@@ -621,7 +621,7 @@ Expected: source policy, cancellation, stable previews, and stale-run rejection 
 - [ ] **Step 6: Commit preview generation**
 
 ```bash
-git add Sources/VoiceActivationApp/AgentArtifactPreview.swift Sources/VoiceActivationApp/AgentRunPanelModel.swift Sources/VoiceActivationApp/AgentRunPanelController.swift Tests/VoiceActivationAppTests/AgentArtifactPreviewTests.swift Tests/VoiceActivationAppTests/AgentRunPanelModelArtifactTests.swift
+git add Sources/YapOpsApp/AgentArtifactPreview.swift Sources/YapOpsApp/AgentRunPanelModel.swift Sources/YapOpsApp/AgentRunPanelController.swift Tests/YapOpsAppTests/AgentArtifactPreviewTests.swift Tests/YapOpsAppTests/AgentRunPanelModelArtifactTests.swift
 git commit -m "feat: generate native artifact previews"
 ```
 
@@ -630,11 +630,11 @@ git commit -m "feat: generate native artifact previews"
 ### Task 5: Open, reveal, materialize, and clean artifact files
 
 **Files:**
-- Create: `Sources/VoiceActivationApp/AgentArtifactActions.swift`
-- Modify: `Sources/VoiceActivationApp/AgentRunPanelPresenter.swift`
-- Modify: `Sources/VoiceActivationApp/AppModel+Lifecycle.swift`
-- Test: `Tests/VoiceActivationAppTests/AgentRunPanelPresenterTests.swift`
-- Create: `Tests/VoiceActivationAppTests/AgentArtifactActionsTests.swift`
+- Create: `Sources/YapOpsApp/AgentArtifactActions.swift`
+- Modify: `Sources/YapOpsApp/AgentRunPanelPresenter.swift`
+- Modify: `Sources/YapOpsApp/AppModel+Lifecycle.swift`
+- Test: `Tests/YapOpsAppTests/AgentRunPanelPresenterTests.swift`
+- Create: `Tests/YapOpsAppTests/AgentArtifactActionsTests.swift`
 
 **Interfaces:**
 - Consumes: artifact IDs from Task 3 and UI actions from Task 6.
@@ -661,8 +661,8 @@ and a controlled late materialization for a retired run never invokes the worksp
 Run:
 
 ```bash
-swift test --filter 'VoiceActivationAppTests.AgentRunPanelPresenterTests'
-swift test --filter 'VoiceActivationAppTests.AgentArtifactActionsTests'
+swift test --filter 'YapOpsAppTests.AgentRunPanelPresenterTests'
+swift test --filter 'YapOpsAppTests.AgentArtifactActionsTests'
 ```
 
 Expected: compilation fails because artifact actions and services are missing.
@@ -720,9 +720,9 @@ discards the current run; `close` only hides it. Add `shutdown()` and call it fr
 Run:
 
 ```bash
-swift test --filter 'VoiceActivationAppTests.AgentRunPanelPresenterTests'
-swift test --filter 'VoiceActivationAppTests.AgentArtifactActionsTests'
-swift test --filter 'VoiceActivationAppTests.AppModelLifecycleTests'
+swift test --filter 'YapOpsAppTests.AgentRunPanelPresenterTests'
+swift test --filter 'YapOpsAppTests.AgentArtifactActionsTests'
+swift test --filter 'YapOpsAppTests.AppModelLifecycleTests'
 ```
 
 Expected: exact run scoping, explicit file effects, permissions, cleanup, and existing app shutdown behavior pass.
@@ -730,7 +730,7 @@ Expected: exact run scoping, explicit file effects, permissions, cleanup, and ex
 - [ ] **Step 8: Commit native artifact actions**
 
 ```bash
-git add Sources/VoiceActivationApp/AgentArtifactActions.swift Sources/VoiceActivationApp/AgentRunPanelPresenter.swift Sources/VoiceActivationApp/AppModel+Lifecycle.swift Tests/VoiceActivationAppTests/AgentRunPanelPresenterTests.swift Tests/VoiceActivationAppTests/AgentArtifactActionsTests.swift
+git add Sources/YapOpsApp/AgentArtifactActions.swift Sources/YapOpsApp/AgentRunPanelPresenter.swift Sources/YapOpsApp/AppModel+Lifecycle.swift Tests/YapOpsAppTests/AgentRunPanelPresenterTests.swift Tests/YapOpsAppTests/AgentArtifactActionsTests.swift
 git commit -m "feat: open generated artifacts safely"
 ```
 
@@ -739,18 +739,18 @@ git commit -m "feat: open generated artifacts safely"
 ### Task 6: Build the result-first macOS conversation surface
 
 **Files:**
-- Create: `Sources/VoiceActivationApp/AgentRunArtifactView.swift`
-- Modify: `Sources/VoiceActivationApp/AgentRunPanelView.swift`
-- Modify: `Sources/VoiceActivationApp/AgentRunPanelContent.swift`
-- Modify: `Sources/VoiceActivationApp/AgentRunPanelActivity.swift`
-- Modify: `Sources/VoiceActivationApp/AgentRunPanelChrome.swift`
-- Modify: `Sources/VoiceActivationApp/AgentRunPanelVisuals.swift`
-- Modify: `Sources/VoiceActivationApp/AgentRunPanelLayout.swift`
-- Modify: `Sources/VoiceActivationApp/AgentRunPanelModel.swift`
-- Modify: `Sources/VoiceActivationApp/AgentRunPanelController.swift`
-- Test: `Tests/VoiceActivationAppTests/AgentRunPanelLayoutTests.swift`
-- Test: `Tests/VoiceActivationAppTests/AgentRunPanelPresenterTests.swift`
-- Test: `Tests/VoiceActivationAppTests/AgentRunPanelAnimationTests.swift`
+- Create: `Sources/YapOpsApp/AgentRunArtifactView.swift`
+- Modify: `Sources/YapOpsApp/AgentRunPanelView.swift`
+- Modify: `Sources/YapOpsApp/AgentRunPanelContent.swift`
+- Modify: `Sources/YapOpsApp/AgentRunPanelActivity.swift`
+- Modify: `Sources/YapOpsApp/AgentRunPanelChrome.swift`
+- Modify: `Sources/YapOpsApp/AgentRunPanelVisuals.swift`
+- Modify: `Sources/YapOpsApp/AgentRunPanelLayout.swift`
+- Modify: `Sources/YapOpsApp/AgentRunPanelModel.swift`
+- Modify: `Sources/YapOpsApp/AgentRunPanelController.swift`
+- Test: `Tests/YapOpsAppTests/AgentRunPanelLayoutTests.swift`
+- Test: `Tests/YapOpsAppTests/AgentRunPanelPresenterTests.swift`
+- Test: `Tests/YapOpsAppTests/AgentRunPanelAnimationTests.swift`
 
 **Interfaces:**
 - Consumes: snapshot artifacts, preview state, and presenter actions from Tasks 3–5.
@@ -771,9 +771,9 @@ groups collapse.
 Run:
 
 ```bash
-swift test --filter 'VoiceActivationAppTests.AgentRunPanelLayoutTests'
-swift test --filter 'VoiceActivationAppTests.AgentRunPanelPresenterTests'
-swift test --filter 'VoiceActivationAppTests.AgentRunPanelAnimationTests'
+swift test --filter 'YapOpsAppTests.AgentRunPanelLayoutTests'
+swift test --filter 'YapOpsAppTests.AgentRunPanelPresenterTests'
+swift test --filter 'YapOpsAppTests.AgentRunPanelAnimationTests'
 ```
 
 Expected: adaptive geometry and artifact rendering assertions fail.
@@ -853,10 +853,10 @@ when their labels already expose the same information.
 Run:
 
 ```bash
-swift test --filter 'VoiceActivationAppTests.AgentRunPanelLayoutTests'
-swift test --filter 'VoiceActivationAppTests.AgentRunPanelPresenterTests'
-swift test --filter 'VoiceActivationAppTests.AgentRunPanelAnimationTests'
-swift test --filter 'VoiceActivationAppTests.AgentRunPanelModelArtifactTests'
+swift test --filter 'YapOpsAppTests.AgentRunPanelLayoutTests'
+swift test --filter 'YapOpsAppTests.AgentRunPanelPresenterTests'
+swift test --filter 'YapOpsAppTests.AgentRunPanelAnimationTests'
+swift test --filter 'YapOpsAppTests.AgentRunPanelModelArtifactTests'
 ```
 
 Expected: adaptive sizing, renderability, action wiring, panel focus policy, scroll behavior, and motion substitutions pass.
@@ -864,7 +864,7 @@ Expected: adaptive sizing, renderability, action wiring, panel focus policy, scr
 - [ ] **Step 8: Commit the conversation redesign**
 
 ```bash
-git add Sources/VoiceActivationApp/AgentRunArtifactView.swift Sources/VoiceActivationApp/AgentRunPanelView.swift Sources/VoiceActivationApp/AgentRunPanelContent.swift Sources/VoiceActivationApp/AgentRunPanelActivity.swift Sources/VoiceActivationApp/AgentRunPanelChrome.swift Sources/VoiceActivationApp/AgentRunPanelVisuals.swift Sources/VoiceActivationApp/AgentRunPanelLayout.swift Sources/VoiceActivationApp/AgentRunPanelModel.swift Sources/VoiceActivationApp/AgentRunPanelController.swift Tests/VoiceActivationAppTests/AgentRunPanelLayoutTests.swift Tests/VoiceActivationAppTests/AgentRunPanelPresenterTests.swift Tests/VoiceActivationAppTests/AgentRunPanelAnimationTests.swift
+git add Sources/YapOpsApp/AgentRunArtifactView.swift Sources/YapOpsApp/AgentRunPanelView.swift Sources/YapOpsApp/AgentRunPanelContent.swift Sources/YapOpsApp/AgentRunPanelActivity.swift Sources/YapOpsApp/AgentRunPanelChrome.swift Sources/YapOpsApp/AgentRunPanelVisuals.swift Sources/YapOpsApp/AgentRunPanelLayout.swift Sources/YapOpsApp/AgentRunPanelModel.swift Sources/YapOpsApp/AgentRunPanelController.swift Tests/YapOpsAppTests/AgentRunPanelLayoutTests.swift Tests/YapOpsAppTests/AgentRunPanelPresenterTests.swift Tests/YapOpsAppTests/AgentRunPanelAnimationTests.swift
 git commit -m "feat: focus agent conversations on results"
 ```
 
@@ -881,7 +881,7 @@ git commit -m "feat: focus agent conversations on results"
 **Interfaces:**
 - Consumes: all completed implementation tasks.
 - Produces: documented user workflow, architecture, privacy, and verified `main` integration.
-- Produces: removal of `/Users/alex/.codex/worktrees/8a87/voice-activation` after merged verification.
+- Produces: removal of `/Users/alex/.codex/worktrees/8a87/yapops` after merged verification.
 
 - [ ] **Step 1: Update owning documentation**
 
@@ -895,13 +895,13 @@ new Markdown-rendering documentation when resolving the final merge.
 Run:
 
 ```bash
-swift test --filter 'VoiceActivationCoreTests.ACPEventDecoderTests'
-swift test --filter 'VoiceActivationCoreTests.AgentRunEventDeliveryTests'
-swift test --filter 'VoiceActivationAppTests.AgentRunPresentationArtifactTests'
-swift test --filter 'VoiceActivationAppTests.AgentArtifactPreviewTests'
-swift test --filter 'VoiceActivationAppTests.AgentArtifactActionsTests'
-swift test --filter 'VoiceActivationAppTests.AgentRunPanelModelArtifactTests'
-swift test --filter 'VoiceActivationAppTests.AgentRunPanelLayoutTests'
+swift test --filter 'YapOpsCoreTests.ACPEventDecoderTests'
+swift test --filter 'YapOpsCoreTests.AgentRunEventDeliveryTests'
+swift test --filter 'YapOpsAppTests.AgentRunPresentationArtifactTests'
+swift test --filter 'YapOpsAppTests.AgentArtifactPreviewTests'
+swift test --filter 'YapOpsAppTests.AgentArtifactActionsTests'
+swift test --filter 'YapOpsAppTests.AgentRunPanelModelArtifactTests'
+swift test --filter 'YapOpsAppTests.AgentRunPanelLayoutTests'
 swift test
 swift test --sanitize=thread
 CONFIGURATION=debug make app
@@ -936,8 +936,8 @@ complete commands in Step 2.
 Run:
 
 ```bash
-git -C /Users/alex/Development/voice-activation status --short
-git -C /Users/alex/Development/voice-activation log -1 --oneline --decorate
+git -C /Users/alex/Development/yapops status --short
+git -C /Users/alex/Development/yapops log -1 --oneline --decorate
 ```
 
 Expected before integration: clean status. If it is still dirty, stop at this
@@ -964,8 +964,8 @@ Capture the verified worktree commit, then run from the main checkout:
 ```bash
 task_verified_commit=$(git rev-parse HEAD)
 git cat-file -e "$task_verified_commit^{commit}"
-git -C /Users/alex/Development/voice-activation merge --ff-only "$task_verified_commit"
-cd /Users/alex/Development/voice-activation
+git -C /Users/alex/Development/yapops merge --ff-only "$task_verified_commit"
+cd /Users/alex/Development/yapops
 swift test
 CONFIGURATION=debug make app
 make check
@@ -978,10 +978,10 @@ exits 0.
 
 - [ ] **Step 8: Remove the merged worktree**
 
-Only after Step 7 passes, run from `/Users/alex/Development/voice-activation`:
+Only after Step 7 passes, run from `/Users/alex/Development/yapops`:
 
 ```bash
-git worktree remove /Users/alex/.codex/worktrees/8a87/voice-activation
+git worktree remove /Users/alex/.codex/worktrees/8a87/yapops
 git worktree list --porcelain
 ```
 

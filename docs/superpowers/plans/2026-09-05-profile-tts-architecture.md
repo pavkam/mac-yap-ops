@@ -18,7 +18,7 @@ SPDX-License-Identifier: MIT
 ## Global Constraints
 
 - Minimum platform remains macOS 15; do not create an Xcode project or add dependencies.
-- Keep `VoiceActivationCore` free of SwiftUI, AppKit, AVFAudio, and Security.
+- Keep `YapOpsCore` free of SwiftUI, AppKit, AVFAudio, and Security.
 - Trigger phrase or profile shortcut selects one immutable profile for the complete conversation.
 - TTS credentials are global per backend and never persist in a profile or diagnostics.
 - Tests use fake catalogs, inert credentials, and silent players; no network, Keychain, TCC, or sound.
@@ -30,15 +30,15 @@ SPDX-License-Identifier: MIT
 ### Task 1: Profile identity and persisted speech selection
 
 **Files:**
-- Create: `Sources/VoiceActivationCore/TextToSpeech/TextToSpeechBackendID.swift`
-- Create: `Sources/VoiceActivationCore/TextToSpeech/TextToSpeechVoiceSelection.swift`
-- Create: `Sources/VoiceActivationCore/Profiles/ProfileIcon.swift`
-- Modify: `Sources/VoiceActivationCore/WakeProfile.swift`
-- Modify: `Sources/VoiceActivationCore/AppPreferences.swift`
-- Modify: `Sources/VoiceActivationApp/WakeProfileDraft.swift`
-- Test: `Tests/VoiceActivationCoreTests/WakeProfileTests.swift`
-- Test: `Tests/VoiceActivationCoreTests/AppPreferencesTests.swift`
-- Test: `Tests/VoiceActivationAppTests/WakeProfileDraftTests.swift`
+- Create: `Sources/YapOpsCore/TextToSpeech/TextToSpeechBackendID.swift`
+- Create: `Sources/YapOpsCore/TextToSpeech/TextToSpeechVoiceSelection.swift`
+- Create: `Sources/YapOpsCore/Profiles/ProfileIcon.swift`
+- Modify: `Sources/YapOpsCore/WakeProfile.swift`
+- Modify: `Sources/YapOpsCore/AppPreferences.swift`
+- Modify: `Sources/YapOpsApp/WakeProfileDraft.swift`
+- Test: `Tests/YapOpsCoreTests/WakeProfileTests.swift`
+- Test: `Tests/YapOpsCoreTests/AppPreferencesTests.swift`
+- Test: `Tests/YapOpsAppTests/WakeProfileDraftTests.swift`
 
 **Interfaces:**
 - Produces: `TextToSpeechBackendID`, `TextToSpeechVoiceSelection`, `ProfileSpeechPreference`, `ProfileIcon`.
@@ -91,25 +91,25 @@ Expected: all selected suites pass with no warning.
 - [ ] **Step 6: Commit Task 1**
 
 ```bash
-git add Sources/VoiceActivationCore Sources/VoiceActivationApp/WakeProfileDraft.swift Tests/VoiceActivationCoreTests Tests/VoiceActivationAppTests/WakeProfileDraftTests.swift
+git add Sources/YapOpsCore Sources/YapOpsApp/WakeProfileDraft.swift Tests/YapOpsCoreTests Tests/YapOpsAppTests/WakeProfileDraftTests.swift
 git commit -m "feat: add profile identity and speech preferences"
 ```
 
 ### Task 2: Common TTS backends and queue preparation
 
 **Files:**
-- Create: `Sources/VoiceActivationApp/TextToSpeech/TextToSpeechBackend.swift`
-- Create: `Sources/VoiceActivationApp/TextToSpeech/TextToSpeechBackendRegistry.swift`
-- Create: `Sources/VoiceActivationApp/TextToSpeech/Backends/System/SystemTextToSpeechBackend.swift`
-- Create: `Sources/VoiceActivationApp/TextToSpeech/Backends/ElevenLabs/ElevenLabsTextToSpeechBackend.swift`
-- Modify: `Sources/VoiceActivationApp/AgentSpeechQueue.swift`
-- Modify: `Sources/VoiceActivationApp/AgentSpeechPlayback.swift`
-- Modify: `Sources/VoiceActivationApp/ElevenLabsSpeechClient.swift`
-- Modify: `Sources/VoiceActivationApp/ElevenLabsVoiceCatalogClient.swift`
-- Test: `Tests/VoiceActivationAppTests/TextToSpeechBackendRegistryTests.swift`
-- Test: `Tests/VoiceActivationAppTests/SystemTextToSpeechBackendTests.swift`
-- Test: `Tests/VoiceActivationAppTests/ElevenLabsTextToSpeechBackendTests.swift`
-- Test: `Tests/VoiceActivationAppTests/AgentSpeechQueueTests.swift`
+- Create: `Sources/YapOpsApp/TextToSpeech/TextToSpeechBackend.swift`
+- Create: `Sources/YapOpsApp/TextToSpeech/TextToSpeechBackendRegistry.swift`
+- Create: `Sources/YapOpsApp/TextToSpeech/Backends/System/SystemTextToSpeechBackend.swift`
+- Create: `Sources/YapOpsApp/TextToSpeech/Backends/ElevenLabs/ElevenLabsTextToSpeechBackend.swift`
+- Modify: `Sources/YapOpsApp/AgentSpeechQueue.swift`
+- Modify: `Sources/YapOpsApp/AgentSpeechPlayback.swift`
+- Modify: `Sources/YapOpsApp/ElevenLabsSpeechClient.swift`
+- Modify: `Sources/YapOpsApp/ElevenLabsVoiceCatalogClient.swift`
+- Test: `Tests/YapOpsAppTests/TextToSpeechBackendRegistryTests.swift`
+- Test: `Tests/YapOpsAppTests/SystemTextToSpeechBackendTests.swift`
+- Test: `Tests/YapOpsAppTests/ElevenLabsTextToSpeechBackendTests.swift`
+- Test: `Tests/YapOpsAppTests/AgentSpeechQueueTests.swift`
 
 **Interfaces:**
 - Consumes: `TextToSpeechBackendID` and `TextToSpeechVoiceSelection` from Task 1.
@@ -162,20 +162,20 @@ Expected: all backend, queue ordering, lookahead, fallback, cancellation, and st
 - [ ] **Step 7: Commit Task 2**
 
 ```bash
-git add Sources/VoiceActivationApp/TextToSpeech Sources/VoiceActivationApp/AgentSpeechQueue.swift Sources/VoiceActivationApp/AgentSpeechPlayback.swift Sources/VoiceActivationApp/ElevenLabsSpeechClient.swift Sources/VoiceActivationApp/ElevenLabsVoiceCatalogClient.swift Tests/VoiceActivationAppTests
+git add Sources/YapOpsApp/TextToSpeech Sources/YapOpsApp/AgentSpeechQueue.swift Sources/YapOpsApp/AgentSpeechPlayback.swift Sources/YapOpsApp/ElevenLabsSpeechClient.swift Sources/YapOpsApp/ElevenLabsVoiceCatalogClient.swift Tests/YapOpsAppTests
 git commit -m "refactor: introduce text to speech backends"
 ```
 
 ### Task 3: Pin profile speech for the conversation lifecycle
 
 **Files:**
-- Modify: `Sources/VoiceActivationApp/AgentConversationAudio.swift`
-- Modify: `Sources/VoiceActivationApp/AgentSpeechSettingsState.swift`
-- Modify: `Sources/VoiceActivationApp/AppModel.swift`
-- Modify: `Sources/VoiceActivationApp/AppModel+AgentConversation.swift`
-- Test: `Tests/VoiceActivationAppTests/AgentConversationAudioLifecycleTests.swift`
-- Test: `Tests/VoiceActivationAppTests/AgentConversationAudioTestSupport.swift`
-- Test: `Tests/VoiceActivationAppTests/AppModelConversationTests.swift`
+- Modify: `Sources/YapOpsApp/AgentConversationAudio.swift`
+- Modify: `Sources/YapOpsApp/AgentSpeechSettingsState.swift`
+- Modify: `Sources/YapOpsApp/AppModel.swift`
+- Modify: `Sources/YapOpsApp/AppModel+AgentConversation.swift`
+- Test: `Tests/YapOpsAppTests/AgentConversationAudioLifecycleTests.swift`
+- Test: `Tests/YapOpsAppTests/AgentConversationAudioTestSupport.swift`
+- Test: `Tests/YapOpsAppTests/AppModelConversationTests.swift`
 
 **Interfaces:**
 - Consumes: profile speech preference and registry preparation from Tasks 1-2.
@@ -209,25 +209,25 @@ Expected: all selected lifecycle, activity, presenter, and model tests pass.
 - [ ] **Step 5: Commit Task 3**
 
 ```bash
-git add Sources/VoiceActivationApp/AgentConversationAudio.swift Sources/VoiceActivationApp/AgentSpeechSettingsState.swift Sources/VoiceActivationApp/AppModel.swift Sources/VoiceActivationApp/AppModel+AgentConversation.swift Tests/VoiceActivationAppTests
+git add Sources/YapOpsApp/AgentConversationAudio.swift Sources/YapOpsApp/AgentSpeechSettingsState.swift Sources/YapOpsApp/AppModel.swift Sources/YapOpsApp/AppModel+AgentConversation.swift Tests/YapOpsAppTests
 git commit -m "feat: pin profile voice to conversations"
 ```
 
 ### Task 4: Profile-first Settings and common voice catalogs
 
 **Files:**
-- Create: `Sources/VoiceActivationApp/Profiles/ProfileIconView.swift`
-- Create: `Sources/VoiceActivationApp/Profiles/ProfileIconPicker.swift`
-- Create: `Sources/VoiceActivationApp/TextToSpeech/TextToSpeechSettingsModel.swift`
-- Create: `Sources/VoiceActivationApp/TextToSpeech/TextToSpeechVoicePicker.swift`
-- Modify: `Sources/VoiceActivationApp/SettingsView.swift`
-- Modify: `Sources/VoiceActivationApp/AppModel.swift`
-- Modify: `Sources/VoiceActivationApp/AppModel+Configuration.swift`
-- Modify: `Sources/VoiceActivationApp/MenuContentView.swift`
-- Test: `Tests/VoiceActivationAppTests/ProfileIconViewTests.swift`
-- Test: `Tests/VoiceActivationAppTests/TextToSpeechSettingsModelTests.swift`
-- Test: `Tests/VoiceActivationAppTests/AppModelSettingsTests.swift`
-- Test: `Tests/VoiceActivationAppTests/MenuContentViewTests.swift`
+- Create: `Sources/YapOpsApp/Profiles/ProfileIconView.swift`
+- Create: `Sources/YapOpsApp/Profiles/ProfileIconPicker.swift`
+- Create: `Sources/YapOpsApp/TextToSpeech/TextToSpeechSettingsModel.swift`
+- Create: `Sources/YapOpsApp/TextToSpeech/TextToSpeechVoicePicker.swift`
+- Modify: `Sources/YapOpsApp/SettingsView.swift`
+- Modify: `Sources/YapOpsApp/AppModel.swift`
+- Modify: `Sources/YapOpsApp/AppModel+Configuration.swift`
+- Modify: `Sources/YapOpsApp/MenuContentView.swift`
+- Test: `Tests/YapOpsAppTests/ProfileIconViewTests.swift`
+- Test: `Tests/YapOpsAppTests/TextToSpeechSettingsModelTests.swift`
+- Test: `Tests/YapOpsAppTests/AppModelSettingsTests.swift`
+- Test: `Tests/YapOpsAppTests/MenuContentViewTests.swift`
 
 **Interfaces:**
 - Consumes: backend descriptors/catalogs and persisted profile values.
@@ -267,7 +267,7 @@ Expected: all selected UI model and adapter tests pass without opening a window 
 - [ ] **Step 6: Commit Task 4**
 
 ```bash
-git add Sources/VoiceActivationApp/Profiles Sources/VoiceActivationApp/TextToSpeech Sources/VoiceActivationApp/SettingsView.swift Sources/VoiceActivationApp/AppModel.swift Sources/VoiceActivationApp/AppModel+Configuration.swift Sources/VoiceActivationApp/MenuContentView.swift Tests/VoiceActivationAppTests
+git add Sources/YapOpsApp/Profiles Sources/YapOpsApp/TextToSpeech Sources/YapOpsApp/SettingsView.swift Sources/YapOpsApp/AppModel.swift Sources/YapOpsApp/AppModel+Configuration.swift Sources/YapOpsApp/MenuContentView.swift Tests/YapOpsAppTests
 git commit -m "feat: add profile voice and identity settings"
 ```
 
@@ -317,8 +317,8 @@ swift build --build-tests -Xswiftc -warnings-as-errors -v
 swift test --skip-build
 swift test --sanitize=thread
 CONFIGURATION=debug make app
-codesign --verify --deep --strict .build/VoiceActivation.app
-plutil -lint .build/VoiceActivation.app/Contents/Info.plist
+codesign --verify --deep --strict .build/YapOps.app
+plutil -lint .build/YapOps.app/Contents/Info.plist
 ```
 
 Expected: warnings-as-errors build succeeds, every test passes normally and under

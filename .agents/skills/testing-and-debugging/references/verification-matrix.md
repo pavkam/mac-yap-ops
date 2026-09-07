@@ -43,7 +43,7 @@ For background-task UI, a deterministic local ACP fixture may prove typed event
 flow and exact stop frames without authentication or a model call. It does not
 prove real-provider task survival. The manual bundle row separately verifies
 minimize without focus theft, silent task metadata, live agent-message narration,
-and **Interrupted when Voice Activation exited** after relaunch.
+and **Interrupted when YapOps exited** after relaunch.
 
 ## Completion report
 

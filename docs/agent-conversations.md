@@ -43,7 +43,7 @@ from their remote host into a bounded picture surface; failed or unsupported
 images show an unavailable state. Only user-clicked `http` and `https` links can
 open externally.
 
-Voice Activation displays only thought content the provider sends through ACP;
+YapOps displays only thought content the provider sends through ACP;
 it does not claim access to private chain-of-thought. Token bursts publish to the
 panel at most 20 times per second so streaming remains responsive without
 rendering every fragment separately.
@@ -109,7 +109,7 @@ available, and another request can start the next turn.
 **End conversation** cancels active work when necessary, closes conversation
 recognition, and returns to passive wake after the normal cooldown. Saying only
 `cancel`, `stop`, or `dismiss` has the same whole-conversation effect. When
-spoken replies are enabled, Voice Activation acknowledges spoken cancellation
+spoken replies are enabled, YapOps acknowledges spoken cancellation
 with “Stopped.”
 
 Retired turns cannot update the current panel. Run, turn, request, and permission
@@ -144,7 +144,7 @@ preparing, stop, success, and actionable failure states only on the row that
 started the preview. A 402 response means ElevenLabs needs credits or payment;
 an invalid or missing API key is a 401 response.
 
-When narration is active, Voice Activation removes Markdown formatting and
+When narration is active, YapOps removes Markdown formatting and
 queues user-facing agent text while it streams. Complete sentences start
 immediately. An unfinished progress message is flushed when work moves to
 thought, tool, plan, or permission activity, with a 350 ms fallback when no
@@ -173,11 +173,11 @@ limits.
 ## Recover after provider failure
 
 Each profile reuses its own initialized ACP session while its configuration is
-unchanged. Voice Activation keeps a bounded least-recently-used set of idle
+unchanged. YapOps keeps a bounded least-recently-used set of idle
 profile sessions and evicts an idle one under pressure.
 
 If a provider forgets a cached session before producing output or requesting
-permission, Voice Activation creates a new process and retries that prompt once.
+permission, YapOps creates a new process and retries that prompt once.
 The panel reports that earlier provider context was lost. A prompt is never
 replayed after observable activity because doing so could repeat tool actions.
 

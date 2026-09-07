@@ -1,6 +1,6 @@
 ---
 name: voice-reading
-description: Use when changing, reviewing, debugging, or testing spoken agent replies in Voice Activation, including narration segmentation, macOS speech, ElevenLabs TTS, voice catalogs, credentials, playback, fallbacks, interruption, activity sounds, or speech settings.
+description: Use when changing, reviewing, debugging, or testing spoken agent replies in YapOps, including narration segmentation, macOS speech, ElevenLabs TTS, voice catalogs, credentials, playback, fallbacks, interruption, activity sounds, or speech settings.
 ---
 
 <!--

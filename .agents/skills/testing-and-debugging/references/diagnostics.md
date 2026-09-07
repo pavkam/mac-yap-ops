@@ -5,13 +5,13 @@ SPDX-License-Identifier: MIT
 
 # Structured diagnostics
 
-The app installs `JSONLVoiceActivationDiagnosticRecorder` at startup. This
+The app installs `JSONLYapOpsDiagnosticRecorder` at startup. This
 JSONL trace—not ad hoc `print` calls—is the repository's runtime diagnostic
 contract.
 
 ## Storage and bounds
 
-- Active file: `~/Library/Logs/VoiceActivation/voice-activation.jsonl`
+- Active file: `~/Library/Logs/YapOps/yapops.jsonl`
 - Rotation: 5 MiB active file plus `.1`, `.2`, and `.3`
 - Writer: dedicated serial user-initiated queue; shutdown flushes it
 - Schema version: `1`
@@ -37,7 +37,7 @@ looking at individual records, and never paste an unreviewed raw log into chat,
 an issue, or a fixture.
 
 ```bash
-voice_log_path="$HOME/Library/Logs/VoiceActivation/voice-activation.jsonl"
+voice_log_path="$HOME/Library/Logs/YapOps/yapops.jsonl"
 jq -s 'group_by(.category) | map({category: .[0].category, count: length})' "$voice_log_path"
 jq 'select(.level == "error" or .level == "warning")' "$voice_log_path"
 jq 'select(.session_id == "SESSION-ID") | {sequence, session_elapsed_ms, category, event, level, fields}' "$voice_log_path"
@@ -60,7 +60,7 @@ prove the implementation cause.
   and admission/outcome—not user or provider content.
 - Pair long operations with started and terminal events. Use monotonic timing
   for durations and wall time only for human correlation.
-- Inject `VoiceActivationDiagnosticRecording`; assert events with a recorder
+- Inject `YapOpsDiagnosticRecording`; assert events with a recorder
   spy. Test redaction/rotation only at the JSONL recorder boundary.
 - Do not record every token, audio buffer, polling tick, or repeated idle state.
   Diagnostics must remain bounded under the failure they diagnose.

@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT
 
 # Diagnostics
 
-Voice Activation writes one bounded, structured JSONL trace for application,
+YapOps writes one bounded, structured JSONL trace for application,
 settings, UI, hot-key, recognition, command, ACP, agent, audio, and network
 events. Start here when the visible error does not identify the failing boundary.
 
@@ -14,7 +14,7 @@ events. Start here when the visible error does not identify the failing boundary
 The active file is:
 
 ```text
-~/Library/Logs/VoiceActivation/voice-activation.jsonl
+~/Library/Logs/YapOps/yapops.jsonl
 ```
 
 It rotates before the next entry would take it beyond 5 MiB. The three previous
@@ -23,7 +23,7 @@ files remain beside it as `.1`, `.2`, and `.3`.
 Follow new entries:
 
 ```bash
-voice_log_path="$HOME/Library/Logs/VoiceActivation/voice-activation.jsonl"
+voice_log_path="$HOME/Library/Logs/YapOps/yapops.jsonl"
 tail -f "$voice_log_path" | jq .
 ```
 

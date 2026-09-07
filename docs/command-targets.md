@@ -77,7 +77,7 @@ Saving rejects a relative executable or an argument list without a transcript
 placeholder. At runtime, the executable must still exist and have execute
 permission.
 
-Voice Activation waits asynchronously for completion. Exit status zero is
+YapOps waits asynchronously for completion. Exit status zero is
 success; a non-zero status becomes a visible error. Standard input, output, and
 error are attached to the null device, so a command cannot use the app as an
 interactive terminal and its own output is not captured.
@@ -88,7 +88,7 @@ recognized transcript or expanded arguments.
 
 ## Security boundary
 
-Voice Activation creates `Foundation.Process` with the validated executable URL
+YapOps creates `Foundation.Process` with the validated executable URL
 and expanded argument array. It does not run `/bin/sh`, evaluate substitutions,
 expand wildcards, source login files, or reinterpret recognized punctuation.
 

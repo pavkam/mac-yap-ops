@@ -3,5 +3,5 @@
 
 interface:
   display_name: "UX"
-  short_description: "Design and test polished Voice Activation UX"
-  default_prompt: "Use $ux to design or review this Voice Activation interface change."
+  short_description: "Design and test polished YapOps UX"
+  default_prompt: "Use $ux to design or review this YapOps interface change."

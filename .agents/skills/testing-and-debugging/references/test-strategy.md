@@ -13,8 +13,8 @@ slower and moodier.
 
 | Behavior | Test target and local pattern |
 | --- | --- |
-| State transitions, matching, validation, command arguments, ACP wire/lifecycle, bounded queues | `VoiceActivationCoreTests` |
-| `AppModel`, presentation, layout, Settings, Keychain adapters, Service Management, hotkeys, audio, SwiftUI/AppKit | `VoiceActivationAppTests` |
+| State transitions, matching, validation, command arguments, ACP wire/lifecycle, bounded queues | `YapOpsCoreTests` |
+| `AppModel`, presentation, layout, Settings, Keychain adapters, Service Management, hotkeys, audio, SwiftUI/AppKit | `YapOpsAppTests` |
 | ACP frames, ordering, sessions, permissions, cancellation | `FakeACPTransport` and `ACP*TestSupport`; also read `acp-integration` |
 | Process and pipe behavior | A short executable in a UUID temporary directory, as in `ACPProcessTransportTests` |
 | Speech and coordinator behavior | `FakeSpeechSession`, `ControlledAgentRunner`, injected `ActivationTiming` |
@@ -47,7 +47,7 @@ tests that can wait on external process termination.
 Prefer controlled continuations, actor-backed recorders, fake sleepers/clocks,
 explicit gates, and observable terminal state. Existing support code includes:
 
-- `VoiceActivationCoordinatorTestSupport.swift`
+- `YapOpsCoordinatorTestSupport.swift`
 - `ACPClientConnectionTestSupport.swift`
 - `ACPAgentRunnerTestSupport.swift`
 - `AppModelTestSupport.swift`
@@ -66,9 +66,9 @@ arguments; do not use a shell to make the fixture convenient.
 
 ```bash
 swift test list | rg 'RelevantType|RelevantBehavior'
-swift test --filter 'VoiceActivationCoreTests.WakePhraseMatcherTests'
-swift test --filter 'VoiceActivationAppTests.AgentRunPresentationTests'
-swift test --filter 'VoiceActivationCoreTests.WakePhraseMatcherTests/command_WhenPhraseStartsTranscript_ReturnsFollowingText'
+swift test --filter 'YapOpsCoreTests.WakePhraseMatcherTests'
+swift test --filter 'YapOpsAppTests.AgentRunPresentationTests'
+swift test --filter 'YapOpsCoreTests.WakePhraseMatcherTests/command_WhenPhraseStartsTranscript_ReturnsFollowingText'
 swift test
 ```
 

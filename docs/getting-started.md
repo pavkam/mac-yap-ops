@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT
 
 # Getting started
 
-Build Voice Activation, grant its macOS permissions, and run the default voice
+Build YapOps, grant its macOS permissions, and run the default voice
 command. This is the shortest path from a clone to a working menu-bar app.
 
 ## Requirements
@@ -24,20 +24,20 @@ xcodebuild -version
 ## Clone and verify
 
 ```bash
-git clone https://github.com/pavkam/mac-voice-activation.git
-cd mac-voice-activation
+git clone https://github.com/pavkam/mac-yapops.git
+cd mac-yapops
 make test
 make app
 ```
 
-The packaged application is written to `.build/VoiceActivation.app`. Launch it
+The packaged application is written to `.build/YapOps.app`. Launch it
 with:
 
 ```bash
-open .build/VoiceActivation.app
+open .build/YapOps.app
 ```
 
-Voice Activation has no Dock icon. Its status icon appears on the right side of
+YapOps has no Dock icon. Its status icon appears on the right side of
 the menu bar.
 
 ## Grant permissions
@@ -47,7 +47,7 @@ The first voice action requests two macOS privacy permissions:
 1. Microphone access, to capture audio.
 2. Speech Recognition access, to transcribe audio.
 
-Both are required. If either request is denied, enable Voice Activation in the
+Both are required. If either request is denied, enable YapOps in the
 corresponding **Privacy & Security** section of System Settings, quit the app,
 and launch it again.
 

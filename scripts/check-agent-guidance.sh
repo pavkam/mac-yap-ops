@@ -39,7 +39,7 @@ while IFS= read -r -d '' skill; do
         printf '%s declares mismatched name %s\n' "$skill" "$declared_name" >&2
         failed=1
     fi
-    if [[ "$skill_name" == *voice-activation* ]]; then
+    if [[ "$skill_name" == *yapops* ]]; then
         printf '%s redundantly repeats the project name\n' "$skill" >&2
         failed=1
     fi

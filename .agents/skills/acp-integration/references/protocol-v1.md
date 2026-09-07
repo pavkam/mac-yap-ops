@@ -3,13 +3,13 @@ SPDX-FileCopyrightText: 2026 Alexandru Ciobanu (alex+git@ciobanu.org)
 SPDX-License-Identifier: MIT
 -->
 
-# ACP v1 and Voice Activation
+# ACP v1 and YapOps
 
 Validated against the stable ACP v1 documentation on 2026-09-05.
 
 ## Wire and lifecycle
 
-Voice Activation is the ACP client. Cursor or an adapter process is the ACP
+YapOps is the ACP client. Cursor or an adapter process is the ACP
 agent. Communication is UTF-8 JSON-RPC 2.0 over child-process stdin and stdout,
 with one compact JSON value per line. A protocol line cannot contain a literal
 newline. Stdout is protocol-only; stderr is a separate diagnostic stream.
@@ -39,7 +39,7 @@ gated by the advertised capability before use.
 ## Conversational input extension boundary
 
 Stable ACP v1 has no portable operation for adding input to an active prompt.
-Ordinary language remains opaque agent input; Voice Activation does not infer
+Ordinary language remains opaque agent input; YapOps does not infer
 whether it adds, corrects, pauses, repeats, or replaces anything. Exact local
 stop and pending-permission controls are handled before this transport path.
 

@@ -13,10 +13,10 @@ menu-bar lifecycle, use the real bundle:
 
 ```bash
 CONFIGURATION=debug make app
-open .build/VoiceActivation.app
-pgrep -fl VoiceActivation
-plutil -lint .build/VoiceActivation.app/Contents/Info.plist
-codesign --verify --deep --strict .build/VoiceActivation.app
+open .build/YapOps.app
+pgrep -fl YapOps
+plutil -lint .build/YapOps.app/Contents/Info.plist
+codesign --verify --deep --strict .build/YapOps.app
 ```
 
 `make app` copies the plist, icon, and sound assets, then signs and verifies the
@@ -29,15 +29,15 @@ manual permission testing. Never reset TCC automatically.
 Launch the debug executable:
 
 ```bash
-lldb .build/VoiceActivation.app/Contents/MacOS/VoiceActivation
+lldb .build/YapOps.app/Contents/MacOS/YapOps
 ```
 
-Or find the PID with `pgrep -x VoiceActivation` and attach with
+Or find the PID with `pgrep -x YapOps` and attach with
 `lldb -p <PID>`. Useful commands:
 
 ```text
-breakpoint set --name VoiceActivationCoordinator.pushToTalkPressed
-breakpoint set --file VoiceActivationCoordinator.swift --line <line>
+breakpoint set --name YapOpsCoordinator.pushToTalkPressed
+breakpoint set --file YapOpsCoordinator.swift --line <line>
 run
 process interrupt
 thread backtrace all
@@ -56,7 +56,7 @@ continuing.
 Crash reports usually appear under:
 
 ```text
-~/Library/Logs/DiagnosticReports/VoiceActivation*
+~/Library/Logs/DiagnosticReports/YapOps*
 ```
 
 Use the complete symbolicated report. Read termination reason, diagnostic

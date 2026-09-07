@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT
 
 # Experience principles and surface contracts
 
-Voice Activation is an ambient macOS utility, not a miniature dashboard. It
+YapOps is an ambient macOS utility, not a miniature dashboard. It
 should disappear when idle, respond instantly when summoned, explain its state
 without demanding attention, and preserve the foreground app's focus.
 

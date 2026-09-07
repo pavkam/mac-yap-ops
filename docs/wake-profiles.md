@@ -60,7 +60,7 @@ Control, Option, Shift, or Command. Press Escape to abandon the recording.
 Select **Save Settings** to replace the registered shortcut set.
 
 Physical bindings must be unique across profiles. When another application has
-already reserved a combination, Voice Activation reports the conflict and
+already reserved a combination, YapOps reports the conflict and
 restores every previously saved registration.
 
 Hold a registered shortcut, speak without a wake phrase, and release the keys
@@ -113,7 +113,7 @@ uses the profile accent, shows a rolling tail of recognized text, follows the
 screen containing the pointer, and never takes keyboard focus from the current
 application. Its close button discards the current capture.
 
-Audio-device changes may stop Apple's current engine. Voice Activation rebuilds
+Audio-device changes may stop Apple's current engine. YapOps rebuilds
 passive recognition after the input configuration settles while rejecting late
 callbacks from the retired session.
 

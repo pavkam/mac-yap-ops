@@ -83,7 +83,7 @@ Use these evidence pairs for common areas:
 | Diagnostics and privacy | diagnostic recorder and call sites | redaction, credential, and bounds tests |
 | Build and packaging | `Makefile`, build script, resources | CI and bundle verification |
 
-Do not document an external provider's behavior as a Voice Activation guarantee
+Do not document an external provider's behavior as a YapOps guarantee
 unless the repository probes or tests that behavior.
 
 ## Update documentation with behavior

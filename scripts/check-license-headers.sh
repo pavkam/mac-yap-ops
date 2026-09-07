@@ -56,13 +56,13 @@ if [[ ! -f REUSE.toml ]]; then
 else
     for path in \
         Package.resolved \
-        Sources/VoiceActivationApp/Resources/AgentThinking.wav \
-        Sources/VoiceActivationApp/Resources/CaptureEnd.wav \
-        Sources/VoiceActivationApp/Resources/CaptureStart.wav \
-        Sources/VoiceActivationApp/Resources/ToolComplete.wav \
-        Sources/VoiceActivationApp/Resources/ToolFailed.wav \
-        Sources/VoiceActivationApp/Resources/ToolStart.wav \
-        Sources/VoiceActivationApp/Resources/VoiceActivation.icns
+        Sources/YapOpsApp/Resources/AgentThinking.wav \
+        Sources/YapOpsApp/Resources/CaptureEnd.wav \
+        Sources/YapOpsApp/Resources/CaptureStart.wav \
+        Sources/YapOpsApp/Resources/ToolComplete.wav \
+        Sources/YapOpsApp/Resources/ToolFailed.wav \
+        Sources/YapOpsApp/Resources/ToolStart.wav \
+        Sources/YapOpsApp/Resources/YapOps.icns
     do
         if ! grep -Fq "\"$path\"" REUSE.toml; then
             printf 'Missing REUSE annotation: %s\n' "$path" >&2
@@ -73,7 +73,7 @@ fi
 
 app_copyright="$(
     plutil -extract NSHumanReadableCopyright raw \
-        Sources/VoiceActivationApp/Resources/Info.plist 2>/dev/null || true
+        Sources/YapOpsApp/Resources/Info.plist 2>/dev/null || true
 )"
 if [[ "$app_copyright" != "$expected_app_copyright" ]]; then
     printf 'Incorrect app copyright: %s\n' "$app_copyright" >&2

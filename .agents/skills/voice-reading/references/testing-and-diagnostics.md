@@ -21,7 +21,7 @@ authoritative workflow to spoken replies.
 | Backend-neutral preview generation/cancellation | `TextToSpeechVoicePreviewPlayerTests` |
 | Keychain scheduling/bootstrap policy | `AgentSpeechCredentialStoreTests`, `AgentSpeechCredentialBootstrapTests` |
 | Settings/save behavior | `AppModelConversationTests`, `AppModelSettingsTests` |
-| Barge-in/recognition lifecycle | `VoiceActivationCoordinatorConversationTests` and cancellation/capture suites |
+| Barge-in/recognition lifecycle | `YapOpsCoordinatorConversationTests` and cancellation/capture suites |
 
 Use `ControlledSpeechSynthesizer`, controlled system/audio players, presenter
 spies, `SilentAgentConversationAudioPlayer`, and
@@ -85,7 +85,7 @@ matrix. For a production speech change, the minimum is normally:
 make check
 swift test --quiet
 CONFIGURATION=debug make app
-codesign --verify --deep --strict .build/VoiceActivation.app
+codesign --verify --deep --strict .build/YapOps.app
 ```
 
 Do not claim a manual listening check unless a human actually heard it. Automated

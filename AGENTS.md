@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: 2026 Alexandru Ciobanu (alex+git@ciobanu.org)
 SPDX-License-Identifier: MIT
 -->
 
-# Voice Activation agent guide
+# YapOps agent guide
 
 This file is the routing and invariant layer for agents working in this
 repository. Keep it short. Load the project skill first, then only the domain
@@ -12,22 +12,22 @@ prose; update the owning guide when behavior changes.
 
 ## Project snapshot
 
-Voice Activation is a native SwiftPM macOS 15 menu-bar app using Swift tools
+YapOps is a native SwiftPM macOS 15 menu-bar app using Swift tools
 6.2, SwiftUI/AppKit, Apple Speech, Carbon hotkeys, Service Management, Keychain,
 and local ACP v1 providers. Wake phrases or per-profile push-to-talk capture a
 transcript, then either launch a direct executable or continue an ACP agent
 conversation.
 
-There is no app server or Voice Activation account. Passive recognition is
+There is no app server or YapOps account. Passive recognition is
 on-device only. Direct commands never use a shell. Provider authentication stays
 with provider CLIs; the optional ElevenLabs key stays in Keychain. Sensitive
 conversation content and audio never enter diagnostics.
 
 ```text
-Sources/VoiceActivationCore/       State, validation, commands, ACP, preferences
-Sources/VoiceActivationApp/        macOS adapters, composition, UI, audio, logs
-Tests/VoiceActivationCoreTests/    Core and protocol contracts
-Tests/VoiceActivationAppTests/     App, presentation, and adapter contracts
+Sources/YapOpsCore/       State, validation, commands, ACP, preferences
+Sources/YapOpsApp/        macOS adapters, composition, UI, audio, logs
+Tests/YapOpsCoreTests/    Core and protocol contracts
+Tests/YapOpsAppTests/     App, presentation, and adapter contracts
 ```
 
 ## Mandatory skill routing
@@ -54,7 +54,7 @@ entire skill tree “just in case.”
 
 - Preserve unrelated work in a dirty tree. Never discard, overwrite, broadly
   format, or rewrite user changes to make a patch convenient.
-- Put framework-independent policy in `VoiceActivationCore`; keep SwiftUI,
+- Put framework-independent policy in `YapOpsCore`; keep SwiftUI,
   AppKit, Security, Speech, Carbon, and Service Management adapters in App.
 - Use `Foundation.Process` with an absolute executable and explicit arguments.
   Never add shell evaluation or treat recognized speech as shell syntax.
@@ -111,7 +111,7 @@ entire skill tree “just in case.”
 - Swift files under `Sources/` and `Tests/` have a 700-line hard limit.
 - `AGENTS.md` and every text file under `.agents/skills` have a 150-line hard
   limit. Split by decision boundary; dense prose is not a loophole.
-- Every public `VoiceActivationCore` symbol needs useful `///` DocC.
+- Every public `YapOpsCore` symbol needs useful `///` DocC.
 - This is SwiftPM. Do not create an `.xcodeproj`; change `Package.resolved` only
   when dependencies change.
 - Update the relevant README or `docs/` guide with behavior, configuration,

@@ -13,7 +13,7 @@ check does not identify the boundary.
 Follow the active trace while reproducing the issue once:
 
 ```bash
-voice_log_path="$HOME/Library/Logs/VoiceActivation/voice-activation.jsonl"
+voice_log_path="$HOME/Library/Logs/YapOps/yapops.jsonl"
 tail -f "$voice_log_path" | jq .
 ```
 
@@ -22,12 +22,12 @@ for correlation, timing fields, rotation, and safe extraction.
 
 ## The menu-bar icon is missing
 
-Voice Activation has no Dock icon. Check the right side of the menu bar, then
+YapOps has no Dock icon. Check the right side of the menu bar, then
 confirm and relaunch the built application:
 
 ```bash
-pgrep -fl VoiceActivation
-open .build/VoiceActivation.app
+pgrep -fl YapOps
+open .build/YapOps.app
 ```
 
 ## The status remains Starting
@@ -41,7 +41,7 @@ it is quarantined and startup continues with empty continuity state.
 After startup becomes ready, **Starting** means listening is enabled but speech
 recognition is not ready. Complete both the Microphone and Speech Recognition
 prompts. If access was denied, enable it in **System Settings > Privacy &
-Security**, quit Voice Activation, and launch it again.
+Security**, quit YapOps, and launch it again.
 
 ## Passive listening reports an on-device error
 
@@ -91,7 +91,7 @@ See [Command targets](command-targets.md) for expansion and shell-safety rules.
 - Confirm the executable and working folder are absolute and still exist. Use
   **Detect** or select the executable when a Finder-launched app cannot see the
   shell's full `PATH`.
-- Complete the provider CLI's normal login in Terminal. Voice Activation does
+- Complete the provider CLI's normal login in Terminal. YapOps does
   not collect provider credentials.
 - Confirm the process supports stable ACP v1. Protocol mismatch, malformed
   frames, and oversized data fail visibly.
@@ -109,7 +109,7 @@ applies to ACP agent requests; direct commands are intentionally unchanged.
 
 The displayed Accessibility status refreshes without prompting. If it says
 **Accessibility not authorized**, choose **Enable Accessibility…** and complete
-macOS's prompt. Voice Activation never asks automatically. Before authorization,
+macOS's prompt. YapOps never asks automatically. Before authorization,
 the agent can still receive the frozen app name and bundle identifier with
 `captureState: "accessibility_not_authorized"`; it cannot receive protected
 window, selection, or resource values.
@@ -122,7 +122,7 @@ its own target and late or cancelled work cannot change a newer turn.
 
 Context is bounded to app identity, an optional window title/document URL,
 12 KiB of selected text, and eight selected resource references. Resource links
-do not include file contents. Voice Activation does not resolve phrases such as
+do not include file contents. YapOps does not resolve phrases such as
 “this” or act on the snapshot; the configured ACP agent decides how to use it.
 See [ACP agent harness](agent-harness.md) for the full schema and bounds.
 
@@ -138,11 +138,10 @@ intentionally owns the viewport. If the follow-up queue is full, let current
 work and cancellation settle before speaking again.
 
 A provider failure preserves useful output. The next follow-up starts a fresh
-session. If a provider forgot an idle session before any observable work, Voice
-Activation retries once and shows a context-loss notice; it never replays a
+session. If a provider forgot an idle session before any observable work, YapOps retries once and shows a context-loss notice; it never replays a
 request after output, a permission prompt, or tool activity.
 
-Voice Activation does not persist or log focused Mac snapshot values or content;
+YapOps does not persist or log focused Mac snapshot values or content;
 it may record safe capture metadata. A provider may retain or replay submitted
 blocks in its own session, so use that provider's retention controls when they
 apply.
@@ -154,7 +153,7 @@ and retention.
 
 ACP v1 has no standard spoken channel, and the current marker contract is an
 agent instruction rather than a provider guarantee. If an agent returns an
-ordinary unmarked `agent_message_chunk`, Voice Activation preserves the response
+ordinary unmarked `agent_message_chunk`, YapOps preserves the response
 as legacy text: it remains visible and, when reply reading is enabled, follows
 the existing Markdown narration path. A malformed metadata extension, unknown
 marker, or partial marker at a semantic boundary also falls back without dropping
@@ -176,7 +175,7 @@ diagnosing this path.
 
 ## A previous agent conversation starts fresh
 
-Restoration is negotiated on every provider process. Voice Activation does not
+Restoration is negotiated on every provider process. YapOps does not
 assume that Cursor, Codex, Claude, or a custom adapter supports an optional ACP
 method because its preset did before. Missing or `null` capabilities mean
 unsupported; malformed capability shapes fail the connection.
@@ -197,7 +196,7 @@ capability, while Codex adapter `1.8.0` and Claude adapter `0.73.0` returned
 allowlist; inspect the current run.
 
 For visible history, load is preferred and resume preserves context without
-replaying history. When neither is supported, Voice Activation starts a fresh
+replaying history. When neither is supported, YapOps starts a fresh
 session with a bounded notice. A stale saved ID or restoration replay overflow
 can fall back to one fresh process only before the prompt frame. Once
 `session/prompt` is written, the utterance is never retried, even when the
@@ -210,7 +209,7 @@ activity sounds, or Mac-context settings does not.
 
 ## A turn is marked interrupted after relaunch
 
-The marker means active state was persisted immediately before Voice Activation
+The marker means active state was persisted immediately before YapOps
 attempted to publish the prompt and was never successfully cleared. The frame
 may or may not have reached the provider, so the app conservatively calls the
 work interrupted and never replays it automatically. It does not mean the
@@ -276,23 +275,23 @@ See [Agent conversations](agent-conversations.md) and
 
 Confirm the shortcut shown for that profile, save any change, and keep the keys
 held while speaking. Release submits through the selected profile. If another
-application already owns the combination, Voice Activation reports the conflict
+application already owns the combination, YapOps reports the conflict
 and restores the previous bindings.
 
 ## Listening stops after joining or leaving a call
 
 Meeting software and audio devices can change microphone channel layout or
-sample rate. Voice Activation rebuilds passive listening after the input
+sample rate. YapOps rebuilds passive listening after the input
 settles. If it does not recover, confirm the intended input device and both
 privacy grants in System Settings, then inspect `recognition` audio-configuration
 events in the trace.
 
 ## Launch at Login cannot be enabled
 
-- Move Voice Activation to `/Applications` and launch that copy; do not register
+- Move YapOps to `/Applications` and launch that copy; do not register
   the temporary bundle under `.build`.
 - Verify the bundle with `codesign --verify --deep --strict`.
-- Allow Voice Activation under **System Settings > General > Login Items** if
+- Allow YapOps under **System Settings > General > Login Items** if
   macOS requires approval, then toggle the setting again.
 
 See [Packaging](packaging.md) for the signed bundle workflow.

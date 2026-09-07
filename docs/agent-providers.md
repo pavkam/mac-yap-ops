@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT
 # Agent providers
 
 Configure a wake profile to start Cursor, Codex, Claude, or another local Agent
-Client Protocol (ACP) version 1 process. Voice Activation launches the provider
+Client Protocol (ACP) version 1 process. YapOps launches the provider
 directly and leaves authentication with its CLI.
 
 ## Before you begin
@@ -34,7 +34,7 @@ and ACP verification matrix described in the project agent guidance.
 ## Find the executable
 
 Preset selection and **Detect** resolve a command name to an executable file.
-Voice Activation searches, in order:
+YapOps searches, in order:
 
 1. The app process's inherited `PATH`.
 2. `/opt/homebrew/bin` and `/usr/local/bin`.
@@ -51,7 +51,7 @@ convenience; the saved path and argument list remain authoritative.
 
 ## Choose a working folder
 
-Select the absolute project directory the provider should use. Voice Activation
+Select the absolute project directory the provider should use. YapOps
 passes it as the process working directory and in ACP `session/new`. It does not
 infer a repository from the current foreground application.
 
@@ -69,7 +69,7 @@ permission model.
 | Deny once | Use an offered one-shot rejection; otherwise cancel the request. |
 | Always deny | Prefer persistent rejection, then one-shot rejection, then cancellation. |
 
-Voice Activation never invents a permission the provider did not offer. With
+YapOps never invents a permission the provider did not offer. With
 **Ask every time**, choose an option in the panel or answer the oldest visible
 request by voice. See [Agent conversations](agent-conversations.md).
 
@@ -80,24 +80,23 @@ instructions such as response style, project priorities, or safety constraints,
 not for a one-time task. [ACP agent harness](agent-harness.md) owns the exact
 prompt limit and rejection behavior.
 
-For Codex, Voice Activation merges the prompt into the adapter's `CODEX_CONFIG`
+For Codex, YapOps merges the prompt into the adapter's `CODEX_CONFIG`
 as `developer_instructions` before launch. Other ACP v1 providers receive it in
 the harness instruction block before each recognized request because ACP v1 has
 no portable system-role field.
 
-Every provider also receives Voice Activation's Markdown presentation contract.
+Every provider also receives YapOps's Markdown presentation contract.
 It asks for user-facing GitHub-flavored Markdown and one short progress sentence
 per work batch instead of narration for individual tool calls.
 
 ## Authenticate with the provider CLI
 
-Voice Activation inherits the launch environment but never asks for, copies, or
+YapOps inherits the launch environment but never asks for, copies, or
 persists provider API keys. Authenticate with the provider's own CLI before
 using the profile.
 
 If ACP session creation returns `auth_required`, the conversation shows the
-provider-advertised method names and directs you back to the provider CLI. Voice
-Activation does not guess among multiple methods or emulate an interactive
+provider-advertised method names and directs you back to the provider CLI. YapOps does not guess among multiple methods or emulate an interactive
 terminal login.
 
 The optional ElevenLabs key used for spoken replies is independent of agent
@@ -114,7 +113,7 @@ Choose **Custom**, then supply:
 - a permission policy; and
 - an optional bounded system prompt.
 
-Voice Activation does not invoke a shell, expand environment syntax, or quote
+YapOps does not invoke a shell, expand environment syntax, or quote
 arguments. The custom process must speak newline-delimited ACP v1 JSON-RPC on
 standard input and output; standard error is reserved for bounded diagnostics.
 

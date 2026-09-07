@@ -76,6 +76,11 @@ accessibility settings. Inject or pass the preference into pure policies.
 
 ## Manual experience matrix
 
+If tests leave an unresponsive conversation panel with a ticking timer, check
+whether a real controller's `begin` ordered it front without teardown. Keep
+`panel_WhenReduceMotionIsEnabled_CompletesHandoffWithoutAnimation` in an isolated
+child, supply off-screen handoff frames, and always call `shutdown` in `defer`.
+
 For a user-visible change, build the real bundle with `CONFIGURATION=debug make
 app` and exercise the affected flow in proportion to risk:
 

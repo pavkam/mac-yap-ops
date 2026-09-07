@@ -6,11 +6,11 @@
 import PackageDescription
 
 let package = Package(
-    name: "VoiceActivation",
+    name: "YapOps",
     platforms: [.macOS(.v15)],
     products: [
-        .library(name: "VoiceActivationCore", targets: ["VoiceActivationCore"]),
-        .executable(name: "VoiceActivation", targets: ["VoiceActivationApp"]),
+        .library(name: "YapOpsCore", targets: ["YapOpsCore"]),
+        .executable(name: "YapOps", targets: ["YapOpsApp"]),
     ],
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-testing", revision: "swift-6.2.2-RELEASE"),
@@ -19,11 +19,11 @@ let package = Package(
             exact: "2.4.1"),
     ],
     targets: [
-        .target(name: "VoiceActivationCore"),
+        .target(name: "YapOpsCore"),
         .executableTarget(
-            name: "VoiceActivationApp",
+            name: "YapOpsApp",
             dependencies: [
-                "VoiceActivationCore",
+                "YapOpsCore",
                 .product(
                     name: "MarkdownUI",
                     package: "swift-markdown-ui"),
@@ -36,18 +36,18 @@ let package = Package(
                 "Resources/ToolComplete.wav",
                 "Resources/ToolFailed.wav",
                 "Resources/ToolStart.wav",
-                "Resources/VoiceActivation.icns",
+                "Resources/YapOps.icns",
             ]),
         .testTarget(
-            name: "VoiceActivationCoreTests",
+            name: "YapOpsCoreTests",
             dependencies: [
-                "VoiceActivationCore",
+                "YapOpsCore",
                 .product(name: "Testing", package: "swift-testing"),
             ]),
         .testTarget(
-            name: "VoiceActivationAppTests",
+            name: "YapOpsAppTests",
             dependencies: [
-                "VoiceActivationApp",
+                "YapOpsApp",
                 .product(
                     name: "MarkdownUI",
                     package: "swift-markdown-ui"),

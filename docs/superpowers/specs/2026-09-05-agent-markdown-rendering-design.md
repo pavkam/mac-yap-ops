@@ -26,7 +26,7 @@ pinned to version `2.4.1`.
 The package is a better fit than the alternatives considered:
 
 - It uses the reference `cmark-gfm` parser and supports the response vocabulary
-  requested by Voice Activation: headings, nested lists, task lists, tables,
+  requested by YapOps: headings, nested lists, task lists, tables,
   block quotes, links, inline code, fenced code, and thematic breaks.
 - Version 2.4.1 is a mature MIT release with macOS 12+ support and an established
   SwiftUI theming surface.

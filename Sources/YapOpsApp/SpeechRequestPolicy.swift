@@ -1,0 +1,36 @@
+// SPDX-FileCopyrightText: 2026 Alexandru Ciobanu (alex+git@ciobanu.org)
+// SPDX-License-Identifier: MIT
+
+import Speech
+import YapOpsCore
+
+enum SpeechRequestPolicy {
+    enum PolicyError: Error, Equatable, LocalizedError {
+        case onDeviceRecognitionUnavailable
+
+        var errorDescription: String? {
+            "On-device speech recognition is unavailable for this language on this Mac."
+        }
+    }
+
+    static func configure(
+        _ request: SFSpeechAudioBufferRecognitionRequest,
+        mode: SpeechSessionMode,
+        supportsOnDeviceRecognition: Bool,
+        contextualStrings: [String] = []) throws
+    {
+        request.shouldReportPartialResults = true
+        request.taskHint = .dictation
+        request.contextualStrings = contextualStrings
+
+        switch mode {
+        case .passiveWake:
+            guard supportsOnDeviceRecognition else {
+                throw PolicyError.onDeviceRecognitionUnavailable
+            }
+            request.requiresOnDeviceRecognition = true
+        case .commandCapture, .conversation, .pushToTalk:
+            request.requiresOnDeviceRecognition = false
+        }
+    }
+}

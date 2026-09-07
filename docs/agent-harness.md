@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT
 
 # ACP agent harness
 
-This reference defines Voice Activation's technical contract with local Agent
+This reference defines YapOps's technical contract with local Agent
 Client Protocol (ACP) version 1 providers. Use it for transport, initialization,
 session, prompt, permission, cancellation, recovery, and delivery behavior.
 
@@ -48,7 +48,7 @@ The prompt content order is deterministic:
 5. the untouched recognized request (`request`).
 
 Every outbound block carries advisory
-`_meta.ciobanu.org.voiceActivation.promptBlockRole` provenance metadata. ACP
+`_meta.ciobanu.org.yapOps.promptBlockRole` provenance metadata. ACP
 providers may preserve or discard it; it does not establish an ACP role. This
 metadata is the only way a restored `user_message_chunk` can re-enter visible
 history: the nested role must be exactly `request`. Missing, null, malformed, or
@@ -73,7 +73,7 @@ Its following line is one sorted-key JSON object with this shape:
   "resources": [
     { "name": "notes.md", "uri": "file:///Users/alex/Documents/notes.md" }
   ],
-  "schema": "voice-activation.mac-context.v1",
+  "schema": "yapops.mac-context.v1",
   "selectedText": "Resource Link",
   "truncatedFields": [],
   "windowTitle": "Agent Client Protocol"
@@ -94,7 +94,7 @@ and resource URIs 2,048 bytes and restricted to absolute `file`, `http`, or
 unique normalized URIs in Accessibility order. Context JSON is at most 16 KiB.
 If it exceeds that bound, resources are removed from the end, then the window
 title, then selected text; every changed or omitted field is named once in
-`truncatedFields`. Resource links name references only: Voice Activation does
+`truncatedFields`. Resource links name references only: YapOps does
 not read their file contents.
 
 Native capture starts from the frozen target on a dedicated serial worker, with
@@ -103,10 +103,10 @@ admission. A deadline produces an app-only `timed_out` snapshot. Cancellation,
 supersession, or a stale run invalidates the input before cancellation; queued
 or late native work cannot start a provider prompt or alter a later turn.
 
-Voice Activation supplies data only. It does not resolve pronouns, decide which
+YapOps supplies data only. It does not resolve pronouns, decide which
 context is relevant, inspect resource contents, plan actions, restore old
 context, or continuously observe the Mac. The ACP agent owns those semantics
-and any action through its own capabilities. Voice Activation does not persist
+and any action through its own capabilities. YapOps does not persist
 or log snapshot values or content, although the selected provider may retain or
 replay submitted blocks under its own session policy.
 
@@ -115,7 +115,7 @@ Examples of the resulting contract:
 - In Safari, “summarize this” carries the untouched request plus Safari,
   document, and bounded selection; the agent decides what “this” means.
 - In Finder, “which of these is newer?” carries up to eight selected resource
-  links; Voice Activation does not read files or compare dates.
+  links; YapOps does not read files or compare dates.
 - Without Accessibility, “what am I looking at?” still carries app identity and
   `accessibility_not_authorized`.
 - A nonresponsive app yields app identity and `timed_out`; a late result cannot
@@ -152,7 +152,7 @@ provider instead of converting large integers through floating point.
 Startup sends `initialize` with:
 
 - `protocolVersion: 1`;
-- Voice Activation implementation metadata;
+- YapOps implementation metadata;
 - the optional namespaced version-1 response-channel capability described below;
   and
 - no filesystem, terminal, terminal-authentication, or elicitation capability.
@@ -167,7 +167,7 @@ The client strictly decodes restoration support from that process's current
 objects. An empty `resume` object means supported. Any other shape closes the
 connection as malformed. Provider presets never supply or override this answer.
 
-When no compatible saved bookmark exists, Voice Activation sends `session/new`
+When no compatible saved bookmark exists, YapOps sends `session/new`
 with the profile's absolute working directory and an empty MCP server list. If
 session creation returns `auth_required`, the client retains at most eight
 bounded advertised method names, closes cleanly, and directs the user to
@@ -230,11 +230,11 @@ it never enters the current conversation.
 ## Keep background work honest
 
 Stable ACP v1 owns one prompt until response or cancellation; it has no standard
-detached-task stream. Voice Activation adds task UI only for preset `claude`
+detached-task stream. YapOps adds task UI only for preset `claude`
 when the live initialize result proves the exact 0.73.0 adapter identity and
 both peers negotiate JetBrains AIR version 1 with `asyncTasks`.
 
-| Provider path | While Voice Activation runs | Between turns | After its process exits |
+| Provider path | While YapOps runs | Between turns | After its process exits |
 | --- | --- | --- | --- |
 | Stable ACP v1 prompt | Prompt stays owned until response or cancel | No standard detached task stream | Mark interrupted; optionally restore session context; never replay the prompt |
 | Claude Agent ACP 0.73.0 with AIR | Typed spawn, progress, state, and stop | Persistent session consumer accepts negotiated typed events | Mark interrupted; do not claim adapter-owned task survival |
@@ -262,7 +262,7 @@ copy remain silent.
 
 ## Route conversational input
 
-Voice Activation does not classify ordinary speech as additive, corrective,
+YapOps does not classify ordinary speech as additive, corrective,
 status, pause, repeat, or replacement language. Complete single-word `stop`,
 `cancel`, and `dismiss` controls remain local, as do exact spoken permission
 choices while a permission is pending. Every other admitted utterance remains
@@ -288,7 +288,7 @@ it automatically.
 Each admitted input keeps one stable identity and one visible transport label:
 **Routing…**, **Added to current turn**, **Queued for next turn**, **Started as
 next turn**, or **Delivery failed — say it again**. These labels report
-transport only; they do not claim that Voice Activation understood the
+transport only; they do not claim that YapOps understood the
 utterance. At most 16 inputs wait, and each recognized request is limited to
 8,192 UTF-8 bytes. The seventeenth or an oversized request is rejected before
 retention and Mac-context capture.
@@ -345,7 +345,7 @@ consumer is slower than the provider.
 
 ACP v1 has no standard spoken-response channel. Its `agent_message_chunk`
 contains a content block and optional message identity, but standard annotations
-do not distinguish speech from display. Voice Activation therefore supports
+do not distinguish speech from display. YapOps therefore supports
 three compatible levels:
 
 | Level | Contract | Result |
@@ -360,7 +360,7 @@ Every initialize request advertises the optional extension exactly as:
 {
   "clientCapabilities": {
     "_meta": {
-      "ciobanu.org.voiceActivation": {
+      "ciobanu.org.yapOps": {
         "responseChannels": {
           "version": 1,
           "channels": ["spoken", "display"]
@@ -382,7 +382,7 @@ update object:
     "type": "text",
     "text": "Done — I moved 18 screenshots into Archive.",
     "_meta": {
-      "ciobanu.org.voiceActivation": {
+      "ciobanu.org.yapOps": {
         "responseChannel": {
           "version": 1,
           "channel": "spoken"
@@ -401,12 +401,12 @@ and bypasses marker parsing; providers must not combine typed metadata and the
 marker contract.
 
 The currently configured adapters cannot be assumed to emit the optional
-metadata. Voice Activation instead instructs the agent to begin an ordinary
+metadata. YapOps instead instructs the agent to begin an ordinary
 message with these exact ASCII strings:
 
 ```text
-spoken marker: "[[voice-activation:spoken:v1]]\n"
-display marker: "\n[[voice-activation:display:v1]]\n"
+spoken marker: "[[yapops:spoken:v1]]\n"
+display marker: "\n[[yapops:display:v1]]\n"
 ```
 
 Here `\n` denotes one LF byte; it is not the two literal characters backslash
@@ -455,7 +455,7 @@ app-owned temporary files; closing the panel keeps them with retained output.
 When present, the continuity block is sorted-key JSON no larger than 512 bytes:
 
 ```json
-{"previousTurnInterrupted":true,"schema":"voice-activation.agent-continuity.v1","sessionState":"loaded"}
+{"previousTurnInterrupted":true,"schema":"yapops.agent-continuity.v1","sessionState":"loaded"}
 ```
 
 `sessionState` is `loaded`, `resumed_without_history`,
@@ -556,7 +556,7 @@ that exact profile receives `previousTurnInterrupted: true`. The marker is
 consumed once only after the prompt frame is published and its acknowledgement
 is durably stored. Failure before either boundary retains it for a later prompt.
 `providerTaskID` markers remain separate from the ordinary-turn handoff. They
-produce only **Interrupted when Voice Activation exited** and no active control.
+produce only **Interrupted when YapOps exited** and no active control.
 A later live task event starts a fresh current occurrence; it does not resurrect
 the historical marker.
 
@@ -646,7 +646,7 @@ event kinds or identifiers cannot evade the byte and entry caps.
 
 ## Compatibility boundaries
 
-Voice Activation implements stable ACP v1 only. It does not advertise terminal,
+YapOps implements stable ACP v1 only. It does not advertise terminal,
 filesystem, MCP, elicitation, or terminal-authentication capabilities.
 
 The response-channel advertisement is an optional namespaced extension, not an
@@ -658,7 +658,7 @@ for Claude Agent ACP 0.73.0 after exact runtime identity and bidirectional AIR
 version-1 negotiation. Codex ACP 1.8.0, Cursor 2026.01.23, custom providers, and
 version drift stay on stable prompt behavior.
 
-ACP v1 has no portable mid-turn input method. Voice Activation uses the private
+ACP v1 has no portable mid-turn input method. YapOps uses the private
 `_session/steering` extension only for the exact Claude ACP 0.73.0 runtime proof
 described above. Codex ACP 1.8.0 advertises steering but cannot prove local
 ownership when an idle race starts a detached turn, so it deliberately remains
@@ -684,7 +684,7 @@ typed content that the provider emits through ACP.
 
 ## Persistence and diagnostic privacy
 
-The strict schema-1 value at `voiceActivation.agentContinuity.v1` contains only
+The strict schema-1 value at `yapOps.agentContinuity.v1` contains only
 profile, session, occurrence, optional turn/provider-task identifiers; provider
 fingerprints; work state; and bookmark access ordinals. Unknown schema versions,
 unknown fields, malformed JSON, duplicate records, invalid identifiers or
@@ -706,7 +706,7 @@ they never retain response text, surrounding marker content, extension metadata,
 or synthesized bytes.
 
 This feature does not keep ordinary turns or adapter-owned tasks running after
-the Voice Activation or adapter process dies. It does not interpret phrases such
+the YapOps or adapter process dies. It does not interpret phrases such
 as “continue”, “again”, or “start over”, persist an old Mac-context snapshot,
 discover provider sessions, or reconstruct a conversation locally. It also does
 not add the planned agent-authored conversation-control contract, spoken

@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT
 
 # Visual language
 
-Voice Activation uses soft continuous geometry, semantic system colors,
+YapOps uses soft continuous geometry, semantic system colors,
 profile accents, restrained material, and SF Symbols. The personality comes from
 consistent hierarchy and tiny responsive details—not a pile of gradients.
 

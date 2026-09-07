@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT
 
 # Testing
 
-Voice Activation uses Swift Testing in separate Core and App test targets. Put
+YapOps uses Swift Testing in separate Core and App test targets. Put
 each test at the lowest boundary that exposes the behavior, run the focused
 regression first, and widen verification according to the risk of the change.
 
@@ -13,8 +13,8 @@ regression first, and widen verification according to the risk of the change.
 
 | Behavior | Test target and preferred boundary |
 | --- | --- |
-| State transitions, wake matching, validation, command expansion, ACP wire and lifecycle, bounded queues | `VoiceActivationCoreTests` with pure values or controlled protocol fakes |
-| `AppModel`, presentation, layout, Settings, Keychain, Service Management, hotkeys, audio, SwiftUI and AppKit | `VoiceActivationAppTests` with injected adapters |
+| State transitions, wake matching, validation, command expansion, ACP wire and lifecycle, bounded queues | `YapOpsCoreTests` with pure values or controlled protocol fakes |
+| `AppModel`, presentation, layout, Settings, Keychain, Service Management, hotkeys, audio, SwiftUI and AppKit | `YapOpsAppTests` with injected adapters |
 | ACP framing, ordering, permissions, cancellation, and recovery | `FakeACPTransport` and the focused ACP test-support types |
 | Real process and pipe behavior | A short explicit executable in a UUID temporary directory |
 | Speech and coordinator behavior | `FakeSpeechSession`, `ControlledAgentRunner`, and injected `ActivationTiming` |
@@ -31,9 +31,9 @@ Discover the actual suite and test identifiers before filtering:
 
 ```bash
 swift test list | rg 'RelevantType|RelevantBehavior'
-swift test --filter 'VoiceActivationCoreTests.WakePhraseMatcherTests'
-swift test --filter 'VoiceActivationAppTests.AgentRunPresentationTests'
-swift test --filter 'VoiceActivationCoreTests.WakePhraseMatcherTests/command_WhenPhraseStartsTranscript_ReturnsFollowingText'
+swift test --filter 'YapOpsCoreTests.WakePhraseMatcherTests'
+swift test --filter 'YapOpsAppTests.AgentRunPresentationTests'
+swift test --filter 'YapOpsCoreTests.WakePhraseMatcherTests/command_WhenPhraseStartsTranscript_ReturnsFollowingText'
 ```
 
 For a behavior fix, first confirm that the smallest regression fails because the

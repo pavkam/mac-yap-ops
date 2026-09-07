@@ -1,6 +1,6 @@
 ---
 name: acp-integration
-description: Use when changing, reviewing, debugging, or testing ACP integration in Voice Activation, including provider presets, adapter pins, JSON-RPC framing, sessions, permissions, streaming updates, cancellation, recovery, or compatibility.
+description: Use when changing, reviewing, debugging, or testing ACP integration in YapOps, including provider presets, adapter pins, JSON-RPC framing, sessions, permissions, streaming updates, cancellation, recovery, or compatibility.
 ---
 
 <!--

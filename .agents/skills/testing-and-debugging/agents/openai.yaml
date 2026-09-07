@@ -4,4 +4,4 @@
 interface:
   display_name: "Testing & Debugging"
   short_description: "Test and diagnose the app reliably"
-  default_prompt: "Use $testing-and-debugging to diagnose this Voice Activation failure and verify the fix."
+  default_prompt: "Use $testing-and-debugging to diagnose this YapOps failure and verify the fix."

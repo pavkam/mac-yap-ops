@@ -5,13 +5,13 @@ SPDX-License-Identifier: MIT
 
 # Concurrency and lifecycle
 
-This reference owns Voice Activation's isolation, identity, callback, ordering,
+This reference owns YapOps's isolation, identity, callback, ordering,
 cancellation, and shutdown contracts. Use it when a correct result arrives late,
 work outlives its owner, or a framework callback crosses an actor boundary.
 
 ## Isolation model
 
-`VoiceActivationCoordinator`, `AppModel`, and `SpeechSessionProtocol` are
+`YapOpsCoordinator`, `AppModel`, and `SpeechSessionProtocol` are
 main-actor isolated. Menu state, Settings drafts, active profile state,
 recognition transitions, and panel presentation therefore mutate in one ordered
 UI domain.

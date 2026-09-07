@@ -18,7 +18,7 @@ remain global and secret; profile data stores only backend and voice identity.
 
 ## Chosen approach
 
-Keep the existing `VoiceActivationCore` and `VoiceActivationApp` SwiftPM
+Keep the existing `YapOpsCore` and `YapOpsApp` SwiftPM
 targets. Organize related files into feature folders inside each target and
 enforce boundaries with small protocols and value types. SwiftPM already treats
 a target as the compiler module and recursively discovers its source files, so
@@ -173,16 +173,16 @@ back safely at runtime.
 ## Feature folders
 
 ```text
-Sources/VoiceActivationCore/Profiles/
-Sources/VoiceActivationCore/TextToSpeech/
-Sources/VoiceActivationApp/Profiles/
-Sources/VoiceActivationApp/TextToSpeech/
-Sources/VoiceActivationApp/TextToSpeech/Backends/System/
-Sources/VoiceActivationApp/TextToSpeech/Backends/ElevenLabs/
-Tests/VoiceActivationCoreTests/Profiles/
-Tests/VoiceActivationCoreTests/TextToSpeech/
-Tests/VoiceActivationAppTests/Profiles/
-Tests/VoiceActivationAppTests/TextToSpeech/
+Sources/YapOpsCore/Profiles/
+Sources/YapOpsCore/TextToSpeech/
+Sources/YapOpsApp/Profiles/
+Sources/YapOpsApp/TextToSpeech/
+Sources/YapOpsApp/TextToSpeech/Backends/System/
+Sources/YapOpsApp/TextToSpeech/Backends/ElevenLabs/
+Tests/YapOpsCoreTests/Profiles/
+Tests/YapOpsCoreTests/TextToSpeech/
+Tests/YapOpsAppTests/Profiles/
+Tests/YapOpsAppTests/TextToSpeech/
 ```
 
 Only profile and TTS ownership moves in this change. Other features move when a

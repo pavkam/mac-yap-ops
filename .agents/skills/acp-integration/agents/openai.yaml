@@ -3,5 +3,5 @@
 
 interface:
   display_name: "ACP Integration"
-  short_description: "Develop and test Voice Activation ACP support"
+  short_description: "Develop and test YapOps ACP support"
   default_prompt: "Use $acp-integration to review or implement this ACP integration change."

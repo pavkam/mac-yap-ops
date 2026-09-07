@@ -24,7 +24,7 @@ starts the Codex App Server through its bundled compatible Codex package.
 `CODEX_PATH` is an explicit override, not the default discovery mechanism.
 
 The adapter can use ChatGPT login, an API key, or a configured model provider.
-Voice Activation does not store those credentials. `NO_BROWSER=1` is appropriate
+YapOps does not store those credentials. `NO_BROWSER=1` is appropriate
 for noninteractive initialize probes so validation cannot open an authentication
 browser.
 
@@ -38,11 +38,10 @@ full environment during debugging.
 Codex ACP 1.8.0 advertises steering, but that advertisement is not enough for
 safe host ownership. Its pinned request parser ignores the host's
 `idleBehavior: "promptRequired"` option and may answer `startedNewTurn` after
-starting a detached turn when the original prompt settles first. Voice
-Activation cannot await or cancel that new turn through the standard prompt
+starting a detached turn when the original prompt settles first. YapOps cannot await or cancel that new turn through the standard prompt
 request it owns.
 
-This pin therefore never receives `_session/steering` from Voice Activation.
+This pin therefore never receives `_session/steering` from YapOps.
 Opaque follow-ups stay in the bounded FIFO and begin as ordinary
 `session/prompt` turns. A future pin remains on FIFO until tagged source,
 deterministic fixtures, and its exact initialize identity prove a host-owned

@@ -132,16 +132,16 @@ git commit -m "docs: define documentation ownership"
 - Create: `docs/command-targets.md`
 - Modify: `docs/getting-started.md`
 - Modify: `docs/configuration.md`
-- Read: `Sources/VoiceActivationCore/ActivationTiming.swift`
-- Read: `Sources/VoiceActivationCore/AppPreferences.swift`
-- Read: `Sources/VoiceActivationCore/WakePhraseMatcher.swift`
-- Read: `Sources/VoiceActivationCore/WakeProfile.swift`
-- Read: `Sources/VoiceActivationCore/WakeProfileCollectionValidator.swift`
-- Read: `Sources/VoiceActivationCore/CommandTemplate.swift`
-- Read: `Sources/VoiceActivationCore/CommandRunner.swift`
-- Read: `Tests/VoiceActivationCoreTests/VoiceActivationCoordinatorCaptureTests.swift`
-- Read: `Tests/VoiceActivationCoreTests/WakePhraseMatcherTests.swift`
-- Read: `Tests/VoiceActivationCoreTests/CommandRunnerTests.swift`
+- Read: `Sources/YapOpsCore/ActivationTiming.swift`
+- Read: `Sources/YapOpsCore/AppPreferences.swift`
+- Read: `Sources/YapOpsCore/WakePhraseMatcher.swift`
+- Read: `Sources/YapOpsCore/WakeProfile.swift`
+- Read: `Sources/YapOpsCore/WakeProfileCollectionValidator.swift`
+- Read: `Sources/YapOpsCore/CommandTemplate.swift`
+- Read: `Sources/YapOpsCore/CommandRunner.swift`
+- Read: `Tests/YapOpsCoreTests/YapOpsCoordinatorCaptureTests.swift`
+- Read: `Tests/YapOpsCoreTests/WakePhraseMatcherTests.swift`
+- Read: `Tests/YapOpsCoreTests/CommandRunnerTests.swift`
 
 **Interfaces:**
 - Consumes: terminology and ownership rules from `docs/documentation.md`.
@@ -152,7 +152,7 @@ git commit -m "docs: define documentation ownership"
 Run:
 
 ```bash
-rg -n 'static let standard|defaultValue|passiveEnabled|readsAgentRepliesAloud|playsAgentWorkingSound|maximum|duplicate|placeholder' Sources/VoiceActivationCore Tests/VoiceActivationCoreTests
+rg -n 'static let standard|defaultValue|passiveEnabled|readsAgentRepliesAloud|playsAgentWorkingSound|maximum|duplicate|placeholder' Sources/YapOpsCore Tests/YapOpsCoreTests
 ```
 
 Confirm: 350 ms wake handoff, 5 s initial silence, 1.5 s inactivity, 30 s
@@ -268,15 +268,15 @@ git commit -m "docs: split profiles and command configuration"
 - Create: `docs/agent-conversations.md`
 - Modify: `docs/getting-started.md`
 - Modify: `docs/configuration.md`
-- Read: `Sources/VoiceActivationApp/AgentHarnessDraft.swift`
-- Read: `Sources/VoiceActivationApp/AgentExecutableLocator.swift`
-- Read: `Sources/VoiceActivationApp/AgentRunPanelChrome.swift`
-- Read: `Sources/VoiceActivationApp/AgentRunPanelContent.swift`
-- Read: `Sources/VoiceActivationApp/AppModel+AgentConversation.swift`
-- Read: `Sources/VoiceActivationCore/AgentHarnessConfiguration.swift`
-- Read: `Sources/VoiceActivationCore/VoiceActivationCoordinator+Execution.swift`
-- Read: `Tests/VoiceActivationAppTests/AppModelConversationTests.swift`
-- Read: `Tests/VoiceActivationAppTests/AgentRunPresentationTests.swift`
+- Read: `Sources/YapOpsApp/AgentHarnessDraft.swift`
+- Read: `Sources/YapOpsApp/AgentExecutableLocator.swift`
+- Read: `Sources/YapOpsApp/AgentRunPanelChrome.swift`
+- Read: `Sources/YapOpsApp/AgentRunPanelContent.swift`
+- Read: `Sources/YapOpsApp/AppModel+AgentConversation.swift`
+- Read: `Sources/YapOpsCore/AgentHarnessConfiguration.swift`
+- Read: `Sources/YapOpsCore/YapOpsCoordinator+Execution.swift`
+- Read: `Tests/YapOpsAppTests/AppModelConversationTests.swift`
+- Read: `Tests/YapOpsAppTests/AgentRunPresentationTests.swift`
 
 **Interfaces:**
 - Consumes: agent field names from `configuration.md` and shared terms from `documentation.md`.
@@ -359,7 +359,7 @@ and conversation behavior rather than repeating them.
 Run:
 
 ```bash
-rg -n '1\.8\.0|0\.73\.0|cursor-agent|16|allow all|Stop turn|End conversation|Delete|Keychain' docs/agent-providers.md docs/agent-conversations.md Sources/VoiceActivationApp Sources/VoiceActivationCore
+rg -n '1\.8\.0|0\.73\.0|cursor-agent|16|allow all|Stop turn|End conversation|Delete|Keychain' docs/agent-providers.md docs/agent-conversations.md Sources/YapOpsApp Sources/YapOpsCore
 make check
 git diff --check
 ```
@@ -379,17 +379,17 @@ git commit -m "docs: add agent provider and conversation guides"
 
 **Files:**
 - Modify: `docs/agent-harness.md`
-- Read: `Sources/VoiceActivationCore/ACPAgentRunner.swift`
-- Read: `Sources/VoiceActivationCore/ACPAgentRunner+Connection.swift`
-- Read: `Sources/VoiceActivationCore/ACPClientConnection.swift`
-- Read: `Sources/VoiceActivationCore/ACPClientConnection+Requests.swift`
-- Read: `Sources/VoiceActivationCore/ACPClientConnection+Receive.swift`
-- Read: `Sources/VoiceActivationCore/ACPProcessTransport.swift`
-- Read: `Sources/VoiceActivationCore/AgentRunEventDelivery.swift`
-- Read: `Sources/VoiceActivationCore/AgentRunEventNormalization.swift`
-- Read: `Tests/VoiceActivationCoreTests/ACPAgentRunnerLifecycleTests.swift`
-- Read: `Tests/VoiceActivationCoreTests/ACPClientConnectionPromptTests.swift`
-- Read: `Tests/VoiceActivationCoreTests/AgentRunEventDeliveryTests.swift`
+- Read: `Sources/YapOpsCore/ACPAgentRunner.swift`
+- Read: `Sources/YapOpsCore/ACPAgentRunner+Connection.swift`
+- Read: `Sources/YapOpsCore/ACPClientConnection.swift`
+- Read: `Sources/YapOpsCore/ACPClientConnection+Requests.swift`
+- Read: `Sources/YapOpsCore/ACPClientConnection+Receive.swift`
+- Read: `Sources/YapOpsCore/ACPProcessTransport.swift`
+- Read: `Sources/YapOpsCore/AgentRunEventDelivery.swift`
+- Read: `Sources/YapOpsCore/AgentRunEventNormalization.swift`
+- Read: `Tests/YapOpsCoreTests/ACPAgentRunnerLifecycleTests.swift`
+- Read: `Tests/YapOpsCoreTests/ACPClientConnectionPromptTests.swift`
+- Read: `Tests/YapOpsCoreTests/AgentRunEventDeliveryTests.swift`
 
 **Interfaces:**
 - Consumes: provider and user-workflow boundaries from Task 3.
@@ -400,7 +400,7 @@ git commit -m "docs: add agent provider and conversation guides"
 Run:
 
 ```bash
-rg -n 'maximum|Timeout|Grace|Period|protocolVersion|session/new|session/prompt|session/cancel|permission|missing.session|auth_required' Sources/VoiceActivationCore Tests/VoiceActivationCoreTests
+rg -n 'maximum|Timeout|Grace|Period|protocolVersion|session/new|session/prompt|session/cancel|permission|missing.session|auth_required' Sources/YapOpsCore Tests/YapOpsCoreTests
 ```
 
 Record the verified values: 8 KiB prompt, 1 MiB frame, four cached sessions,
@@ -465,16 +465,16 @@ git commit -m "docs: focus ACP harness reference"
 **Files:**
 - Modify: `docs/architecture.md`
 - Create: `docs/concurrency-and-lifecycle.md`
-- Read: `Sources/VoiceActivationCore/VoiceActivationCoordinator.swift`
-- Read: `Sources/VoiceActivationCore/VoiceActivationCoordinator+Speech.swift`
-- Read: `Sources/VoiceActivationCore/VoiceActivationCoordinator+Execution.swift`
-- Read: `Sources/VoiceActivationCore/MainRunLoopScheduler.swift`
-- Read: `Sources/VoiceActivationApp/AppModel.swift`
-- Read: `Sources/VoiceActivationApp/AppModel+Lifecycle.swift`
-- Read: `Sources/VoiceActivationApp/AppleSpeechSession.swift`
-- Read: `Sources/VoiceActivationApp/SpeechAudioBufferSink.swift`
-- Read: `Tests/VoiceActivationCoreTests/VoiceActivationCoordinatorCancellationTests.swift`
-- Read: `Tests/VoiceActivationAppTests/AppModelLifecycleTests.swift`
+- Read: `Sources/YapOpsCore/YapOpsCoordinator.swift`
+- Read: `Sources/YapOpsCore/YapOpsCoordinator+Speech.swift`
+- Read: `Sources/YapOpsCore/YapOpsCoordinator+Execution.swift`
+- Read: `Sources/YapOpsCore/MainRunLoopScheduler.swift`
+- Read: `Sources/YapOpsApp/AppModel.swift`
+- Read: `Sources/YapOpsApp/AppModel+Lifecycle.swift`
+- Read: `Sources/YapOpsApp/AppleSpeechSession.swift`
+- Read: `Sources/YapOpsApp/SpeechAudioBufferSink.swift`
+- Read: `Tests/YapOpsCoreTests/YapOpsCoordinatorCancellationTests.swift`
+- Read: `Tests/YapOpsAppTests/AppModelLifecycleTests.swift`
 
 **Interfaces:**
 - Consumes: focused user and ACP guides from Tasks 2–4.
@@ -485,8 +485,8 @@ git commit -m "docs: focus ACP harness reference"
 Run:
 
 ```bash
-find Sources/VoiceActivationCore Sources/VoiceActivationApp -maxdepth 1 -name '*.swift' -print | sort
-rg -n 'generation|runID|turnToken|MainRunLoopScheduler|@MainActor|nonisolated|stop|shutdown' Sources/VoiceActivationCore Sources/VoiceActivationApp
+find Sources/YapOpsCore Sources/YapOpsApp -maxdepth 1 -name '*.swift' -print | sort
+rg -n 'generation|runID|turnToken|MainRunLoopScheduler|@MainActor|nonisolated|stop|shutdown' Sources/YapOpsCore Sources/YapOpsApp
 ```
 
 Group the result into speech/capture, direct commands, ACP, presentation,
@@ -570,15 +570,15 @@ git commit -m "docs: split architecture and lifecycle"
 - Create: `docs/privacy-and-security.md`
 - Create: `docs/diagnostics.md`
 - Modify: `docs/troubleshooting.md`
-- Read: `Sources/VoiceActivationApp/JSONLVoiceActivationDiagnosticRecorder.swift`
-- Read: `Sources/VoiceActivationCore/VoiceActivationDiagnostics.swift`
-- Read: `Sources/VoiceActivationApp/AgentSpeechCredentialStore.swift`
-- Read: `Sources/VoiceActivationCore/CommandRunner.swift`
-- Read: `Sources/VoiceActivationCore/ACPAgentRunner.swift`
-- Read: `Sources/VoiceActivationCore/AgentRunEventDelivery.swift`
-- Read: `Sources/VoiceActivationApp/AgentRunPresentation.swift`
-- Read: `Tests/VoiceActivationAppTests/JSONLVoiceActivationDiagnosticRecorderTests.swift`
-- Read: `Tests/VoiceActivationAppTests/AgentSpeechCredentialStoreTests.swift`
+- Read: `Sources/YapOpsApp/JSONLYapOpsDiagnosticRecorder.swift`
+- Read: `Sources/YapOpsCore/YapOpsDiagnostics.swift`
+- Read: `Sources/YapOpsApp/AgentSpeechCredentialStore.swift`
+- Read: `Sources/YapOpsCore/CommandRunner.swift`
+- Read: `Sources/YapOpsCore/ACPAgentRunner.swift`
+- Read: `Sources/YapOpsCore/AgentRunEventDelivery.swift`
+- Read: `Sources/YapOpsApp/AgentRunPresentation.swift`
+- Read: `Tests/YapOpsAppTests/JSONLYapOpsDiagnosticRecorderTests.swift`
+- Read: `Tests/YapOpsAppTests/AgentSpeechCredentialStoreTests.swift`
 
 **Interfaces:**
 - Consumes: process, lifecycle, retention, and conversation contracts from Tasks 3–5.
@@ -589,7 +589,7 @@ git commit -m "docs: split architecture and lifecycle"
 Run:
 
 ```bash
-rg -n 'maximum|sensitive|redact|Keychain|UserDefaults|standardError|outputBytes|timeline|audio|transcript|Process' Sources/VoiceActivationCore Sources/VoiceActivationApp Tests
+rg -n 'maximum|sensitive|redact|Keychain|UserDefaults|standardError|outputBytes|timeline|audio|transcript|Process' Sources/YapOpsCore Sources/YapOpsApp Tests
 ```
 
 Confirm diagnostic rotation at 5 MiB with three archives, 512-character field
@@ -613,7 +613,7 @@ Create `docs/privacy-and-security.md` with:
 ## In-memory conversation data
 ## Diagnostics and redaction
 ## Resource limits
-## What Voice Activation does not provide
+## What YapOps does not provide
 ## Related guides
 ```
 
@@ -668,7 +668,7 @@ Run:
 
 ```bash
 rg -n '5 MiB|three|512 KiB|64 KiB|256|32|16 KiB|8 KiB|1 MiB|Keychain|UserDefaults' docs/privacy-and-security.md Sources Tests
-rg -n 'voice-activation\.jsonl|queue_delay_ms|duration_ms|main_delivery_ms|run_loop_mode|task_priority' docs/diagnostics.md Sources Tests
+rg -n 'yapops\.jsonl|queue_delay_ms|duration_ms|main_delivery_ms|run_loop_mode|task_priority' docs/diagnostics.md Sources Tests
 make check
 git diff --check
 ```
@@ -787,7 +787,7 @@ Create `docs/packaging.md` with:
 ## Related guides
 ```
 
-Document `.build/VoiceActivation.app`, the exact bundle contents, `CONFIGURATION`
+Document `.build/YapOps.app`, the exact bundle contents, `CONFIGURATION`
 defaulting to `release`, `SIGN_IDENTITY` defaulting to `-`, `plutil` and
 `codesign` verification, why `swift run` is insufficient, installing to
 `/Applications`, and stdin-only `--store-elevenlabs-key-from-stdin` provisioning
@@ -834,7 +834,7 @@ git commit -m "docs: split testing and packaging guides"
 Use:
 
 ```markdown
-# Voice Activation
+# YapOps
 
 ## What it does
 ## Requirements
@@ -858,10 +858,10 @@ contracts.
 Use:
 
 ```markdown
-# Voice Activation documentation
+# YapOps documentation
 
 ## Start here
-## Use Voice Activation
+## Use YapOps
 ## Understand the system
 ## Contribute
 ## Terminology

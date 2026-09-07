@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT
 
 # Packaging
 
-Voice Activation is a SwiftPM executable assembled into a macOS application
+YapOps is a SwiftPM executable assembled into a macOS application
 bundle by `scripts/build-app.sh`. Use the bundle for resources, signing,
 permissions, Keychain identity, Service Management, and normal menu-bar
 lifecycle; `swift run` does not exercise those boundaries.
@@ -16,17 +16,17 @@ lifecycle; `swift run` does not exercise those boundaries.
 make app
 ```
 
-The script builds the `VoiceActivation` product, replaces the previous bundle,
+The script builds the `YapOps` product, replaces the previous bundle,
 copies the required metadata and resources, signs it, and verifies the result.
 The output is:
 
 ```text
-.build/VoiceActivation.app/
+.build/YapOps.app/
 └── Contents/
     ├── Info.plist
-    ├── MacOS/VoiceActivation
+    ├── MacOS/YapOps
     └── Resources/
-        ├── VoiceActivation.icns
+        ├── YapOps.icns
         ├── AgentThinking.wav
         ├── CaptureStart.wav
         ├── CaptureEnd.wav
@@ -45,7 +45,7 @@ flow:
 CONFIGURATION=debug make app
 ```
 
-Changing configuration replaces the same `.build/VoiceActivation.app` output.
+Changing configuration replaces the same `.build/YapOps.app` output.
 
 ## Include required resources
 
@@ -60,6 +60,17 @@ When adding or renaming a required resource, update all of these together:
 
 The checked-in `Info.plist` owns the bundle identifier, version, menu-bar agent
 mode, minimum macOS version, icon, and privacy usage descriptions.
+
+## App identity after the rename
+
+YapOps uses `dev.alex.yapops` as its bundle identifier and optional ElevenLabs
+Keychain service. The rename creates a new app identity: earlier builds'
+preferences, saved session handles, and narration credentials are not imported
+automatically. Existing data and Keychain items remain untouched.
+
+Configure profiles in YapOps Settings and save the optional ElevenLabs key
+again. Grant macOS privacy permissions to the new app when prompted, and enable
+Launch at Login from the installed YapOps copy if needed.
 
 ## Sign the bundle
 
@@ -87,10 +98,10 @@ The packaging script always runs plist and signature verification. These are
 the direct checks used when diagnosing a bundle:
 
 ```bash
-test -x .build/VoiceActivation.app/Contents/MacOS/VoiceActivation
-plutil -lint .build/VoiceActivation.app/Contents/Info.plist
-codesign --verify --deep --strict .build/VoiceActivation.app
-codesign --display --verbose=4 .build/VoiceActivation.app
+test -x .build/YapOps.app/Contents/MacOS/YapOps
+plutil -lint .build/YapOps.app/Contents/Info.plist
+codesign --verify --deep --strict .build/YapOps.app
+codesign --display --verbose=4 .build/YapOps.app
 ```
 
 Also confirm the icon and all six sound files exist under `Contents/Resources`
@@ -98,13 +109,13 @@ when a resource changed.
 
 ## Install a stable development copy
 
-Quit an existing Voice Activation process, replace the copy under
+Quit an existing YapOps process, replace the copy under
 `/Applications`, and always launch that same path when testing permissions or
 login registration:
 
 ```bash
-ditto .build/VoiceActivation.app /Applications/VoiceActivation.app
-open /Applications/VoiceActivation.app
+ditto .build/YapOps.app /Applications/YapOps.app
+open /Applications/YapOps.app
 ```
 
 The default ad-hoc signature can still cause macOS to request privacy access
@@ -116,7 +127,7 @@ testing.
 
 Launch at Login uses `SMAppService.mainApp`; macOS is the source of truth for its
 registration and approval status. Run the installed `/Applications` copy before
-enabling it in Settings. If approval is required, allow Voice Activation under
+enabling it in Settings. If approval is required, allow YapOps under
 **System Settings > General > Login Items**, then retry the toggle.
 
 Do not register the temporary bundle under `.build`. Unit tests inject a fake
@@ -131,7 +142,7 @@ Keychain under that bundle identity and exits before creating the menu-bar UI:
 ```bash
 read -r -s narration_key
 printf '%s\n' "$narration_key" | \
-  /Applications/VoiceActivation.app/Contents/MacOS/VoiceActivation \
+  /Applications/YapOps.app/Contents/MacOS/YapOps \
   --store-elevenlabs-key-from-stdin
 unset narration_key
 ```

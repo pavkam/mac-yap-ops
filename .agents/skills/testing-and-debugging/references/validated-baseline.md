@@ -27,8 +27,8 @@ with Xcode selected. Do not mistake that local limitation for a package defect.
 `swift test list --skip-build` discovered 519 tests in 61 suites after a
 successful test build:
 
-- `VoiceActivationCoreTests`: 246 tests
-- `VoiceActivationAppTests`: 273 tests
+- `YapOpsCoreTests`: 246 tests
+- `YapOpsAppTests`: 273 tests
 
 The exact count is informational and will change. Discovery, the complete
 519-test run, a focused Core test, and a 29-test App presentation suite

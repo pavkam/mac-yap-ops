@@ -27,4 +27,4 @@ app:
 	./scripts/build-app.sh
 
 run: app
-	open .build/VoiceActivation.app
+	open .build/YapOps.app

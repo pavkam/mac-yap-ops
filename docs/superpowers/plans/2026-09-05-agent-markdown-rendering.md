@@ -31,8 +31,8 @@ SPDX-License-Identifier: MIT
 
 **Files:**
 - Modify: `Package.swift`
-- Create: `Tests/VoiceActivationAppTests/AgentMarkdownRenderingTests.swift`
-- Create: `Sources/VoiceActivationApp/AgentMarkdownRendering.swift`
+- Create: `Tests/YapOpsAppTests/AgentMarkdownRenderingTests.swift`
+- Create: `Sources/YapOpsApp/AgentMarkdownRendering.swift`
 
 **Interfaces:**
 - Produces: `AgentMarkdownLinkPolicy.allows(_:)`, non-networking image
@@ -42,7 +42,7 @@ SPDX-License-Identifier: MIT
 - [ ] **Step 1: Add the pinned SwiftPM dependency**
 
 Add `MarkdownUI` at exact version `2.4.1` and link its product only to
-`VoiceActivationApp`.
+`YapOpsApp`.
 
 - [ ] **Step 2: Write failing policy tests**
 
@@ -75,11 +75,11 @@ Run `swift test --filter AgentMarkdownRenderingTests` and require zero failures.
 ### Task 2: Replace the visual parser at the existing view boundary
 
 **Files:**
-- Modify: `Sources/VoiceActivationApp/AgentMarkdownView.swift`
-- Modify: `Sources/VoiceActivationApp/AgentRunPanelContent.swift`
-- Modify: `Sources/VoiceActivationApp/AgentRunPanelActivity.swift`
-- Read: `Sources/VoiceActivationApp/AgentMarkdownFormatter.swift`
-- Read: `Tests/VoiceActivationAppTests/AgentMarkdownFormatterTests.swift`
+- Modify: `Sources/YapOpsApp/AgentMarkdownView.swift`
+- Modify: `Sources/YapOpsApp/AgentRunPanelContent.swift`
+- Modify: `Sources/YapOpsApp/AgentRunPanelActivity.swift`
+- Read: `Sources/YapOpsApp/AgentMarkdownFormatter.swift`
+- Read: `Tests/YapOpsAppTests/AgentMarkdownFormatterTests.swift`
 
 **Interfaces:**
 - Consumes: `AgentMarkdownRendering.theme(accent:style:)` and

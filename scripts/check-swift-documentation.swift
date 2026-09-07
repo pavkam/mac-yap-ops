@@ -36,11 +36,11 @@ else {
 }
 
 let graphURL = enumerator.compactMap { $0 as? URL }.first {
-    $0.lastPathComponent == "VoiceActivationCore.symbols.json"
+    $0.lastPathComponent == "YapOpsCore.symbols.json"
         && $0.deletingLastPathComponent().lastPathComponent == "symbolgraph"
 }
 guard let graphURL else {
-    fputs("VoiceActivationCore public symbol graph was not generated.\n", stderr)
+    fputs("YapOpsCore public symbol graph was not generated.\n", stderr)
     exit(1)
 }
 
@@ -48,7 +48,7 @@ let data = try Data(contentsOf: graphURL)
 guard let graph = try JSONSerialization.jsonObject(with: data) as? [String: Any],
       let symbols = graph["symbols"] as? [[String: Any]]
 else {
-    fputs("VoiceActivationCore public symbol graph has an unexpected format.\n", stderr)
+    fputs("YapOpsCore public symbol graph has an unexpected format.\n", stderr)
     exit(1)
 }
 
@@ -74,4 +74,4 @@ guard undocumented.isEmpty else {
     exit(1)
 }
 
-print("Swift documentation verified: every public VoiceActivationCore symbol has DocC comments.")
+print("Swift documentation verified: every public YapOpsCore symbol has DocC comments.")

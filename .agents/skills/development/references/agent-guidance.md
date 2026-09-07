@@ -27,7 +27,7 @@ dense prose to game the count.
 
 - Skill descriptions contain only concrete trigger conditions and start with
   `Use when...`; workflow belongs in the body.
-- Project-local skill names do not repeat `voice-activation`; the repository
+- Project-local skill names do not repeat `yapops`; the repository
   already supplies that context.
 - Every project skill appears in the root routing table.
 - Every reference is linked from its `SKILL.md` with the exact condition that

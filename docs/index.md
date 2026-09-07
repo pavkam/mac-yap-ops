@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: 2026 Alexandru Ciobanu (alex+git@ciobanu.org)
 SPDX-License-Identifier: MIT
 -->
 
-# Voice Activation documentation
+# YapOps documentation
 
 Use this index to move from first launch to the guide that owns a setting,
 runtime contract, investigation, or contributor workflow.
@@ -16,7 +16,7 @@ runtime contract, investigation, or contributor workflow.
 | [Configuration reference](configuration.md) | Check saved defaults, field meanings, validation, and persistence. |
 | [Troubleshooting](troubleshooting.md) | Recover from common permission, recognition, command, agent, audio, and login-item symptoms. |
 
-## Use Voice Activation
+## Use YapOps
 
 | Guide | Use it to |
 | --- | --- |

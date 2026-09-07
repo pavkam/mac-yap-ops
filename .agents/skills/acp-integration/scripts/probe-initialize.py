@@ -27,8 +27,8 @@ def main(command: list[str]) -> None:
             "protocolVersion": 1,
             "clientCapabilities": {},
             "clientInfo": {
-                "name": "voice-activation-compatibility-probe",
-                "title": "Voice Activation compatibility probe",
+                "name": "yapops-compatibility-probe",
+                "title": "YapOps compatibility probe",
                 "version": "1",
             },
         },

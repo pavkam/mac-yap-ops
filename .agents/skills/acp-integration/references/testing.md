@@ -88,6 +88,12 @@ python3 .agents/skills/acp-integration/scripts/test-probe-process-group.py
 
 ## Debug in layers
 
+Real-runner composition fixtures must return both `agentInfo.name` and
+`agentInfo.version` from `initialize`. A missing version fails capability
+decoding before publication; tests awaiting acknowledgement or listening then
+hang. `YapOpsAppContinuityCompositionTests` covers the complete fake handshake
+and both durable-publication failure paths.
+
 1. Inspect redacted lifecycle diagnostics and correlate connection, session,
    request, run, and turn identifiers.
 2. Capture the smallest malformed frame shape without recording its content.

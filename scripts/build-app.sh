@@ -11,18 +11,18 @@ configuration="${CONFIGURATION:-release}"
 sign_identity="${SIGN_IDENTITY:--}"
 
 cd "$project_dir"
-swift build -c "$configuration" --product VoiceActivation
+swift build -c "$configuration" --product YapOps
 binary_dir="$(swift build -c "$configuration" --show-bin-path)"
-app_path="$project_dir/.build/VoiceActivation.app"
+app_path="$project_dir/.build/YapOps.app"
 contents_path="$app_path/Contents"
 
 rm -rf "$app_path"
 mkdir -p "$contents_path/MacOS" "$contents_path/Resources"
-cp "$binary_dir/VoiceActivation" "$contents_path/MacOS/VoiceActivation"
-cp "$project_dir/Sources/VoiceActivationApp/Resources/Info.plist" "$contents_path/Info.plist"
-cp "$project_dir/Sources/VoiceActivationApp/Resources/VoiceActivation.icns" "$contents_path/Resources/VoiceActivation.icns"
+cp "$binary_dir/YapOps" "$contents_path/MacOS/YapOps"
+cp "$project_dir/Sources/YapOpsApp/Resources/Info.plist" "$contents_path/Info.plist"
+cp "$project_dir/Sources/YapOpsApp/Resources/YapOps.icns" "$contents_path/Resources/YapOps.icns"
 for sound_name in AgentThinking CaptureEnd CaptureStart ToolComplete ToolFailed ToolStart; do
-    cp "$project_dir/Sources/VoiceActivationApp/Resources/$sound_name.wav" \
+    cp "$project_dir/Sources/YapOpsApp/Resources/$sound_name.wav" \
         "$contents_path/Resources/$sound_name.wav"
 done
 

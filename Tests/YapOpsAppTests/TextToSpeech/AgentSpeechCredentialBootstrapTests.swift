@@ -1,0 +1,48 @@
+// SPDX-FileCopyrightText: 2026 Alexandru Ciobanu (alex+git@ciobanu.org)
+// SPDX-License-Identifier: MIT
+
+import Testing
+
+@testable import YapOpsApp
+
+struct AgentSpeechCredentialBootstrapTests {
+    @MainActor @Test func importIfRequested_WhenFlagIsAbsent_DoesNotReadOrStore() async throws {
+        let store = SilentAgentSpeechCredentialStore()
+        var readCount = 0
+
+        let imported = try AgentSpeechCredentialBootstrap.importIfRequested(
+            arguments: ["YapOps"],
+            readCredential: {
+                readCount += 1
+                return "secret"
+            },
+            store: store)
+
+        #expect(!imported)
+        #expect(readCount == 0)
+        #expect(try await store.loadElevenLabsAPIKey() == nil)
+    }
+
+    @MainActor @Test func importIfRequested_WhenStdinContainsKey_StoresTrimmedValue() async throws {
+        let store = SilentAgentSpeechCredentialStore()
+
+        let imported = try AgentSpeechCredentialBootstrap.importIfRequested(
+            arguments: ["YapOps", "--store-elevenlabs-key-from-stdin"],
+            readCredential: { "  secret  " },
+            store: store)
+
+        #expect(imported)
+        #expect(try await store.loadElevenLabsAPIKey() == "secret")
+    }
+
+    @MainActor @Test func importIfRequested_WhenStdinIsEmpty_RejectsIt() {
+        let store = SilentAgentSpeechCredentialStore()
+
+        #expect(throws: AgentSpeechCredentialBootstrapError.missingCredential) {
+            try AgentSpeechCredentialBootstrap.importIfRequested(
+                arguments: ["YapOps", "--store-elevenlabs-key-from-stdin"],
+                readCredential: { "   " },
+                store: store)
+        }
+    }
+}

@@ -61,7 +61,7 @@ SPDX-License-Identifier: MIT
 - Split a stateful type with `Type+Responsibility.swift` extensions when state
   ownership should remain together. Extract a helper only for a real invariant,
   lifecycle, synchronization boundary, or independently testable policy.
-- Every public `VoiceActivationCore` declaration needs useful `///` DocC,
+- Every public `YapOpsCore` declaration needs useful `///` DocC,
   including cases and members. Describe intent, ownership, side effects, bounds,
   and failure behavior.
 

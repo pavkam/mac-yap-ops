@@ -52,7 +52,7 @@ Rejected alternatives:
 
 ## Core artifact model
 
-`VoiceActivationCore` gains public, documented content values for the retained
+`YapOpsCore` gains public, documented content values for the retained
 parts of ACP blocks:
 
 ```swift
