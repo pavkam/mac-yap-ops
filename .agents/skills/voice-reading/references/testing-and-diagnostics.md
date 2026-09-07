@@ -47,6 +47,12 @@ Every queue or lifecycle change should cover the applicable cases:
 Do not assert real synthesis latency, voice quality, installed voice names, or
 network availability in automated tests.
 
+Speech queue readiness checks use cancellation-aware waits bounded by the
+suite's one-minute time limit. A one-second wall-clock deadline can expire while
+other AppKit tests occupy the main actor under Thread Sanitizer, falsely failing
+correct synthesis/playback. Keep explicit latency assertions confined to the
+event-tracking test's measured playback phase.
+
 ## Battle-tested audio failures
 
 | Symptom | First split in the evidence | Guardrail |

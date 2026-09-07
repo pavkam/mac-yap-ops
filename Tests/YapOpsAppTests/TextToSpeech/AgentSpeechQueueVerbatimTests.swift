@@ -165,12 +165,10 @@ struct AgentSpeechQueueVerbatimTests {
     private func waitUntil(
         condition: @escaping @MainActor () -> Bool
     ) async throws {
-        let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: .seconds(1))
-        while clock.now < deadline {
-            if condition() { return }
+        // The suite's time limit bounds readiness without imposing a playback
+        // latency assertion on a shared main actor under Thread Sanitizer.
+        while !condition() {
             try await Task.sleep(for: .milliseconds(10))
         }
-        Issue.record("Timed out waiting for speech playback")
     }
 }

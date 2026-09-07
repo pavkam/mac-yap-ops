@@ -56,6 +56,11 @@ short and bounded by a test time limit.
 
 ## App suites
 
+Speech queue readiness waits are cancellation-aware and bounded by their suite's
+one-minute limit. They do not impose a one-second synthesis/playback deadline on
+the shared main actor. The event-tracking test measures playback latency only
+after its controlled synthesis request is ready.
+
 App tests cover Settings and lifecycle composition, non-activating panels,
 presentation and layout, Markdown rendering policy, hot-key conversion, speech
 request policy, audio orchestration, narration, Keychain and login-item

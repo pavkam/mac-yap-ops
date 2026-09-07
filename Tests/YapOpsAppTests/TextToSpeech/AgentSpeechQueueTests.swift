@@ -490,19 +490,14 @@ struct AgentSpeechQueueTests {
 
     @MainActor
     private func waitUntil(
-        timeout: Duration = .seconds(1),
         condition: @escaping @MainActor () async -> Bool
     ) async throws {
-        let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: timeout)
-        while clock.now < deadline {
-            if await condition() { return }
+        // Readiness is a correctness condition; the suite's time limit bounds
+        // this cancellation-aware wait even under sanitizer/main-actor load.
+        while !(await condition()) {
             try await Task.sleep(for: .milliseconds(10))
         }
-        throw TimeoutError()
     }
-
-    private struct TimeoutError: Error {}
 }
 
 @MainActor
