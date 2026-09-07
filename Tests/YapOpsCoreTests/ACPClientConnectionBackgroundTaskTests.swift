@@ -221,15 +221,15 @@ extension ACPClientConnectionTests {
         let transport = FakeACPTransport()
         let connection = try await establishAIRConnection(transport: transport)
         var probe: BackgroundTaskLifecycleProbe? = BackgroundTaskLifecycleProbe()
-        weak var weakProbe = probe
+        let probeIsAlive = { [weak probe] in probe != nil }
         await connection.setSessionEventHandler { [probe] _ in probe?.observe() }
         probe = nil
-        #expect(weakProbe != nil)
+        #expect(probeIsAlive())
 
         await connection.close()
-        for _ in 0..<10 where weakProbe != nil { await Task.yield() }
+        for _ in 0..<10 where probeIsAlive() { await Task.yield() }
 
-        #expect(weakProbe == nil)
+        #expect(!probeIsAlive())
         #expect(await transport.observedTerminationCount() == 1)
     }
 
