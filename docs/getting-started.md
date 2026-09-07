@@ -24,8 +24,8 @@ xcodebuild -version
 ## Clone and verify
 
 ```bash
-git clone https://github.com/pavkam/mac-yapops.git
-cd mac-yapops
+git clone https://github.com/pavkam/mac-yap-ops.git
+cd mac-yap-ops
 make test
 make app
 ```
