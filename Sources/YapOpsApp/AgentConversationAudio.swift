@@ -321,7 +321,7 @@ final class AgentConversationAudioPresenter {
             toolSoundPhases.removeAll(keepingCapacity: true)
             player.stopSpeaking()
             updateWorking(true)
-        case .followUpDispositionChanged:
+        case .followUpDispositionChanged, .inputContextCaptured:
             break
         case .notice:
             break
@@ -587,6 +587,8 @@ extension AgentRunLifecycleEvent {
             ]
         case .followUpDispositionChanged(let runID, _, _):
             ["kind": "follow_up_disposition_changed", "run_id": runID.uuidString]
+        case .inputContextCaptured(let runID, _, _):
+            ["kind": "input_context_captured", "run_id": runID.uuidString]
         case .notice(let runID, let message):
             [
                 "kind": "notice", "run_id": runID.uuidString,

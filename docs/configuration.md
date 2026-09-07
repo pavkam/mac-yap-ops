@@ -119,6 +119,15 @@ record safe capture metadata. The selected ACP provider receives the prompt
 blocks and may retain or replay them under its own session policy; YapOps does not restore an old snapshot after restart.
 See [ACP agent harness](agent-harness.md) for the exact schema and bounds.
 
+Each request in the conversation shows a compact summary of its captured app,
+window, text selection, and selected items. **No selection** means the app did
+not provide selected text or items; permission and timeout messages explain
+limited captures. A queued follow-up keeps its own captured context even when
+you switch apps before it runs. These summaries describe capture, while the
+separate delivery status shows whether the follow-up was queued or submitted.
+Summaries stay in memory and do not include selected text, window titles, or
+file paths. Restored provider history does not recreate old context summaries.
+
 ## Validation summary
 
 A valid saved configuration has:

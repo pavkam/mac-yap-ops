@@ -98,6 +98,7 @@ struct AgentRunPanelView: View {
                 .onChange(of: snapshot.artifacts) { followBottom(proxy) }
                 .onChange(of: snapshot.backgroundTasks) { followBottom(proxy) }
                 .onChange(of: snapshot.timeline) { followBottom(proxy) }
+                .onChange(of: snapshot.promptContext) { followBottom(proxy) }
                 .onChange(of: snapshot.notices) { followBottom(proxy) }
                 .onChange(of: snapshot.plan) { followBottom(proxy) }
                 .onChange(of: snapshot.permissions) { followBottom(proxy) }

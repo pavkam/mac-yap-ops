@@ -65,7 +65,8 @@ final class AgentRunPresentation {
             artifacts: artifactProjection.artifacts,
             omittedArtifactCount: artifactProjection.omittedCount,
             backgroundTasks: backgroundTasks,
-            ignoredBackgroundTaskCount: ignoredBackgroundTaskCount)
+            ignoredBackgroundTaskCount: ignoredBackgroundTaskCount,
+            promptContext: promptContext)
     }
 
     let startsElapsedTimer: Bool
@@ -78,6 +79,7 @@ final class AgentRunPresentation {
     var profileIcon: ProfileIcon?
     var accent: WakeProfileAccent?
     var prompt: String?
+    var promptContext: AgentInputContextSummary?
     var providerName: String?
     var phase: AgentRunPhase?
     var voiceInput = ""
@@ -153,6 +155,7 @@ final class AgentRunPresentation {
         profileIcon = profile.icon
         accent = profile.accent
         self.prompt = prompt
+        promptContext = nil
         if case .agent(let configuration) = profile.action {
             providerName = configuration.displayName
         } else {
@@ -487,6 +490,7 @@ final class AgentRunPresentation {
         profileIcon = nil
         accent = nil
         prompt = nil
+        promptContext = nil
         providerName = nil
         phase = nil
         voiceInput = ""

@@ -63,7 +63,12 @@ extension AgentRunPanelView {
     }
 
     func requestCard(_ snapshot: AgentRunSnapshot) -> some View {
-        userBubble(snapshot.prompt, label: "Request")
+        VStack(alignment: .leading, spacing: 4) {
+            userBubble(snapshot.prompt, label: "Request")
+            if let context = snapshot.promptContext {
+                AgentInputContextView(summary: context)
+            }
+        }
     }
 
     func miniAgentMark(_ snapshot: AgentRunSnapshot) -> some View {
@@ -183,6 +188,9 @@ extension AgentRunPanelView {
     func userMessageBlock(_ message: AgentUserMessagePresentation) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             userBubble(message.text, label: "Follow-up")
+            if let context = message.contextSummary {
+                AgentInputContextView(summary: context)
+            }
             if let transport = message.transportPresentation {
                 Text(transport.caption)
                     .font(.caption2)

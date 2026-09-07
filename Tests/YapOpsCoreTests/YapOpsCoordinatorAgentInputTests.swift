@@ -109,7 +109,11 @@ extension YapOpsCoordinatorTests {
         let fixture = try Fixture(profiles: [try makeAgentProfile()])
         await fixture.agentRunner.delayMidTurnOffers()
         var dispositions: [AgentConversationInputDisposition] = []
+        var contextInputIDs: [UUID?] = []
         fixture.coordinator.onAgentRunEvent = { event in
+            if case .inputContextCaptured(_, let inputID, _) = event {
+                contextInputIDs.append(inputID)
+            }
             guard case let .followUpDispositionChanged(_, _, disposition) = event else {
                 return
             }
@@ -127,6 +131,7 @@ extension YapOpsCoordinatorTests {
         try await Task.sleep(for: .milliseconds(30))
 
         #expect(dispositions.isEmpty)
+        #expect(contextInputIDs == [nil])
         #expect(fixture.coordinator.agentInputRoutingTask == nil)
         #expect(fixture.coordinator.pendingAgentPrompts.isEmpty)
         await fixture.agentRunner.complete(runIndex: 0)

@@ -137,7 +137,8 @@ extension YapOpsCoordinator {
                 profile: profile,
                 configuration: agentConfiguration,
                 runID: runID,
-                generation: generation)
+                generation: generation,
+                isInitialInput: true)
             startConversationListening()
         }
     }
@@ -187,7 +188,8 @@ extension YapOpsCoordinator {
         profile: WakeProfile,
         configuration: AgentHarnessConfiguration,
         runID: UUID,
-        generation: Int
+        generation: Int,
+        isInitialInput: Bool = false
     ) {
         agentTurnHadActivity = false
         guard
@@ -255,7 +257,8 @@ extension YapOpsCoordinator {
                     guard let resolvedPrompt = await self?.resolveAgentPrompt(
                         input: input,
                         runID: runID,
-                        generation: generation)
+                        generation: generation,
+                        contextInputID: isInitialInput ? nil : input.id)
                     else { return }
                     prompt = resolvedPrompt
                 }
@@ -293,6 +296,12 @@ extension YapOpsCoordinator {
                         generation: generation)
                 }
             }
+        }
+        if promptWithoutContext != nil {
+            onAgentRunEvent?(.inputContextCaptured(
+                runID: runID,
+                inputID: isInitialInput ? nil : input.id,
+                summary: .init(context: nil)))
         }
     }
 

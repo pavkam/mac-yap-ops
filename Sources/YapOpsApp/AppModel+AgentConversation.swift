@@ -200,6 +200,8 @@ extension AppModel {
                 runID: runID,
                 inputID: inputID,
                 disposition: disposition)
+        case .inputContextCaptured(let runID, let inputID, let summary):
+            agentRunPresentation.receiveContext(runID: runID, inputID: inputID, summary: summary)
         case .notice(let runID, let message):
             agentRunPresentation.receiveNotice(runID: runID, message: message)
         case .turnStarted(let runID):

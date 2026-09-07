@@ -179,6 +179,7 @@ struct AgentUserMessagePresentation: Equatable, Identifiable, Sendable {
     let messageID: String?
     var text: String
     var disposition: AgentConversationInputDisposition?
+    var contextSummary: AgentInputContextSummary?
 
     init(
         id: UUID,
@@ -276,6 +277,7 @@ struct AgentRunSnapshot: Equatable, Sendable {
     let omittedArtifactCount: UInt64
     let backgroundTasks: [AgentBackgroundTaskPresentation]
     let ignoredBackgroundTaskCount: UInt64
+    let promptContext: AgentInputContextSummary?
 
     var hasActiveBackgroundTasks: Bool {
         backgroundTasks.contains(where: \.isActive)
@@ -307,7 +309,8 @@ struct AgentRunSnapshot: Equatable, Sendable {
         artifacts: [AgentArtifactPresentation] = [],
         omittedArtifactCount: UInt64 = 0,
         backgroundTasks: [AgentBackgroundTaskPresentation] = [],
-        ignoredBackgroundTaskCount: UInt64 = 0)
+        ignoredBackgroundTaskCount: UInt64 = 0,
+        promptContext: AgentInputContextSummary? = nil)
     {
         self.runID = runID
         self.profileID = profileID
@@ -315,6 +318,7 @@ struct AgentRunSnapshot: Equatable, Sendable {
         self.profileIcon = profileIcon
         self.accent = accent
         self.prompt = prompt
+        self.promptContext = promptContext
         self.providerName = providerName
         self.phase = phase
         self.voiceInput = voiceInput

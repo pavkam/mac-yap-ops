@@ -103,7 +103,8 @@ extension YapOpsCoordinator {
                         runID: runID,
                         generation: generation,
                         profileID: profileID,
-                        inputID: input.id)
+                        inputID: input.id,
+                        contextSummary: .init(context: context))
                 }
             } catch {
                 guard !Task.isCancelled else { return }
@@ -132,7 +133,8 @@ extension YapOpsCoordinator {
         runID: UUID,
         generation: Int,
         profileID: UUID,
-        inputID: UUID
+        inputID: UUID,
+        contextSummary: AgentInputContextSummary
     ) {
         guard ownsAgentInputRouting(
             token: token,
@@ -169,6 +171,9 @@ extension YapOpsCoordinator {
                 startNextAgentPrompt()
             }
         }
+        guard activeAgentRunID == runID else { return }
+        onAgentRunEvent?(.inputContextCaptured(
+            runID: runID, inputID: inputID, summary: contextSummary))
     }
 
     private func failAgentInputRouting(

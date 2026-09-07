@@ -38,6 +38,7 @@ extension YapOpsCoordinatorTests {
             from: 0)
 
         #expect(Array(lifecycleEvents.dropFirst()) == [
+            .inputContextCaptured(runID: runID, inputID: nil, summary: .init(context: nil)),
             .historyRestorationStarted(
                 runID: runID,
                 token: token,

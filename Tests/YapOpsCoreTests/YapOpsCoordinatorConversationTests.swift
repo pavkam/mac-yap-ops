@@ -263,6 +263,7 @@ extension YapOpsCoordinatorTests {
         #expect(startedProfile == agentProfile)
         #expect(prompt == "inspect the parser")
         #expect(Array(lifecycleEvents.dropFirst()) == [
+            .inputContextCaptured(runID: runID, inputID: nil, summary: .init(context: nil)),
             .event(
                 runID: runID,
                 event: .connected(agentName: "Codex", sessionID: "session-1")),
@@ -612,7 +613,10 @@ extension YapOpsCoordinatorTests {
         let profile = try makeAgentProfile()
         let fixture = try Fixture(profiles: [profile])
         var lifecycleEvents: [AgentRunLifecycleEvent] = []
-        fixture.coordinator.onAgentRunEvent = { lifecycleEvents.append($0) }
+        fixture.coordinator.onAgentRunEvent = { event in
+            if case .inputContextCaptured = event { return }
+            lifecycleEvents.append(event)
+        }
         fixture.coordinator.setPassiveEnabled(true)
         fixture.speech.emit("agent old run", isFinal: true)
         await waitUntil {

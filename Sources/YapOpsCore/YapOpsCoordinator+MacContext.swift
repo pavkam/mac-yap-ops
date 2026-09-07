@@ -50,7 +50,8 @@ extension YapOpsCoordinator {
     func resolveAgentPrompt(
         input: PendingAgentInput,
         runID: UUID,
-        generation: Int
+        generation: Int,
+        contextInputID: UUID?
     ) async -> AgentPrompt? {
         let context = await input.contextCapture?.value
         guard
@@ -59,6 +60,8 @@ extension YapOpsCoordinator {
             activeAgentRunID == runID,
             activeAgentInput?.id == input.id
         else { return nil }
+        onAgentRunEvent?(.inputContextCaptured(
+            runID: runID, inputID: contextInputID, summary: .init(context: context)))
         return AgentPrompt(request: input.text, context: context)
     }
 

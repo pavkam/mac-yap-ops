@@ -18,6 +18,11 @@ public enum AgentRunLifecycleEvent: Equatable, Sendable {
         runID: UUID,
         inputID: UUID,
         disposition: AgentConversationInputDisposition)
+    /// Capture metadata for one request; a nil input ID identifies the initial request.
+    case inputContextCaptured(
+        runID: UUID,
+        inputID: UUID?,
+        summary: AgentInputContextSummary)
     /// The coordinator produced a concise recoverable lifecycle notice.
     case notice(runID: UUID, message: String)
     /// A queued prompt began one harness turn.

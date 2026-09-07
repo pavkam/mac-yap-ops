@@ -10,7 +10,11 @@ extension YapOpsCoordinatorTests {
     @MainActor @Test func cancelAgentRun_WhenAgentIsExecuting_CancelsTurnAndKeepsConversationListening() async throws {
         let fixture = try Fixture(profiles: [try makeAgentProfile()])
         var lifecycleEvents: [AgentRunLifecycleEvent] = []
-        fixture.coordinator.onAgentRunEvent = { lifecycleEvents.append($0) }
+        fixture.coordinator.onAgentRunEvent = { event in
+            // These assertions cover cancellation ordering; context has its own contract tests.
+            if case .inputContextCaptured = event { return }
+            lifecycleEvents.append(event)
+        }
         fixture.coordinator.setPassiveEnabled(true)
         fixture.speech.emit("agent cancel this", isFinal: true)
         await waitUntil {
@@ -42,7 +46,11 @@ extension YapOpsCoordinatorTests {
     @MainActor @Test func stop_WhenAgentIsExecuting_ShutsDownRunnerAndIgnoresLateEvents() async throws {
         let fixture = try Fixture(profiles: [try makeAgentProfile()])
         var lifecycleEvents: [AgentRunLifecycleEvent] = []
-        fixture.coordinator.onAgentRunEvent = { lifecycleEvents.append($0) }
+        fixture.coordinator.onAgentRunEvent = { event in
+            // These assertions cover cancellation ordering; context has its own contract tests.
+            if case .inputContextCaptured = event { return }
+            lifecycleEvents.append(event)
+        }
         fixture.coordinator.setPassiveEnabled(true)
         fixture.speech.emit("agent stop this", isFinal: true)
         await waitUntil {
@@ -82,7 +90,11 @@ extension YapOpsCoordinatorTests {
     @MainActor @Test func cancelAgentRun_WhenCalledBeforeRunnerEntry_DoesNotStartAgent() async throws {
         let fixture = try Fixture(profiles: [try makeAgentProfile()])
         var lifecycleEvents: [AgentRunLifecycleEvent] = []
-        fixture.coordinator.onAgentRunEvent = { lifecycleEvents.append($0) }
+        fixture.coordinator.onAgentRunEvent = { event in
+            // These assertions cover cancellation ordering; context has its own contract tests.
+            if case .inputContextCaptured = event { return }
+            lifecycleEvents.append(event)
+        }
         fixture.coordinator.setPassiveEnabled(true)
 
         fixture.speech.emit("agent never start", isFinal: true)
@@ -159,7 +171,11 @@ extension YapOpsCoordinatorTests {
         let profile = try makeAgentProfile()
         let fixture = try Fixture(profiles: [profile])
         var lifecycleEvents: [AgentRunLifecycleEvent] = []
-        fixture.coordinator.onAgentRunEvent = { lifecycleEvents.append($0) }
+        fixture.coordinator.onAgentRunEvent = { event in
+            // These assertions cover cancellation ordering; context has its own contract tests.
+            if case .inputContextCaptured = event { return }
+            lifecycleEvents.append(event)
+        }
         fixture.coordinator.setPassiveEnabled(true)
         fixture.speech.emit("agent first", isFinal: true)
         await waitUntil {
@@ -213,7 +229,11 @@ extension YapOpsCoordinatorTests {
         let profile = try makeAgentProfile()
         let fixture = try Fixture(profiles: [profile])
         var lifecycleEvents: [AgentRunLifecycleEvent] = []
-        fixture.coordinator.onAgentRunEvent = { lifecycleEvents.append($0) }
+        fixture.coordinator.onAgentRunEvent = { event in
+            // These assertions cover cancellation ordering; context has its own contract tests.
+            if case .inputContextCaptured = event { return }
+            lifecycleEvents.append(event)
+        }
         fixture.coordinator.setPassiveEnabled(true)
         fixture.speech.emit("agent first", isFinal: true)
         await waitUntil {
@@ -265,7 +285,11 @@ extension YapOpsCoordinatorTests {
             snapshot: makeMacContextSnapshot(target: target))
         let fixture = try Fixture(profiles: [profile], contextCapturer: context)
         var lifecycleEvents: [AgentRunLifecycleEvent] = []
-        fixture.coordinator.onAgentRunEvent = { lifecycleEvents.append($0) }
+        fixture.coordinator.onAgentRunEvent = { event in
+            // These assertions cover cancellation ordering; context has its own contract tests.
+            if case .inputContextCaptured = event { return }
+            lifecycleEvents.append(event)
+        }
         fixture.coordinator.setPassiveEnabled(true)
         fixture.speech.emit("agent first", isFinal: true)
         await waitUntil {

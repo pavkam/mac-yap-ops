@@ -194,13 +194,9 @@ extension AgentRunTimelineItem {
         case .message(var message):
             message.text = transform(message.text, byteCount)
             return .message(message)
-        case .userMessage(let message):
-            return .userMessage(
-                AgentUserMessagePresentation(
-                    id: message.id,
-                    messageID: message.messageID,
-                    text: transform(message.text, byteCount),
-                    disposition: message.disposition))
+        case .userMessage(var message):
+            message.text = transform(message.text, byteCount)
+            return .userMessage(message)
         case .thinking(var thinking):
             var remainingBytes = byteCount
             var retainedDetails: [AgentThinkingDetail] = []
