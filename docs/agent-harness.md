@@ -249,7 +249,8 @@ the oldest terminal row; if all 32 are active, it is ignored with content-free
 diagnostics.
 
 Minimizing or hiding the non-activating panel does not cancel work. **Stop turn**
-cancels only the current prompt. **End conversation** retains sessions with
+cancels the current prompt and discards pending follow-ups and unfinished capture.
+**End conversation** retains sessions with
 active tasks, and close/delete stays disabled until those tasks are terminal.
 Only **Stop background task** sends `_session/async_task/stop` with the exact
 opaque session and task IDs. A true response shows **Stop requested** until the

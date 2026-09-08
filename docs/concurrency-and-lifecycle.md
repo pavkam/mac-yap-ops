@@ -107,9 +107,10 @@ connection answers pending permissions with cancellation, sends
 process after its grace period. Ending a conversation additionally retires live
 conversation recognition and resumes passive wake after the configured cooldown.
 
-Speaking a new follow-up while work is active uses the same path: admit the
-bounded request, invalidate current execution, cancel the turn, then start the
-next prompt only after cancellation settles.
+Stop retires the execution and recognition generations, discards active and
+pending input, and establishes cancellation ownership before publishing the
+cancelling phase. A fresh microphone session starts after cancellation settles.
+Ordinary follow-ups use validated steering or FIFO without cancelling active work.
 
 ## Bounded queues and backpressure
 

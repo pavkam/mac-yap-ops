@@ -30,7 +30,7 @@ extension YapOpsCoordinatorTests {
         await fixture.agentRunner.complete(runIndex: 0)
         try await Task.sleep(for: .milliseconds(30))
 
-        #expect(fixture.speech.startCount == 2)
+        #expect(fixture.speech.startCount == 3)
         #expect(fixture.speech.mode == .conversation)
         #expect(fixture.coordinator.state == .executing)
         guard case let .started(runID, _, _) = lifecycleEvents.first else {
@@ -41,6 +41,68 @@ extension YapOpsCoordinatorTests {
         #expect(lifecycleEvents[2] == .turnCompleted(
             runID: runID,
             result: AgentRunResult(stopReason: .cancelled)))
+    }
+
+    @MainActor @Test
+    func cancelAgentRun_DiscardsQueuedFollowUpsAndPartiallyCapturedSpeech() async throws {
+        let fixture = try Fixture(timing: .fast, profiles: [try makeAgentProfile()])
+        defer { fixture.coordinator.stop() }
+        var cancelled = false
+        var cancelledInputCount = 0
+        fixture.coordinator.onAgentRunEvent = { event in
+            if case .turnCompleted(_, let result) = event, result.stopReason == .cancelled {
+                cancelled = true
+            }
+            if case .followUpDispositionChanged(_, _, .cancelled) = event {
+                cancelledInputCount += 1
+            }
+        }
+        fixture.coordinator.setPassiveEnabled(true)
+        fixture.speech.emit("agent first", isFinal: true)
+        await waitUntil { await fixture.agentRunner.recordedInvocations().count == 1 }
+        fixture.speech.emit("queued follow up", isFinal: true)
+        await waitUntil { await fixture.agentRunner.recordedMidTurnOffers().count == 1 }
+        fixture.speech.emit("unfinished follow up")
+        await fixture.agentRunner.delayCancellation()
+
+        fixture.coordinator.cancelAgentRun()
+        #expect(fixture.coordinator.pendingAgentPrompts.isEmpty)
+        #expect(fixture.coordinator.currentTranscript.isEmpty)
+        fixture.speech.emitFromRetiredSession("late final", isFinal: true)
+        await waitUntil { await fixture.agentRunner.cancelCount == 1 }
+        await fixture.agentRunner.releaseCancellation()
+        await waitUntil { fixture.coordinator.agentCancellationTask == nil }
+
+        #expect(cancelled)
+        #expect(cancelledInputCount == 1)
+        #expect(fixture.coordinator.pendingAgentPrompts.isEmpty)
+        #expect(await fixture.agentRunner.recordedInvocations().count == 1)
+        #expect(fixture.speech.mode == .conversation)
+        await fixture.agentRunner.complete(runIndex: 0)
+    }
+
+    @MainActor @Test
+    func cancelAgentRun_InvalidatesInputBeforePublishingCancellation() async throws {
+        let fixture = try Fixture(profiles: [try makeAgentProfile()])
+        defer { fixture.coordinator.stop() }
+        fixture.coordinator.setPassiveEnabled(true)
+        fixture.speech.emit("agent first", isFinal: true)
+        await waitUntil { await fixture.agentRunner.recordedInvocations().count == 1 }
+        fixture.speech.emit("queued follow up", isFinal: true)
+        await waitUntil { await fixture.agentRunner.recordedMidTurnOffers().count == 1 }
+        let oldGeneration = fixture.coordinator.executionGeneration
+        fixture.coordinator.onAgentRunEvent = { event in
+            guard case .turnCancellationStarted = event else { return }
+            #expect(fixture.coordinator.executionGeneration != oldGeneration)
+            #expect(fixture.coordinator.pendingAgentPrompts.isEmpty)
+            #expect(fixture.coordinator.activeAgentInput == nil)
+            fixture.speech.emitFromRetiredSession("old callback", isFinal: true)
+        }
+
+        fixture.coordinator.cancelAgentRun()
+        await waitUntil { fixture.coordinator.agentCancellationTask == nil }
+        #expect(await fixture.agentRunner.recordedInvocations().count == 1)
+        await fixture.agentRunner.complete(runIndex: 0)
     }
 
     @MainActor @Test func stop_WhenAgentIsExecuting_ShutsDownRunnerAndIgnoresLateEvents() async throws {
@@ -105,7 +167,7 @@ extension YapOpsCoordinatorTests {
         }
 
         #expect(await fixture.agentRunner.recordedInvocations().isEmpty)
-        #expect(fixture.speech.startCount == 2)
+        #expect(fixture.speech.startCount == 3)
         #expect(fixture.speech.mode == .conversation)
         #expect(fixture.coordinator.state == .executing)
     }

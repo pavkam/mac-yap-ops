@@ -124,6 +124,8 @@ public enum AgentConversationInputDisposition: Equatable, Sendable {
     case queued
     /// The retained input began its ordinary prompt turn.
     case prompted
+    /// Stop discarded this pending input before its next turn could start.
+    case cancelled
     /// Delivery became ambiguous and the input will not be replayed.
     case failed
 }

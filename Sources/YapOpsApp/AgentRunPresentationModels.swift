@@ -218,6 +218,7 @@ extension AgentConversationInputDisposition {
         case .injected: "Added to current turn"
         case .queued: "Queued for next turn"
         case .prompted: "Started as next turn"
+        case .cancelled: "Cancelled before next turn"
         case .failed: "Delivery failed — say it again"
         }
     }

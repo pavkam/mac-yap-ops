@@ -493,6 +493,7 @@ extension YapOpsCoordinator {
                             runID: runID,
                             result: AgentRunResult(stopReason: .cancelled)))
                     self.state = .executing
+                    self.startConversationListening()
                 }
             }
         }

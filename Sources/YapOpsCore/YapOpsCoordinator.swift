@@ -424,7 +424,7 @@ public final class YapOpsCoordinator {
         resumePassiveIfNeeded()
     }
 
-    /// Cancels the active agent turn while retaining the conversation presentation.
+    /// Cancels the active turn, pending input, and capture while retaining the conversation.
     public func cancelAgentRun() {
         guard
             case .agent = executingAction,
@@ -444,12 +444,23 @@ public final class YapOpsCoordinator {
             event: "coordinator.agent_cancel_requested",
             fields: ["run_id": runID.uuidString])
 
-        onAgentRunEvent?(.turnCancellationStarted(runID: runID))
         executionGeneration &+= 1
-        cancelActiveAgentInput()
+        let cancelledInputs = pendingAgentPrompts.map(\.id)
+        cancelAllAgentInputs()
+        stopActiveSession()
+        conversationUtterance = ""
+        currentTranscript = ""
+        capturedCommand = ""
+        pushToTalkActive = false
+        pushToTalkContinuesConversation = false
         executionTask?.cancel()
         executionTask = nil
         beginAgentCancellation(runID: runID)
+        onAgentRunEvent?(.turnCancellationStarted(runID: runID))
+        for inputID in cancelledInputs {
+            onAgentRunEvent?(.followUpDispositionChanged(
+                runID: runID, inputID: inputID, disposition: .cancelled))
+        }
     }
 
     /// Ends the complete live agent conversation and releases its cached session.

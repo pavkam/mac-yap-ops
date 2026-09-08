@@ -344,6 +344,7 @@ extension YapOpsCoordinator {
     func startConversationListening() {
         guard
             isAgentConversationActive,
+            agentCancellationTask == nil,
             !pushToTalkActive,
             let localeID = capturedLocaleID
         else {

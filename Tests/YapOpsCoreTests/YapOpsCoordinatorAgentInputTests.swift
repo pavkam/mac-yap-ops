@@ -138,7 +138,7 @@ extension YapOpsCoordinatorTests {
     }
 
     @MainActor
-    @Test func agentConversation_WhenStopTurnIsClicked_PreservesQueuedInputForNextTurn()
+    @Test func agentConversation_WhenStopTurnIsClicked_DiscardsQueuedInputAndAcceptsFreshInput()
         async throws
     {
         let fixture = try Fixture(profiles: [try makeAgentProfile()])
@@ -152,11 +152,14 @@ extension YapOpsCoordinatorTests {
         fixture.coordinator.cancelAgentRun()
         await waitUntil {
             let cancelCount = await fixture.agentRunner.cancelCount
-            let invocationCount = await fixture.agentRunner.recordedInvocations().count
-            return cancelCount == 1 && invocationCount == 2
+            return cancelCount == 1 && fixture.coordinator.agentCancellationTask == nil
         }
+        #expect(fixture.coordinator.pendingAgentPrompts.isEmpty)
+        #expect(await fixture.agentRunner.recordedInvocations().count == 1)
+        fixture.speech.emit("fresh request", isFinal: true)
+        await waitUntil { await fixture.agentRunner.recordedInvocations().count == 2 }
         #expect(await fixture.agentRunner.recordedInvocations().map(\.prompt.request) == [
-            "first", "next",
+            "first", "fresh request",
         ])
         await fixture.agentRunner.complete(runIndex: 0)
         await fixture.agentRunner.complete(runIndex: 1)

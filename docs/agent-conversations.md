@@ -73,9 +73,9 @@ conversation-capture inactivity boundary submits the utterance as the next turn.
 The profile's push-to-talk binding is another input method for the same
 conversation. [Wake profiles](wake-profiles.md) owns the capture timing.
 
-Speaking while a turn is still active cancels that work before the follow-up
-starts. Recognized follow-ups wait in a bounded queue behind active cancellation
-and work. If the queue is full, the panel shows a bounded notice and leaves the
+Speaking while a turn is still active offers the follow-up through the provider's
+validated input route or queues it for the next turn. Recognized follow-ups wait
+in a bounded queue behind active cancellation and work. If the queue is full, the panel shows a bounded notice and leaves the
 current turn running. [Privacy and security](privacy-and-security.md) owns the
 retention limit.
 
@@ -102,9 +102,10 @@ permission request exactly once before the process is torn down.
 
 ## Stop a turn or end the conversation
 
-**Stop turn** cancels only the current provider work. The panel enters a
-cancelling phase immediately, the live conversation microphone remains
-available, and another request can start the next turn.
+**Stop turn** cancels current provider work and narration, discards queued
+follow-ups, and clears unfinished microphone input. Discarded follow-ups show
+**Cancelled before next turn**. Listening resumes with a fresh capture after
+cancellation settles, so another request can start the next turn.
 
 **End conversation** cancels active work when necessary, closes conversation
 recognition, and returns to passive wake after the normal cooldown. Saying only
