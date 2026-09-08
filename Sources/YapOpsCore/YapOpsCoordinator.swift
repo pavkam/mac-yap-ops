@@ -428,7 +428,7 @@ public final class YapOpsCoordinator {
         resumePassiveIfNeeded()
     }
 
-    /// Ends the complete live agent conversation and releases its cached session.
+    /// Ends the live conversation; the next start requests a fresh provider session.
     public func endAgentConversation() {
         diagnostics.record(category: .agent, event: "coordinator.conversation_end_requested")
         requestAgentConversationEnd(

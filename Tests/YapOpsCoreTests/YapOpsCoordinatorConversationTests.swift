@@ -257,7 +257,7 @@ extension YapOpsCoordinatorTests {
                 profileID: agentProfile.id,
                 configuration: try makeAgentConfiguration(),
                 prompt: AgentPrompt(request: "inspect the parser", context: nil),
-                restorationNeed: .visibleHistory,
+                restorationNeed: .fresh,
                 runContinuity: AgentRunContinuityRequest()),
         ])
         guard case let .started(runID, startedProfile, prompt) = lifecycleEvents.first else {

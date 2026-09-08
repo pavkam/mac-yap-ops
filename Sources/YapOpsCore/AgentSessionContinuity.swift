@@ -166,8 +166,10 @@ public struct ACPSessionRestorationCapabilities: Equatable, Sendable {
     }
 }
 
-/// The caller's restoration goal before a new prompt is sent.
+/// The caller's session selection before a new prompt is sent.
 public enum AgentSessionRestorationNeed: Equatable, Sendable {
+    /// Create a new provider session without reusing cached context or saved history.
+    case fresh
     /// Rebuild the visible conversation panel from provider replay when possible.
     case visibleHistory
     /// Continue provider-owned context without presenting historical replay.

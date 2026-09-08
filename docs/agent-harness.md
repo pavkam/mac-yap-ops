@@ -24,9 +24,11 @@ runtime capability decoding, update decoding, and terminal connection state.
 One shared `UserDefaultsAgentContinuityStore` supplies the runner and application
 lifecycle with bounded identifier-only state.
 
-One unchanged profile configuration maps to one cached process and session. A
-conversation may submit several sequential prompts to that session, but a
-connection never runs two prompts concurrently.
+A live conversation may submit several sequential prompts to its cached profile
+session, but a connection never runs two prompts concurrently. Each new
+conversation requests a fresh provider session, replacing an idle cached
+connection and bypassing durable bookmarks. Active background tasks prevent
+replacement until they finish or are stopped.
 
 ## Focused Mac-context prompt blocks
 
@@ -176,12 +178,18 @@ interactive terminal.
 
 ## Select load, resume, or a fresh session
 
-The policy is entirely capability-gated. `visible history` is the application's
-current request; `context only` is a supported runner contract for consumers
-that do not want historical presentation.
+The application requests `fresh` for the first input of each new conversation.
+It bypasses cached sessions and saved bookmarks, so previous context and history
+do not enter the new chat. Follow-ups request `visible history` to recover the
+same conversation when needed. `Context only` remains a runner contract for
+consumers that want restored context without historical presentation.
+
+Restoration operations are capability-gated; an explicit fresh start always
+uses `session/new`, regardless of restoration support.
 
 | Restoration need | `loadSession` | `sessionCapabilities.resume` | Operation |
 | --- | --- | --- | --- |
+| Fresh | any | any | `session/new`, bypass cache and bookmark |
 | Visible history | false | absent | `session/new` |
 | Visible history | false | object | `session/resume` |
 | Visible history | true | absent | `session/load` with replay |

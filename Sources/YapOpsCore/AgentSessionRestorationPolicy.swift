@@ -10,7 +10,7 @@ public enum AgentSessionRestorationPolicy {
     /// Provider presets intentionally do not participate: only the current
     /// `initialize` advertisement is authoritative.
     /// - Parameters:
-    ///   - need: Whether visible history or only provider context is required.
+    ///   - need: Whether to start fresh or restore visible history or provider context.
     ///   - capabilities: The strictly decoded runtime capability advertisement.
     /// - Returns: The one safe operation permitted by the normative capability table.
     public static func operation(

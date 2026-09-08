@@ -3,44 +3,6 @@
 
 import Foundation
 
-/// Local lifecycle failures produced while managing reusable ACP sessions.
-public enum ACPAgentRunnerError: Error, Equatable, LocalizedError, Sendable {
-    /// The user cancelled the active turn.
-    case cancelled
-    /// The runner has permanently shut down.
-    case shutDown
-    /// A second prompt arrived before the active prompt completed.
-    case turnAlreadyActive
-    /// Required control events exceeded the bounded delivery queue.
-    case eventDeliveryOverflow
-    /// ACP initialization did not complete before the startup deadline.
-    case startupTimedOut
-    /// All cached sessions are pinned by active provider-owned tasks.
-    case sessionCapacityReached
-    /// The requested provider-owned task is stale, stopped, or not stoppable.
-    case backgroundTaskUnavailable
-
-    /// A user-presentable explanation of the runner failure.
-    public var errorDescription: String? {
-        switch self {
-        case .cancelled:
-            "The agent run was cancelled."
-        case .shutDown:
-            "The agent runner has shut down."
-        case .turnAlreadyActive:
-            "Another agent prompt is already active."
-        case .eventDeliveryOverflow:
-            "The agent produced more control events than can be delivered safely."
-        case .startupTimedOut:
-            "The agent did not finish starting within 12 seconds."
-        case .sessionCapacityReached:
-            "Four agent sessions already have active background tasks."
-        case .backgroundTaskUnavailable:
-            "The background task is no longer available to stop."
-        }
-    }
-}
-
 /// A replaceable asynchronous delay source used by runner deadlines and tests.
 public protocol ACPAgentRunnerClock: Sendable {
     /// Suspends for the supplied logical duration.
@@ -165,14 +127,14 @@ public actor ACPAgentRunner: AgentHarnessRunning {
         self.diagnostics = diagnostics
     }
 
-    /// Runs a prompt using the profile's cached session, recovering stale sessions once.
+    /// Runs a prompt in a fresh or retained profile session, recovering stale sessions once.
     ///
     /// - Parameters:
     ///   - admission: The single-use gate claimed before any runner side effect.
     ///   - profileID: The owner of the reusable ACP session.
     ///   - configuration: The validated process and permission configuration.
     ///   - prompt: The typed request and optional Mac context sent to the harness.
-    ///   - restorationNeed: Whether restoration should replay visible history.
+    ///   - restorationNeed: Whether to start fresh or restore provider context and history.
     ///   - runContinuity: Consume-on-publication interrupted-work metadata.
     ///   - onEvent: Receives ordered source-qualified stream events.
     /// - Returns: The terminal result reported by the harness.

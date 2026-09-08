@@ -133,7 +133,9 @@ After the conversation ends:
 - **Delete** hides the panel and releases that retained presentation from
   memory.
 
-Starting a new conversation replaces the previously retained presentation.
+Starting a new conversation replaces the retained presentation and creates a new
+provider session. End the current conversation before triggering the profile
+again. Reopening a minimized or hidden panel keeps its existing conversation.
 
 ## Listen to replies
 
@@ -176,9 +178,14 @@ limits.
 
 ## Recover after provider failure
 
-Each profile reuses its own initialized ACP session while its configuration is
-unchanged. YapOps keeps a bounded least-recently-used set of idle
-profile sessions and evicts an idle one under pressure.
+Follow-ups within a conversation reuse its initialized ACP session. Starting a
+new conversation creates a fresh session without loading saved history or
+previous provider context. If the profile still has active background tasks,
+finish or stop those tasks first; YapOps preserves their session and explains
+why a new conversation cannot start yet.
+
+YapOps keeps a bounded least-recently-used set of profile sessions and evicts
+an idle one under pressure.
 
 If a provider forgets a cached session before producing output or requesting
 permission, YapOps creates a new process and retries that prompt once.

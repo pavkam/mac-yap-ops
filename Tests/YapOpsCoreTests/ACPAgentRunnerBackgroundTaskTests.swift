@@ -6,6 +6,36 @@ import Testing
 @testable import YapOpsCore
 
 extension ACPAgentRunnerTests {
+    @Test func freshConversation_WithActiveBackgroundTask_PreservesTaskAndRefusesReuse() async throws {
+        let profileID = UUID()
+        let transport = FakeACPTransport()
+        let factory = RunnerTransportFactory(transports: [transport])
+        let runner = ACPAgentRunner(transportFactory: factory)
+        let directory = "/tmp/fresh-background"
+        try await completeAIRTurn(
+            runner: runner, transport: transport, profileID: profileID,
+            sessionID: "task-session", workingDirectory: directory, spawnedTaskID: "task-1")
+        let messagesBefore = await transport.allSentMessages()
+
+        await #expect(throws: ACPAgentRunnerError.backgroundTasksActive) {
+            try await runner.run(
+                profileID: profileID,
+                configuration: try makeConfiguration(workingDirectory: directory, preset: .claude),
+                prompt: AgentPrompt(request: "New request", context: nil),
+                restorationNeed: .fresh, onEvent: { _ in })
+        }
+
+        #expect(await transport.observedTerminationCount() == 0)
+        #expect(await factory.createdConfigurations().count == 1)
+        #expect(await transport.allSentMessages() == messagesBefore)
+        let envelopes = RunnerSessionEnvelopeRecorder()
+        await runner.setSessionEventHandler { await envelopes.record($0) }
+        try await transport.feed(backgroundTaskTerminalMessage(taskID: "task-1", sessionID: "task-session"))
+        let terminal = await envelopes.nextEnvelope()
+        #expect(terminal.sessionID == "task-session")
+        await runner.shutdown()
+    }
+
     @Test func sessionEnvelope_PreservesExactProfileSessionAndLiveSource() {
         let profileID = UUID()
         let event = backgroundTaskProgress(taskID: "task-7")

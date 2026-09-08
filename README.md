@@ -56,7 +56,8 @@ see [App identity after the rename](docs/packaging.md#app-identity-after-the-ren
   generated images, PDFs, documents, and local resources; ordered turns,
   bounded voice follow-ups, per-input delivery state, provider-exposed thinking
   and tools, spoken permission choices, cancellation, retained output controls,
-  and capability-gated ACP session restoration across application launches.
+  explicit microphone pause/resume, and a fresh provider session for every new
+  conversation. Follow-ups retain their conversation context.
 - Bounded background-task continuity for the exact Claude Agent ACP 0.73.0 AIR
   contract: up to four live sessions and 32 task rows per session, with exact
   typed stop controls. Minimizing keeps work visible without stealing focus;

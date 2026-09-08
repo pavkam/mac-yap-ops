@@ -14,7 +14,14 @@ extension ACPAgentRunner {
         onEvent: @escaping @Sendable (AgentRunStreamEvent) async -> Void
     ) async throws -> ACPAgentConnectionAcquisition {
         let providerFingerprint = AgentProviderFingerprint.make(configuration: configuration)
-        if let cached = records[profileID],
+        if restorationNeed == .fresh,
+            let existing = records[profileID],
+            !existing.activeBackgroundTaskIDs.isEmpty
+        {
+            throw ACPAgentRunnerError.backgroundTasksActive
+        }
+        if restorationNeed != .fresh,
+            let cached = records[profileID],
             cached.configuration == configuration,
             cached.connection != nil,
             cached.exitStatus == nil,
@@ -63,7 +70,7 @@ extension ACPAgentRunner {
         }
 
         var restoration: AgentSessionRestorationRequest?
-        if !skipBookmark && !providerFingerprintChanged {
+        if restorationNeed != .fresh && !skipBookmark && !providerFingerprintChanged {
             do {
                 if let bookmark = try await continuityStore.bookmark(for: profileID) {
                     try ensureActiveTurn(token: turnToken)

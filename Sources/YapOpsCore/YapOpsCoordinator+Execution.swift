@@ -269,7 +269,7 @@ extension YapOpsCoordinator {
                     profileID: profile.id,
                     configuration: configuration,
                     prompt: prompt,
-                    restorationNeed: .visibleHistory,
+                    restorationNeed: isInitialInput ? .fresh : .visibleHistory,
                     runContinuity: runContinuity,
                     onEvent: { [weak self] streamEvent in
                         let receivedAtUptime = DispatchTime.now().uptimeNanoseconds
