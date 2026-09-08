@@ -89,6 +89,12 @@ child test process. When the parent is sanitized, inject the already-loaded
 `libclang_rt.*_dynamic.dylib` into the child before it loads the test bundle;
 loading Thread Sanitizer after `dlopen` leaves its interceptors unusable.
 
+If an isolated window test passes but its child crashes in autorelease cleanup,
+check `isReleasedWhenClosed` before changing timing or isolation. Zombie tracing
+confirmed `NSKVONotifying_NSWindow release` after deallocation in the menu-shadow
+and action-dock tests. Swift-owned test windows must set it to `false` before
+closing; retain off-screen placement and unconditional teardown.
+
 ## macOS state boundaries
 
 When a file selection has no resource links, inspect whether the selected AX row

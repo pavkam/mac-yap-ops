@@ -114,6 +114,8 @@ struct MenuContentViewTests {
             styleMask: [.borderless],
             backing: .buffered,
             defer: false)
+        // Swift owns this window; close must not release it a second time.
+        window.isReleasedWhenClosed = false
         window.animationBehavior = .none
         window.hasShadow = true
         window.contentView = hostingView

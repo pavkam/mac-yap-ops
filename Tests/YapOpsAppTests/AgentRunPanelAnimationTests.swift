@@ -45,6 +45,8 @@ struct AgentRunPanelAnimationTests {
             styleMask: [.borderless],
             backing: .buffered,
             defer: false)
+        // Swift owns this window; close must not release it a second time.
+        window.isReleasedWhenClosed = false
         window.animationBehavior = .none
         window.contentView = hostingView
         window.setFrameOrigin(NSPoint(x: -10_000, y: -10_000))
