@@ -27,6 +27,7 @@ xcodebuild -version
 git clone https://github.com/pavkam/mac-yap-ops.git
 cd mac-yap-ops
 make test
+make setup-signing  # Once per Mac; macOS may request Keychain authorization
 make app
 ```
 
@@ -78,9 +79,16 @@ capture behavior.
 
 ## Use a stable development build
 
-`make app` uses an ad-hoc signature by default. macOS may ask for privacy access
-again when that executable changes. For regular use, sign with an installed
-development identity and move the resulting app to `/Applications`:
+`make setup-signing` creates one **YapOps Local Development** identity in your
+user Keychain. Subsequent `make app` builds reuse that key and certificate, so
+rebuilding does not change the identity macOS uses for permission grants. Keep
+launching the same app path; `/Applications/YapOps.app` is suitable for regular use.
+
+Moving from an older ad-hoc build to this identity may require one final
+permission approval. If Accessibility still shows On for the old build, re-add
+the newly signed app in System Settings and relaunch it.
+
+An existing Apple development identity can be selected explicitly:
 
 ```bash
 SIGN_IDENTITY="Apple Development: Your Name (TEAMID)" make app

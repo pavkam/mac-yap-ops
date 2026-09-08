@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Alexandru Ciobanu (alex+git@ciobanu.org)
 # SPDX-License-Identifier: MIT
 
-.PHONY: build test app run check-license check-agent-guidance check-structure check-documentation check
+.PHONY: build test app run check-license check-agent-guidance check-structure check-documentation check-packaging setup-signing check
 
 check-license:
 	./scripts/check-license-headers.sh
@@ -15,7 +15,13 @@ check-structure:
 check-documentation:
 	./scripts/check-swift-documentation.swift
 
-check: check-license check-agent-guidance check-structure check-documentation
+check-packaging:
+	python3 scripts/test-build-app.py
+
+setup-signing:
+	./scripts/setup-local-signing.sh
+
+check: check-license check-agent-guidance check-structure check-documentation check-packaging
 
 build:
 	swift build

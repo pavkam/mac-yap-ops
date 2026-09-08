@@ -133,6 +133,7 @@ then [Configuration](docs/configuration.md),
 ```bash
 make build
 make test
+make setup-signing  # Once per Mac
 make app
 make check
 ```

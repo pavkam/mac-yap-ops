@@ -53,12 +53,14 @@ project.
 ```bash
 make build                 # Debug SwiftPM build
 make test                  # Complete test suite
+make setup-signing         # Once per Mac: create/reuse local Keychain identity
 make app                   # Release app bundle, signed and verified
 make run                   # Build and open the app bundle
 make check-license         # SPDX, MIT, binary metadata, and app copyright
 make check-agent-guidance  # Guidance routing and 150-line limit
 make check-structure       # 700-line Swift source and test limit
 make check-documentation   # Public YapOpsCore DocC coverage
+make check-packaging       # Isolated packaging tests; no real signing or Keychain
 make check                 # All repository quality checks
 ```
 

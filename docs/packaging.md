@@ -13,6 +13,7 @@ lifecycle; `swift run` does not exercise those boundaries.
 ## Build the app bundle
 
 ```bash
+make setup-signing  # Once per Mac
 make app
 ```
 
@@ -74,23 +75,42 @@ Launch at Login from the installed YapOps copy if needed.
 
 ## Sign the bundle
 
-`SIGN_IDENTITY` defaults to `-`, which creates an ad-hoc signature suitable for
-CI and short-lived development builds:
+`SIGN_IDENTITY` defaults to **YapOps Local Development**, a persistent local
+identity in the user's Keychain. Provision it once:
 
 ```bash
+make setup-signing
 make app
 ```
 
-For repeated privacy, Keychain, or Launch at Login testing, use an installed
-identity so the application identity remains stable:
+Setup creates a ten-year self-signed certificate for code signing. Its private
+key is imported as non-exportable, with `/usr/bin/codesign` authorized to use it.
+Certificate trust is limited to code signing in the user domain; it does not
+add TLS or system-wide trust. Temporary key material is owner-only and removed
+on exit. macOS may request Keychain authorization during setup or first use.
+No private key or certificate password is stored in the repository.
+
+Repeating setup reuses the existing identity. It never silently replaces a
+missing, expired, or broken key. Regular builds never generate keys and never
+fall back to ad-hoc signing. The previous app remains intact if signing or
+verification fails; only a verified staged bundle replaces it.
+
+This identity supports local development. It is not an Apple Developer ID or a
+notarization credential. To use an existing Apple identity, override it:
 
 ```bash
 SIGN_IDENTITY="Apple Development: Your Name (TEAMID)" make app
 ```
 
-Signing is applied with `codesign --force --deep`. The repository does not
-create an Xcode project or archive, notarize the app, or produce a distribution
-installer.
+Disposable builds can explicitly opt into ad-hoc signing:
+
+```bash
+SIGN_IDENTITY=- make app
+```
+
+Ad-hoc rebuilds change the code identity and can invalidate privacy grants.
+Do not alternate signing identities for the app you use day to day. The
+repository does not create an Xcode project, archive, or distribution installer.
 
 ## Verify the bundle
 
@@ -118,10 +138,11 @@ ditto .build/YapOps.app /Applications/YapOps.app
 open /Applications/YapOps.app
 ```
 
-The default ad-hoc signature can still cause macOS to request privacy access
-again after an executable rebuild. A stable development signature plus a stable
-installation path provides the predictable identity needed for repeated manual
-testing.
+Keep the same signing identity and installation path across updates. Moving
+from an older ad-hoc build to the persistent identity may require one final
+permission approval. An old Accessibility entry can still appear enabled while
+its stored code requirement rejects the new app; re-add the newly signed copy
+and relaunch it. Do not reset unrelated privacy permissions.
 
 ## Enable Launch at Login
 
@@ -154,7 +175,8 @@ save it through Settings instead.
 ## CI packaging
 
 The `📦 Package app` job runs only after repository quality, build-and-test, and
-Thread Sanitizer jobs succeed. It calls `make app`, then verifies the executable,
+Thread Sanitizer jobs succeed. It explicitly sets `SIGN_IDENTITY=-` for
+`make app`, then verifies the executable,
 icon, capture sounds, `Info.plist`, and code signature. CI's ad-hoc signature
 proves bundle integrity, not distribution readiness or notarization.
 
