@@ -30,7 +30,7 @@ connection never runs two prompts concurrently.
 
 ## Focused Mac-context prompt blocks
 
-With **Include focused Mac context in agent requests** enabled (the saved
+With **Include Mac context** enabled (the saved
 default), an admitted ACP request carries a separately captured one-shot
 snapshot. The snapshot belongs to the utterance that admitted it: a queued
 follow-up does not reuse the first target or silently inspect the later

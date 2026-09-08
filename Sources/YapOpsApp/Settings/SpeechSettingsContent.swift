@@ -9,7 +9,7 @@ struct SpeechSettingsContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            settingsToggle(
+            SettingsToggleRow(
                 title: "Read inherited replies aloud",
                 detail: "Profiles set to Inherit use this app-wide voice.",
                 isOn: $model.readsAgentRepliesAloud)
@@ -32,6 +32,7 @@ struct SpeechSettingsContent: View {
                 SecureField("sk_…", text: $model.elevenLabsAPIKey)
                     .font(.system(.body, design: .monospaced))
                     .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("Global ElevenLabs credential")
                 Label(
                     "Stored once in macOS Keychain and shared by profiles using ElevenLabs.",
                     systemImage: "key.fill")
@@ -41,7 +42,7 @@ struct SpeechSettingsContent: View {
 
             Divider()
 
-            settingsToggle(
+            SettingsToggleRow(
                 title: "Agent activity sounds",
                 detail: "Plays distinct thinking, tool-start, completion, and failure cues.",
                 isOn: $model.playsAgentWorkingSound)
@@ -59,21 +60,6 @@ struct SpeechSettingsContent: View {
             try? await Task.sleep(for: .milliseconds(450))
             guard !Task.isCancelled else { return }
             await model.loadTextToSpeechVoices(for: .elevenLabs)
-        }
-    }
-
-    private func settingsToggle(
-        title: String,
-        detail: String,
-        isOn: Binding<Bool>
-    ) -> some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).fontWeight(.medium)
-                Text(detail).font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer()
-            Toggle("", isOn: isOn).labelsHidden()
         }
     }
 }

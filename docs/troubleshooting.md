@@ -103,12 +103,12 @@ Provider preset and authentication details are in
 
 ## An agent lacks focused Mac context
 
-Open **Settings… > Mac context** and confirm **Include focused Mac context in
-agent requests** is on, then **Save Settings**. It defaults to on, but it only
-applies to ACP agent requests; direct commands are intentionally unchanged.
+Open **Settings… > Application settings** and confirm **Include Mac context**
+is on, then **Save Settings**. It defaults to on, but it only applies to ACP
+agent requests; direct commands are intentionally unchanged.
 
 The displayed Accessibility status refreshes without prompting. If it says
-**Accessibility not authorized**, choose **Enable Accessibility…** and complete
+**App name only**, choose **Enable Accessibility…** and complete
 macOS's prompt. YapOps never asks automatically. Before authorization,
 the agent can still receive the frozen app name and bundle identifier with
 `captureState: "accessibility_not_authorized"`; it cannot receive protected

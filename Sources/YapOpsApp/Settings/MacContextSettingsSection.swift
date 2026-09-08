@@ -13,7 +13,7 @@ struct MacContextSettingsPresentation {
     let accessStatus: MacContextAccessStatus
     var isEnabled = true
 
-    let toggleLabel = "Include focused Mac context in agent requests"
+    let toggleLabel = "Include Mac context"
     let disclosureText = "When enabled, YapOps sends the focused app’s name and bundle identifier, focused window title and document URL, selected text, and up to eight selected resource links outside YapOps to the selected ACP provider."
 
     var state: State {
@@ -72,7 +72,7 @@ struct MacContextSettingsSection: View {
     }
 
     var body: some View {
-        MacContextSettingsCard(
+        MacContextSettingsContent(
             isEnabled: $model.capturesMacContext,
             accessStatus: model.macContextAccessStatus,
             enableAccessibility: actions.enableAccessibility)
@@ -80,7 +80,7 @@ struct MacContextSettingsSection: View {
     }
 }
 
-struct MacContextSettingsCard: View {
+struct MacContextSettingsContent: View {
     @Binding var isEnabled: Bool
     let accessStatus: MacContextAccessStatus
     let enableAccessibility: () -> Void
@@ -98,23 +98,20 @@ struct MacContextSettingsCard: View {
     }
 
     var body: some View {
-        SettingsCard(
-            title: "Mac context",
-            subtitle: "Give your agent the app, text, and files you’re working with.",
-            systemImage: "macwindow")
-        {
-            Toggle(presentation.toggleLabel, isOn: $isEnabled)
-                .fontWeight(.medium)
+        VStack(alignment: .leading, spacing: 12) {
+            SettingsToggleRow(
+                title: presentation.toggleLabel,
+                detail: "Share the focused app, window, selected text, and file links with your agent.",
+                isOn: $isEnabled)
 
-            HStack(alignment: .top, spacing: 11) {
+            HStack(alignment: .top, spacing: 8) {
                 Image(systemName: presentation.symbolName)
-                    .font(.title3)
                     .foregroundStyle(statusColor)
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(presentation.accessStatusText)
-                        .font(.callout.weight(.semibold))
+                        .font(.caption.weight(.semibold))
                     Text(presentation.detailText)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -122,32 +119,26 @@ struct MacContextSettingsCard: View {
                 }
                 Spacer(minLength: 0)
             }
-            .padding(12)
-            .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
             .accessibilityElement(children: .combine)
 
             if presentation.showsEnableAccessibilityButton {
                 Button("Enable Accessibility…", action: enableAccessibility)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.bordered)
                     .controlSize(.regular)
-                Text("Approve YapOps in System Settings, then return here.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .help("Approve YapOps in System Settings, then return here.")
             }
 
             DisclosureGroup("What your agent receives") {
-                Text(presentation.disclosureText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 4)
-            }
-            .font(.caption)
-
-            Text("Save Settings to apply changes. Screenshots and clipboard content are not included.")
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(presentation.disclosureText)
+                    Text("Screenshots, clipboard content, and file contents are never included.")
+                }
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 4)
+            }
+            .font(.caption)
         }
     }
 }

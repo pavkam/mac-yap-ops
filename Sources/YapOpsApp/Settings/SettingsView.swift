@@ -8,6 +8,7 @@ struct SettingsView: View {
     @Bindable var model: AppModel
     @Bindable var launchAtLogin: LaunchAtLoginSetting
     @Environment(\.dismissWindow) private var dismissWindow
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var saved = false
 
     var body: some View {
@@ -15,10 +16,9 @@ struct SettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     header
-                    MacContextSettingsSection(model: model)
+                    applicationSection
                     voiceSection
                     conversationSection
-                    applicationSection
                     privacyNote
                 }
                 .padding(28)
@@ -29,7 +29,13 @@ struct SettingsView: View {
             footer
                 .padding(.horizontal, 28)
                 .padding(.vertical, 16)
-                .background(.bar)
+                .background {
+                    if reduceTransparency {
+                        Color(nsColor: .windowBackgroundColor)
+                    } else {
+                        Rectangle().fill(.bar)
+                    }
+                }
         }
         .frame(width: 720, height: 740)
         .background(Color(nsColor: .windowBackgroundColor))
@@ -50,6 +56,7 @@ struct SettingsView: View {
         HStack(spacing: 16) {
             YapOpsMark(tint: headerTint)
                 .frame(width: 52, height: 52)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("YapOps")
@@ -77,38 +84,25 @@ struct SettingsView: View {
             subtitle: "Control how YapOps integrates with macOS.",
             systemImage: SettingsSectionSymbol.application.rawValue)
         {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Launch at Login")
-                        .fontWeight(.medium)
-                    Text("Managed by macOS in System Settings › General › Login Items.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                if launchAtLogin.isBusy {
-                    ProgressView()
-                        .controlSize(.small)
-                }
-
-                Toggle(
-                    "",
-                    isOn: Binding(
-                        get: { launchAtLogin.isEnabled },
-                        set: { enabled in
-                            Task { await launchAtLogin.setEnabled(enabled) }
-                        }))
-                    .labelsHidden()
-                    .disabled(launchAtLogin.isBusy)
-            }
+            SettingsToggleRow(
+                title: "Launch at Login",
+                detail: "Start YapOps when you log in to your Mac. Changes apply immediately.",
+                isOn: Binding(
+                    get: { launchAtLogin.isEnabled },
+                    set: { enabled in
+                        Task { await launchAtLogin.setEnabled(enabled) }
+                    }),
+                isBusy: launchAtLogin.isBusy)
 
             if let error = launchAtLogin.errorMessage {
                 Label(error, systemImage: "exclamationmark.circle.fill")
                     .font(.caption)
                     .foregroundStyle(.red)
             }
+
+            Divider()
+
+            MacContextSettingsSection(model: model)
         }
     }
 
@@ -152,24 +146,12 @@ struct SettingsView: View {
 
             Divider()
 
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Always listen for wake phrases")
-                        .fontWeight(.medium)
-                    Text("Recognition stays on-device while passive listening is enabled.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                Toggle(
-                    "",
-                    isOn: Binding(
-                        get: { model.passiveEnabled },
-                        set: { model.setPassiveEnabled($0) }))
-                    .labelsHidden()
-            }
+            SettingsToggleRow(
+                title: "Always listen for wake phrases",
+                detail: "Recognition stays on-device. Changes apply immediately.",
+                isOn: Binding(
+                    get: { model.passiveEnabled },
+                    set: { model.setPassiveEnabled($0) }))
         }
     }
 
@@ -195,6 +177,10 @@ struct SettingsView: View {
                 Label("Settings saved", systemImage: "checkmark.circle.fill")
                     .font(.callout)
                     .foregroundStyle(.green)
+            } else {
+                Text("Save to apply profile, speech, and context changes.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Spacer()
@@ -245,6 +231,7 @@ struct SettingsView: View {
             TextField(hint, text: text)
                 .font(monospaced ? .system(.body, design: .monospaced) : .body)
                 .textFieldStyle(.roundedBorder)
+                .accessibilityLabel(title)
         }
     }
 
@@ -270,6 +257,8 @@ extension WakeProfileAccent {
 }
 
 struct SettingsCard<Content: View>: View {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
     let title: String
     let subtitle: String
     let systemImage: String
@@ -282,10 +271,12 @@ struct SettingsCard<Content: View>: View {
                     .font(.title3)
                     .foregroundStyle(.tint)
                     .frame(width: 24)
+                    .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
                         .font(.headline)
+                        .accessibilityAddTraits(.isHeader)
                     Text(subtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -295,10 +286,21 @@ struct SettingsCard<Content: View>: View {
             content
         }
         .padding(18)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .background {
+            if reduceTransparency {
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(Color(nsColor: .controlBackgroundColor))
+            } else {
+                RoundedRectangle(cornerRadius: 14).fill(.regularMaterial)
+            }
+        }
         .overlay {
             RoundedRectangle(cornerRadius: 14)
-                .stroke(.separator.opacity(0.65), lineWidth: 1)
+                .stroke(
+                    contrast == .increased
+                        ? Color.primary.opacity(0.5)
+                        : Color(nsColor: .separatorColor).opacity(0.65),
+                    lineWidth: 1)
         }
     }
 }

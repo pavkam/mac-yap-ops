@@ -189,7 +189,7 @@ extension AppModelTests {
         let unauthorized = MacContextSettingsPresentation(accessStatus: .notAuthorized)
         let authorized = MacContextSettingsPresentation(accessStatus: .authorized)
 
-        #expect(unauthorized.toggleLabel == "Include focused Mac context in agent requests")
+        #expect(unauthorized.toggleLabel == "Include Mac context")
         #expect(unauthorized.accessStatusText == "App name only")
         #expect(unauthorized.showsEnableAccessibilityButton)
         #expect(authorized.accessStatusText == "Ready for Mac context")

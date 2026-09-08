@@ -10,13 +10,14 @@ Open **Settings…** from the menu-bar panel to edit the configuration.
 
 ## When changes take effect
 
-Profile, locale, shortcut, and conversation-audio edits take effect only after
-**Save Settings** succeeds. A successful save closes Settings and restarts the
+Profile, locale, shortcut, Mac context, and conversation-audio edits take effect
+only after **Save Settings** succeeds. A successful save closes Settings and restarts the
 affected runtime boundaries. A validation error keeps the window open and shows
 the field that needs attention.
 
-**Launch at Login** is different: macOS owns that registration and changes it
-immediately, without waiting for **Save Settings**.
+**Launch at Login** changes the macOS registration immediately. **Always listen
+for wake phrases** also applies immediately. Both controls say so next to the
+switch; neither waits for **Save Settings**.
 
 ## Voice and application settings
 
@@ -27,7 +28,7 @@ immediately, without waiting for **Save Settings**.
 | Read inherited replies aloud | On | Allows profiles set to Inherit to use the app-wide voice. |
 | Default reply voice | Automatic macOS voice | Selects the backend and voice inherited by profiles. |
 | Agent activity sounds | On | Plays bounded thinking and tool-transition cues. |
-| Include focused Mac context in agent requests | On | Sends one bounded focused-app snapshot only with admitted ACP requests. Direct commands never receive it. |
+| Include Mac context | On | Sends one bounded focused-app snapshot only with admitted ACP requests. Direct commands never receive it. |
 | Launch at Login | Off in a fresh macOS registration | Registers the current bundle through Service Management. |
 
 Each profile may inherit the default reply voice, disable narration, or select
@@ -84,14 +85,18 @@ wire and lifecycle contract.
 
 ## Focused Mac context and Accessibility
 
-The Mac context card appears near the top of Settings. **Ready for Mac context**
-means capture is enabled and Accessibility is authorized. **App name only**
-means the agent can identify the focused app, but needs Accessibility access for
-window details and selections. **Mac context is off** means capture is disabled.
+The **Application settings** section groups **Launch at Login** and
+**Include Mac context** near the top of Settings. Context details stay behind
+**What your agent receives**; the permission action appears only when needed.
+
+**Ready for Mac context** means capture is enabled and Accessibility is
+authorized. **App name only** means the agent can identify the focused app, but
+needs Accessibility access for window details and selections. **Mac context is
+off** means capture is disabled.
 Save Settings to apply a changed toggle.
 
-**Include focused Mac context in agent requests** defaults to On. After a
-successful **Save Settings**, each admitted ACP request may include a one-shot
+**Include Mac context** defaults to On. After a successful **Save Settings**,
+each admitted ACP request may include a one-shot
 snapshot for the app that was frontmost when that utterance was admitted. It is
 not a continuous observer and it does not re-read a later selection while a
 turn is queued. Turning it off prevents target lookup and native context capture;
