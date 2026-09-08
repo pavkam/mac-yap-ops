@@ -10,22 +10,15 @@ struct SpeechLocalePicker: View {
     @State private var supportedIdentifiers: [String] = []
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text("Speech language")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-            Picker("Speech language", selection: $localeID) {
-                ForEach(SpeechLocaleOption.options(
-                    supportedIdentifiers: supportedIdentifiers,
-                    selectedIdentifier: localeID)) { option in
-                    Text(option.title).tag(option.id)
-                }
+        Picker("Speech language", selection: $localeID) {
+            ForEach(SpeechLocaleOption.options(
+                supportedIdentifiers: supportedIdentifiers,
+                selectedIdentifier: localeID)) { option in
+                Text(option.title).tag(option.id)
             }
-            .pickerStyle(.menu)
-            .labelsHidden()
-            .help("Choose the language and region you speak. Save Settings to apply.")
         }
-        .frame(maxWidth: 360, alignment: .leading)
+        .pickerStyle(.menu)
+        .help("Choose the language and region you speak. Save Settings to apply.")
         .task {
             let identifiers = await loadIdentifiers()
             guard !Task.isCancelled else { return }

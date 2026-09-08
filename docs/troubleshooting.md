@@ -46,7 +46,7 @@ Security**, quit YapOps, and launch it again.
 ## Passive listening reports an on-device error
 
 The selected locale has no on-device speech recognizer on this Mac. Choose
-another **Speech language** in Settings. Passive wake listening is
+another **Speech language** in **Settings… > Speech & Audio**. Passive wake listening is
 deliberately unavailable without on-device recognition.
 
 ## Capture ends without running a command
@@ -103,7 +103,7 @@ Provider preset and authentication details are in
 
 ## An agent lacks focused Mac context
 
-Open **Settings… > Application settings** and confirm **Include Mac context**
+Open **Settings… > General** and confirm **Include Mac context**
 is on, then **Save Settings**. It defaults to on, but it only applies to ACP
 agent requests; direct commands are intentionally unchanged.
 
@@ -241,7 +241,7 @@ or a description over 8 KiB discards the whole extension. A complete spoken
 confirmation over 20,000 characters, or one that cannot fit the speech queue,
 stays visible but is silent; it is never truncated or partly spoken.
 
-**Read inherited replies aloud** and the profile's reply-speech choice also gate
+**Read replies aloud** and the profile's reply-speech choice also gate
 confirmation audio. Multiple cards retain arrival order. Resolving one stops
 queued speech for it and requeues only the remaining prompts. Cancelling the turn
 settles every pending permission once and adds no local `Stopped.` or result
@@ -251,7 +251,7 @@ message that follows it.
 ## Conversation speech or sounds do not play
 
 Confirm the profile's reply-speech setting and, for inherited speech,
-**Read inherited replies aloud**; then save. Also enable **Agent activity
+**Read replies aloud**; then save. Also enable **Agent activity
 sounds** if those cues are missing. macOS speech uses a system voice for the
 selected locale. For ElevenLabs, check the Keychain-backed API key, Voice ID,
 network access, and **Test voice**. A 401 preview failure means the global API

@@ -6,7 +6,17 @@ SPDX-License-Identifier: MIT
 # Configuration reference
 
 Use this reference to check saved defaults, field meanings, and validation.
-Open **Settings…** from the menu-bar panel to edit the configuration.
+Open **Settings…** from the menu-bar panel to edit the configuration. Settings
+uses the standard macOS window with three labeled tabs and remembers the
+last selected tab:
+
+- **General**: Launch at Login and focused Mac context, including Accessibility.
+- **Profiles**: assistant identity, trigger, target, shortcut, and reply voice.
+- **Speech & Audio**: speech language, wake listening, default reply voice,
+  the optional ElevenLabs API key, and activity sounds.
+
+Switching tabs preserves your edits. **Save Settings** applies edits from every
+tab; validation errors remain visible beside Save regardless of the active tab.
 
 ## When changes take effect
 
@@ -25,7 +35,7 @@ switch; neither waits for **Save Settings**.
 | --- | --- | --- |
 | Always listen | On | Runs passive wake recognition when at least one profile is enabled. |
 | Speech language | Current macOS locale | Shows English language and region names, such as English (United States). Selects the Apple Speech recognizer and matching system voice. |
-| Read inherited replies aloud | On | Allows profiles set to Inherit to use the app-wide voice. |
+| Read replies aloud | On | Allows profiles set to Inherit to use the app-wide voice. |
 | Default reply voice | Automatic macOS voice | Selects the backend and voice inherited by profiles. |
 | Agent activity sounds | On | Plays bounded thinking and tool-transition cues. |
 | Include Mac context | On | Sends one bounded focused-app snapshot only with admitted ACP requests. Direct commands never receive it. |
@@ -91,8 +101,8 @@ wire and lifecycle contract.
 
 ## Focused Mac context and Accessibility
 
-The **Application settings** section groups **Launch at Login** and
-**Include Mac context** near the top of Settings. Context details stay behind
+The **General** tab groups **Launch at Login** and
+**Include Mac context**. Context details stay behind
 **What your agent receives**; the permission action appears only when needed.
 
 **Ready for Mac context** means capture is enabled and Accessibility is

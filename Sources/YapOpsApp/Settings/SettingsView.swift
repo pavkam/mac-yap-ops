@@ -7,38 +7,24 @@ import YapOpsCore
 struct SettingsView: View {
     @Bindable var model: AppModel
     @Bindable var launchAtLogin: LaunchAtLoginSetting
+    @Binding var selectedPane: SettingsPane
     @Environment(\.dismissWindow) private var dismissWindow
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var saved = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    header
-                    applicationSection
-                    voiceSection
-                    conversationSection
-                    privacyNote
-                }
-                .padding(28)
+        TabView(selection: $selectedPane) {
+            Tab(SettingsPane.general.title, systemImage: SettingsPane.general.symbol, value: .general) {
+                pane { generalSettings }
             }
-            .disabled(model.isSavingSettings || !model.isStartupReady)
-
-            Divider()
-            footer
-                .padding(.horizontal, 28)
-                .padding(.vertical, 16)
-                .background {
-                    if reduceTransparency {
-                        Color(nsColor: .windowBackgroundColor)
-                    } else {
-                        Rectangle().fill(.bar)
-                    }
-                }
+            Tab(SettingsPane.profiles.title, systemImage: SettingsPane.profiles.symbol, value: .profiles) {
+                pane { profileSettings }
+            }
+            Tab(SettingsPane.speech.title, systemImage: SettingsPane.speech.symbol, value: .speech) {
+                pane { speechSettings }
+            }
         }
-        .frame(width: 720, height: 740)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .frame(width: 720, height: selectedPane == .general ? 420 : 660)
+        .navigationTitle(selectedPane.title)
         .onChange(of: model.wakeProfiles) { saved = false }
         .onChange(of: model.localeID) { saved = false }
         .onChange(of: model.readsAgentRepliesAloud) { saved = false }
@@ -52,118 +38,97 @@ struct SettingsView: View {
         }
     }
 
-    private var header: some View {
-        HStack(spacing: 16) {
-            YapOpsMark(tint: headerTint)
-                .frame(width: 52, height: 52)
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("YapOps")
-                    .font(.title2.weight(.semibold))
-                Text("Use your voice to work with what’s on your Mac.")
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            Label(
-                model.statusPresentation.title,
-                systemImage: model.statusPresentation.symbolName)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(statusColor)
-                .padding(.horizontal, 11)
-                .padding(.vertical, 7)
-                .background(statusColor.opacity(0.12), in: Capsule())
-        }
-    }
-
-    private var applicationSection: some View {
-        SettingsCard(
-            title: "Application settings",
-            subtitle: "Control how YapOps integrates with macOS.",
-            systemImage: SettingsSectionSymbol.application.rawValue)
-        {
-            SettingsToggleRow(
-                title: "Launch at Login",
-                detail: "Start YapOps when you log in to your Mac. Changes apply immediately.",
-                isOn: Binding(
-                    get: { launchAtLogin.isEnabled },
-                    set: { enabled in
-                        Task { await launchAtLogin.setEnabled(enabled) }
-                    }),
-                isBusy: launchAtLogin.isBusy)
-
-            if let error = launchAtLogin.errorMessage {
-                Label(error, systemImage: "exclamationmark.circle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            }
-
+    private func pane<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(spacing: 0) {
+            content()
+                .disabled(model.isSavingSettings || !model.isStartupReady)
             Divider()
-
-            MacContextSettingsSection(model: model)
+            footer
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
         }
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 
-    private var conversationSection: some View {
-        SettingsCard(
-            title: "Speech and activity",
-            subtitle: "Choose how your assistants sound and when they speak.",
-            systemImage: SettingsSectionSymbol.agentConversation.rawValue)
-        {
-            SpeechSettingsContent(model: model)
+    private var generalSettings: some View {
+        Form {
+            Section {
+                SettingsToggleRow(
+                    title: "Launch at Login",
+                    detail: "Start YapOps when you log in. Changes apply immediately.",
+                    isOn: Binding(
+                        get: { launchAtLogin.isEnabled },
+                        set: { enabled in
+                            Task { await launchAtLogin.setEnabled(enabled) }
+                        }),
+                    isBusy: launchAtLogin.isBusy)
+                if let error = launchAtLogin.errorMessage {
+                    Label(error, systemImage: "exclamationmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            } header: {
+                Label("Startup", systemImage: "power")
+            }
+            Section {
+                MacContextSettingsSection(model: model)
+            } header: {
+                Label("Mac context", systemImage: "macwindow")
+            }
         }
+        .formStyle(.grouped)
     }
 
-    private var voiceSection: some View {
-        SettingsCard(
-            title: "Profiles",
-            subtitle: "Give each assistant its own identity, trigger, action, and voice.",
-            systemImage: SettingsSectionSymbol.voiceTrigger.rawValue)
-        {
-            SpeechLocalePicker(localeID: $model.localeID)
-
-            Divider()
-
-            VStack(spacing: 12) {
+    private var profileSettings: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Your assistants")
+                            .font(.headline)
+                            .accessibilityAddTraits(.isHeader)
+                        Text("Set each profile’s trigger, action, shortcut, and reply voice.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button {
+                        model.wakeProfiles.append(WakeProfileDraft(
+                            wakePhrase: "",
+                            urlTemplate: "https://www.google.com/search?q={urlText}",
+                            accent: nextAccent))
+                    } label: {
+                        Label("Add Profile", systemImage: "plus")
+                    }
+                }
                 ForEach($model.wakeProfiles) { $profile in
                     ProfileSettingsEditor(model: model, profile: $profile)
                 }
-
-                Button {
-                    model.wakeProfiles.append(WakeProfileDraft(
-                        wakePhrase: "",
-                        urlTemplate: "https://www.google.com/search?q={urlText}",
-                        accent: nextAccent))
-                } label: {
-                    Label("Add profile", systemImage: "plus.circle.fill")
-                }
-                .buttonStyle(.borderless)
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
-
-            Divider()
-
-            SettingsToggleRow(
-                title: "Always listen for wake phrases",
-                detail: "Recognition stays on-device. Changes apply immediately.",
-                isOn: Binding(
-                    get: { model.passiveEnabled },
-                    set: { model.setPassiveEnabled($0) }))
+            .padding(20)
         }
     }
 
-    private var privacyNote: some View {
-        Label {
-            Text("Push to talk may use Apple’s speech service when on-device recognition is unavailable.")
-        } icon: {
-            Image(systemName: "lock.shield")
-                .foregroundStyle(.secondary)
+    private var speechSettings: some View {
+        Form {
+            Section {
+                SpeechLocalePicker(localeID: $model.localeID)
+                SettingsToggleRow(
+                    title: "Always listen for wake phrases",
+                    detail: "Recognition stays on-device. Changes apply immediately.",
+                    isOn: Binding(
+                        get: { model.passiveEnabled },
+                        set: { model.setPassiveEnabled($0) }))
+            } header: {
+                Label("Listening", systemImage: "mic")
+            } footer: {
+                Label(
+                    "Push to talk may use Apple’s speech service when on-device recognition is unavailable.",
+                    systemImage: "lock.shield")
+            }
+            SpeechSettingsContent(model: model)
         }
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 4)
+        .formStyle(.grouped)
     }
 
     private var footer: some View {
@@ -177,7 +142,7 @@ struct SettingsView: View {
                     .font(.callout)
                     .foregroundStyle(.green)
             } else {
-                Text("Save to apply profile, speech, and context changes.")
+                Text("Save applies changes in all tabs.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -189,32 +154,14 @@ struct SettingsView: View {
                     saved = await SettingsSaveHandler.perform(
                         save: model.saveSettings,
                         close: {
-                            dismissWindow(id: SettingsWindowPresenter.windowID)
+                            dismissWindow()
                         })
                 }
             }
             .keyboardShortcut(.defaultAction)
-            .controlSize(.large)
+            .buttonStyle(.borderedProminent)
             .disabled(model.isSavingSettings || !model.isStartupReady)
         }
-    }
-
-    private var statusColor: Color {
-        switch model.state {
-        case .failed:
-            .red
-        case .capturing, .executing:
-            .orange
-        case .listening:
-            .green
-        case .disabled:
-            .secondary
-        }
-    }
-
-    private var headerTint: Color {
-        model.wakeProfiles.first(where: \WakeProfileDraft.isEnabled)?.accent.swiftUIColor
-            ?? .cyan
     }
 
     private var nextAccent: WakeProfileAccent {
@@ -234,55 +181,6 @@ extension WakeProfileAccent {
         case .pink: .pink
         case .orange: .orange
         case .green: .green
-        }
-    }
-}
-
-struct SettingsCard<Content: View>: View {
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.colorSchemeContrast) private var contrast
-    let title: String
-    let subtitle: String
-    let systemImage: String
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 11) {
-                Image(systemName: systemImage)
-                    .font(.title3)
-                    .foregroundStyle(.tint)
-                    .frame(width: 24)
-                    .accessibilityHidden(true)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title)
-                        .font(.headline)
-                        .accessibilityAddTraits(.isHeader)
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            content
-        }
-        .padding(18)
-        .background {
-            if reduceTransparency {
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(Color(nsColor: .controlBackgroundColor))
-            } else {
-                RoundedRectangle(cornerRadius: 14).fill(.regularMaterial)
-            }
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(
-                    contrast == .increased
-                        ? Color.primary.opacity(0.5)
-                        : Color(nsColor: .separatorColor).opacity(0.65),
-                    lineWidth: 1)
         }
     }
 }

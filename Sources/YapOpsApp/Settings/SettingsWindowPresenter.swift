@@ -6,7 +6,6 @@ import YapOpsCore
 
 @MainActor
 struct SettingsWindowPresenter {
-    static let windowID = "settings"
     static let live = SettingsWindowPresenter {
         NSApplication.shared.activate(ignoringOtherApps: true)
     }

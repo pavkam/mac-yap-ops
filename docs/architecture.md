@@ -181,6 +181,12 @@ See [ACP agent harness](agent-harness.md) for the wire contract and
 
 ## Settings and persistence
 
+The native SwiftUI `Settings` scene owns the Settings command and window.
+`SettingsView` separates General, Profiles, and Speech & Audio into tabs. The
+app retains the selected pane with `AppStorage`; editable values remain in the
+shared `AppModel`, so switching panes preserves drafts. Every pane shows the
+same save action and validation feedback.
+
 `AppModel` exposes editable Settings drafts separately from the last validated
 profiles used by the coordinator and global-shortcut adapter. Save validates the
 whole profile collection before persistence or shortcut replacement. A failed

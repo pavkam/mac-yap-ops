@@ -10,6 +10,8 @@ struct ProfileSettingsEditor: View {
         "magnifyingglass", "doc.text", "lightbulb", "music.note", "wand.and.stars",
     ]
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var contrast
     let model: AppModel
     @Binding var profile: WakeProfileDraft
 
@@ -26,19 +28,23 @@ struct ProfileSettingsEditor: View {
             shortcutEditor
         }
         .padding(15)
-        .background(.background.opacity(0.58), in: RoundedRectangle(cornerRadius: 12))
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
         .overlay {
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(profile.accent.swiftUIColor.opacity(0.24), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(
+                    contrast == .increased ? Color.primary.opacity(0.5)
+                        : Color(nsColor: .separatorColor),
+                    lineWidth: 1)
         }
-        .animation(.snappy(duration: 0.22), value: profile.targetKind)
-        .animation(.snappy(duration: 0.22), value: speechMode)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.22), value: profile.targetKind)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.22), value: speechMode)
     }
 
     private var identityHeader: some View {
         HStack(spacing: 11) {
             ProfileIconBadge(icon: profile.icon, accent: profile.accent)
             TextField("Profile name", text: $profile.name)
+                .accessibilityLabel("Profile name")
                 .font(.headline)
                 .textFieldStyle(.roundedBorder)
             Toggle("Enabled", isOn: $profile.isEnabled)
@@ -66,6 +72,7 @@ struct ProfileSettingsEditor: View {
             .buttonStyle(.borderless)
             .disabled(model.wakeProfiles.count == 1)
             .help("Remove profile")
+            .accessibilityLabel("Remove profile")
         }
     }
 
@@ -75,6 +82,7 @@ struct ProfileSettingsEditor: View {
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
             TextField("computer", text: $profile.wakePhrase)
+                .accessibilityLabel("Trigger phrase")
                 .textFieldStyle(.roundedBorder)
             Text("Detecting this phrase selects the profile for the entire conversation.")
                 .font(.caption)
@@ -129,10 +137,10 @@ struct ProfileSettingsEditor: View {
         switch profile.targetKind {
         case .command:
             commandEditor
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
         case .agent:
             AgentHarnessSettingsView(profile: $profile)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
         }
     }
 
@@ -161,7 +169,7 @@ struct ProfileSettingsEditor: View {
                     selection: explicitSpeechSelection,
                     previewContext: .profile(profile.id))
                     .padding(.leading, 8)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
             }
         }
     }

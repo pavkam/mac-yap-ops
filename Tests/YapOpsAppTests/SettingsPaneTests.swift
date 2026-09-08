@@ -5,11 +5,11 @@ import AppKit
 import Testing
 @testable import YapOpsApp
 
-struct SettingsSectionSymbolTests {
-    @Test(arguments: SettingsSectionSymbol.allCases)
-    func image_WhenUsedBySettingsCard_Resolves(symbol: SettingsSectionSymbol) {
+struct SettingsPaneTests {
+    @Test(arguments: SettingsPane.allCases)
+    func image_WhenUsedBySettingsTab_Resolves(pane: SettingsPane) {
         let image = NSImage(
-            systemSymbolName: symbol.rawValue,
+            systemSymbolName: pane.symbol,
             accessibilityDescription: nil)
 
         #expect(image != nil)

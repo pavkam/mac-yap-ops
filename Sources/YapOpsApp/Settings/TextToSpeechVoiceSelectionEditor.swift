@@ -12,11 +12,11 @@ struct TextToSpeechVoiceSelectionEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Backend")
+                Text("Voice provider")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
                 Spacer()
-                Picker("Backend", selection: backendID) {
+                Picker("Voice provider", selection: backendID) {
                     ForEach(model.textToSpeechBackends) { backend in
                         Text(backend.displayName).tag(backend.id)
                     }
@@ -106,7 +106,7 @@ struct TextToSpeechVoiceSelectionEditor: View {
         } else {
             Picker("Voice", selection: voiceID) {
                 if selection.backendID == .system {
-                    Text("Automatic for locale").tag("")
+                    Text("Match speech language").tag("")
                 }
                 if let selectedID = selection.voiceID,
                     !voices.contains(where: { $0.id == selectedID })

@@ -7,7 +7,7 @@ import YapOpsCore
 
 struct MenuContentView: View {
     @Bindable var model: AppModel
-    @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -314,7 +314,7 @@ struct MenuContentView: View {
             Button {
                 dismiss()
                 SettingsWindowPresenter.live.open {
-                    openWindow(id: SettingsWindowPresenter.windowID)
+                    openSettings()
                 }
             } label: {
                 Label("Settings", systemImage: "gearshape.fill")

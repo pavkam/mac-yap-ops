@@ -11,6 +11,7 @@ struct YapOpsApp: App {
     @State private var model: AppModel
     @State private var launchAtLogin: LaunchAtLoginSetting
     @State private var applicationStartup: ApplicationStartup
+    @AppStorage("settingsPane") private var settingsPane: SettingsPane = .general
 
     @MainActor
     init() {
@@ -112,12 +113,10 @@ struct YapOpsApp: App {
         .menuBarExtraStyle(.window)
         .windowStyle(.plain)
 
-        Window("YapOps Settings", id: SettingsWindowPresenter.windowID) {
-            SettingsView(model: model, launchAtLogin: launchAtLogin)
+        Settings {
+            SettingsView(model: model, launchAtLogin: launchAtLogin, selectedPane: $settingsPane)
                 .background(SettingsWindowFrontingView())
         }
-        .defaultLaunchBehavior(.suppressed)
-        .restorationBehavior(.disabled)
         .windowResizability(.contentSize)
     }
 }

@@ -20,7 +20,7 @@ Every profile combines:
 - an optional global push-to-talk shortcut; and
 - an inherited, disabled, or explicit reply voice.
 
-Add or remove profile cards in Settings, then select **Save Settings**. At least
+Add or remove profile cards in **Settings… > Profiles**, then select **Save Settings**. At least
 one valid profile must remain.
 
 ## Match a wake phrase

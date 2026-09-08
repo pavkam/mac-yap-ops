@@ -6,48 +6,48 @@ import YapOpsCore
 
 struct SpeechSettingsContent: View {
     @Bindable var model: AppModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            SettingsToggleRow(
-                title: "Read inherited replies aloud",
-                detail: "Profiles set to Inherit use this app-wide voice.",
-                isOn: $model.readsAgentRepliesAloud)
+        Group {
+            Section {
+                SettingsToggleRow(
+                    title: "Read replies aloud",
+                    detail: "Profiles set to Inherit use this app-wide voice.",
+                    isOn: $model.readsAgentRepliesAloud)
 
-            if model.readsAgentRepliesAloud {
-                Divider()
-                TextToSpeechVoiceSelectionEditor(
-                    model: model,
-                    selection: $model.defaultSpeechVoice,
-                    previewContext: .defaultVoice)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                if model.readsAgentRepliesAloud {
+                    TextToSpeechVoiceSelectionEditor(
+                        model: model,
+                        selection: $model.defaultSpeechVoice,
+                        previewContext: .defaultVoice)
+                        .transition(.opacity)
+                }
+            } header: {
+                Label("Spoken replies", systemImage: "speaker.wave.2")
             }
 
-            Divider()
-
-            VStack(alignment: .leading, spacing: 7) {
-                Text("Global ElevenLabs credential")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-                SecureField("sk_…", text: $model.elevenLabsAPIKey)
+            Section {
+                SecureField("API key", text: $model.elevenLabsAPIKey, prompt: Text("sk_…"))
                     .font(.system(.body, design: .monospaced))
                     .textFieldStyle(.roundedBorder)
-                    .accessibilityLabel("Global ElevenLabs credential")
-                Label(
-                    "Stored once in macOS Keychain and shared by profiles using ElevenLabs.",
-                    systemImage: "key.fill")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("ElevenLabs API key")
+            } header: {
+                Label("ElevenLabs API key", systemImage: "key")
+            } footer: {
+                Text("Optional. Stored in macOS Keychain and shared by profiles using ElevenLabs.")
             }
 
-            Divider()
-
-            SettingsToggleRow(
-                title: "Agent activity sounds",
-                detail: "Plays distinct thinking, tool-start, completion, and failure cues.",
-                isOn: $model.playsAgentWorkingSound)
+            Section {
+                SettingsToggleRow(
+                    title: "Agent activity sounds",
+                    detail: "Plays distinct thinking, tool-start, completion, and failure cues.",
+                    isOn: $model.playsAgentWorkingSound)
+            } header: {
+                Label("Activity sounds", systemImage: "bell")
+            }
         }
-        .animation(.snappy(duration: 0.22), value: model.readsAgentRepliesAloud)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: model.readsAgentRepliesAloud)
         .task {
             for backend in model.textToSpeechBackends where !backend.requiresCredential {
                 await model.loadTextToSpeechVoices(for: backend.id)
