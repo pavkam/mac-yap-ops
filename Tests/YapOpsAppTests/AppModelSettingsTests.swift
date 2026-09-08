@@ -496,7 +496,6 @@ extension AppModelTests {
         convertedAgentDraft.targetKind = .agent
         convertedAgentDraft.agentHarness = AgentHarnessDraft(
             preset: .custom,
-            displayName: "New agent",
             executablePath: "/agents/new",
             arguments: [],
             workingDirectory: "/projects/new",

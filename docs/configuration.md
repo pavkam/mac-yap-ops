@@ -88,12 +88,16 @@ The initial executable is `/usr/bin/open` and its argument is
 | Field | Meaning |
 | --- | --- |
 | Provider | Cursor, Codex, Claude, or a custom ACP v1 process. |
-| Display name | Label shown in the menu and conversation panel. |
 | Executable | Detected command or absolute provider-process path. |
 | Working folder | Absolute project directory sent during ACP session creation. |
 | Permission policy | Ask, scoped allow, or scoped deny behavior. |
 | System prompt | Optional bounded instructions saved with the profile. |
 | Adapter arguments | Explicit provider-process arguments with no shell parsing. |
+
+The harness name follows the selected provider automatically. Use the profile’s
+name to personalize your assistant; there is no separate harness-name field.
+Saving older settings replaces a previously edited harness name with the
+provider name while retaining its launch configuration.
 
 See [Agent providers](agent-providers.md) for setup, authentication, and prompt
 usage. [ACP agent harness](agent-harness.md) owns the exact prompt bound plus the
@@ -162,8 +166,8 @@ A valid saved configuration has:
 - wake phrases that remain unique after canonical normalization;
 - unique physical push-to-talk bindings;
 - a command executable with an absolute path and a transcript placeholder; and
-- an agent display name, absolute executable, absolute working folder, and
-  bounded system prompt.
+- an agent absolute executable, absolute working folder, and bounded system
+  prompt; the harness name is supplied automatically.
 
 If shortcut registration fails because another application owns a combination,
 YapOps restores the previously saved binding set.

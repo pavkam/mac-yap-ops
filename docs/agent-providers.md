@@ -106,7 +106,6 @@ authentication and stays in macOS Keychain.
 
 Choose **Custom**, then supply:
 
-- a display name;
 - an absolute executable path;
 - one row per direct process argument;
 - an absolute working folder;

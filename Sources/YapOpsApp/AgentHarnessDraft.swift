@@ -6,7 +6,7 @@ import YapOpsCore
 
 struct AgentHarnessDraft: Equatable {
     var preset: AgentHarnessPreset
-    var displayName: String
+    var displayName: String { preset.displayName }
     var executablePath: String
     var argumentDrafts: ArgumentDraftCollection
     var workingDirectory: String
@@ -20,7 +20,6 @@ struct AgentHarnessDraft: Equatable {
 
     init(
         preset: AgentHarnessPreset,
-        displayName: String,
         executablePath: String,
         arguments: [String],
         workingDirectory: String,
@@ -28,7 +27,6 @@ struct AgentHarnessDraft: Equatable {
         systemPrompt: String = "")
     {
         self.preset = preset
-        self.displayName = displayName
         self.executablePath = executablePath
         argumentDrafts = ArgumentDraftCollection(values: arguments)
         self.workingDirectory = workingDirectory
@@ -38,7 +36,6 @@ struct AgentHarnessDraft: Equatable {
 
     init(configuration: AgentHarnessConfiguration) {
         preset = configuration.preset
-        displayName = configuration.displayName
         executablePath = configuration.executablePath
         argumentDrafts = ArgumentDraftCollection(values: configuration.arguments)
         workingDirectory = configuration.workingDirectory
@@ -49,7 +46,6 @@ struct AgentHarnessDraft: Equatable {
     static func empty(workingDirectory: String) -> AgentHarnessDraft {
         AgentHarnessDraft(
             preset: .custom,
-            displayName: "",
             executablePath: "",
             arguments: [],
             workingDirectory: workingDirectory,
@@ -66,15 +62,12 @@ struct AgentHarnessDraft: Equatable {
 
         switch selectedPreset {
         case .cursor:
-            displayName = "Cursor"
             executablePath = ""
             arguments = ["acp"]
         case .codex:
-            displayName = "Codex"
             executablePath = ""
             arguments = ["-y", "@agentclientprotocol/codex-acp@1.8.0"]
         case .claude:
-            displayName = "Claude"
             executablePath = ""
             arguments = ["-y", "@agentclientprotocol/claude-agent-acp@0.73.0"]
         case .custom:
@@ -107,7 +100,6 @@ struct AgentHarnessDraft: Equatable {
         locator: AgentExecutableLocator = AgentExecutableLocator())
     {
         guard preset == .custom,
-              displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               executablePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               arguments.isEmpty
         else {
@@ -131,5 +123,16 @@ struct AgentHarnessDraft: Equatable {
             workingDirectory: workingDirectory,
             permissionPolicy: permissionPolicy,
             systemPrompt: systemPrompt)
+    }
+}
+
+extension AgentHarnessPreset {
+    var displayName: String {
+        switch self {
+        case .cursor: "Cursor"
+        case .codex: "Codex"
+        case .claude: "Claude"
+        case .custom: "Custom"
+        }
     }
 }

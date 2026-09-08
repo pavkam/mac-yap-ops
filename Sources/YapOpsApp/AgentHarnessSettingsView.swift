@@ -24,7 +24,7 @@ struct AgentHarnessSettingsView: View {
                     AgentProviderMark(preset: preset, tint: tint)
 
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(draft.displayName.nilIfBlank ?? preset.displayName)
+                        Text(preset.displayName)
                             .font(.system(.headline, design: .rounded).weight(.semibold))
                         Text(preset.subtitle)
                             .font(.caption)
@@ -68,16 +68,12 @@ struct AgentHarnessSettingsView: View {
                     .stroke(tint.opacity(0.22), lineWidth: 1)
             }
 
-            HStack(alignment: .bottom, spacing: 12) {
-                settingsField(
-                    "Display name",
-                    hint: "Local agent",
-                    text: $profile.agentHarness.displayName)
-
-                VStack(alignment: .leading, spacing: 7) {
+            VStack(alignment: .leading, spacing: 7) {
+                HStack {
                     Text("Permission policy")
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
+                    Spacer()
                     Picker(
                         "Permission policy",
                         selection: $profile.agentHarness.permissionPolicy)
@@ -87,13 +83,13 @@ struct AgentHarnessSettingsView: View {
                         }
                     }
                     .labelsHidden()
+                    .frame(width: 180)
                 }
-                .frame(width: 180)
-            }
 
-            Text("This is the default response to agent permission requests for this wake profile. You can still answer pending requests by voice when Ask every time is selected.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                Text("Default response to this profile’s permission requests. With Ask every time, you can answer by voice.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             systemPromptEditor(draft: draft, tint: tint)
 
@@ -146,20 +142,6 @@ struct AgentHarnessSettingsView: View {
             Text("Sent before every spoken request on this profile. Responses are still requested as Markdown.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-        }
-    }
-
-    private func settingsField(
-        _ title: String,
-        hint: String,
-        text: Binding<String>) -> some View
-    {
-        VStack(alignment: .leading, spacing: 7) {
-            Text(title)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-            TextField(hint, text: text)
-                .textFieldStyle(.roundedBorder)
         }
     }
 
@@ -404,15 +386,6 @@ struct AgentHarnessSettingsView: View {
 }
 
 private extension AgentHarnessPreset {
-    var displayName: String {
-        switch self {
-        case .cursor: "Cursor"
-        case .codex: "Codex"
-        case .claude: "Claude"
-        case .custom: "Custom"
-        }
-    }
-
     var subtitle: String {
         switch self {
         case .cursor: "Native Agent Client Protocol connection"

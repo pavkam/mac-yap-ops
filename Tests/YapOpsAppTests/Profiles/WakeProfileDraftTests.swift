@@ -7,6 +7,38 @@ import Testing
 import YapOpsCore
 
 struct WakeProfileDraftTests {
+    @Test(arguments: [
+        (AgentHarnessPreset.cursor, "Cursor"), (.codex, "Codex"),
+        (.claude, "Claude"), (.custom, "Custom"),
+    ])
+    func harnessName_WhenSavedNameWasEdited_UsesProviderAndPreservesLaunchConfiguration(
+        preset: AgentHarnessPreset, expectedName: String
+    ) throws {
+        let saved = try AgentHarnessConfiguration(
+            preset: preset, displayName: "Old nickname",
+            executablePath: "/custom/bin/agent", arguments: ["--offline", "two words"],
+            workingDirectory: "/custom/project", permissionPolicy: .reject,
+            systemPrompt: "Keep replies brief.")
+        let draft = AgentHarnessDraft(configuration: saved)
+        let normalized = try draft.validatedConfiguration()
+
+        #expect(draft.displayName == expectedName)
+        #expect(normalized.displayName == expectedName)
+        #expect(normalized.preset == saved.preset)
+        #expect(normalized.executablePath == saved.executablePath)
+        #expect(normalized.arguments == saved.arguments)
+        #expect(normalized.workingDirectory == saved.workingDirectory)
+        #expect(normalized.permissionPolicy == saved.permissionPolicy)
+        #expect(normalized.systemPrompt == saved.systemPrompt)
+    }
+
+    @Test func customHarness_WithoutEditableName_CanSaveValidLaunchFields() throws {
+        var draft = AgentHarnessDraft.empty(workingDirectory: "/custom/project")
+        draft.executablePath = "/custom/bin/agent"
+
+        #expect(try draft.validatedConfiguration().displayName == "Custom")
+    }
+
     @Test func validatedProfile_WhenDraftUsesCommand_RoundTripsCommandAction() throws {
         let id = try #require(UUID(uuidString: "166BED99-7C1C-4E01-A85E-7F672301973E"))
         let hotKey = try PushToTalkHotKey(
@@ -38,7 +70,7 @@ struct WakeProfileDraftTests {
             keyLabel: "N")
         let configuration = try AgentHarnessConfiguration(
             preset: .custom,
-            displayName: "Local agent",
+            displayName: "Custom",
             executablePath: "/Applications/Agent/bin/acp",
             arguments: ["--flag", "two words", ""],
             workingDirectory: "/Users/test/Project With Spaces",
@@ -64,7 +96,6 @@ struct WakeProfileDraftTests {
 
     @Test func validatedProfile_WhenAgentPromptIsEdited_PreservesPromptAndPermissionDefault() throws {
         var draft = AgentHarnessDraft.empty(workingDirectory: "/Users/test/project")
-        draft.displayName = "Codex"
         draft.executablePath = "/usr/bin/agent"
         draft.permissionPolicy = .allowAlways
         draft.systemPrompt = "Use Markdown and explain risks first."
@@ -83,7 +114,6 @@ struct WakeProfileDraftTests {
             argumentTemplates: ["--initial", "{text}"],
             agentHarness: AgentHarnessDraft(
                 preset: .custom,
-                displayName: "Initial agent",
                 executablePath: "/initial/agent",
                 arguments: ["--initial-agent"],
                 workingDirectory: "/initial/project",
@@ -92,14 +122,13 @@ struct WakeProfileDraftTests {
             accent: .blue)
 
         draft.targetKind = .agent
-        draft.agentHarness.displayName = "Edited agent"
         draft.agentHarness.arguments = ["--agent", "two words"]
         draft.targetKind = .command
         draft.executablePath = "/edited/command"
         draft.argumentTemplates = ["--command", "{text}", ""]
         draft.targetKind = .agent
 
-        #expect(draft.agentHarness.displayName == "Edited agent")
+        #expect(draft.agentHarness.displayName == "Custom")
         #expect(draft.agentHarness.arguments == ["--agent", "two words"])
         #expect(draft.executablePath == "/edited/command")
         #expect(draft.argumentTemplates == ["--command", "{text}", ""])
@@ -128,7 +157,6 @@ struct WakeProfileDraftTests {
     @Test func agentArguments_WhenMiddleRowIsRemovedAndFollowingRowIsEdited_PreserveIdentityAndOrder() throws {
         var draft = AgentHarnessDraft(
             preset: .custom,
-            displayName: "Agent",
             executablePath: "/custom/agent",
             arguments: ["--first", "--middle", "--last"],
             workingDirectory: "/Users/test/project",
@@ -178,10 +206,9 @@ struct WakeProfileDraftTests {
         #expect(draft.arguments == ["acp"])
     }
 
-    @Test func preset_WhenCustomSelected_PreservesEveryEditedField() {
+    @Test func preset_WhenCustomSelected_PreservesEditedLaunchFields() {
         var draft = AgentHarnessDraft(
             preset: .codex,
-            displayName: "My agent",
             executablePath: "/custom/agent",
             arguments: ["--custom", "two words"],
             workingDirectory: "/custom/project",
@@ -191,7 +218,6 @@ struct WakeProfileDraftTests {
 
         #expect(draft == AgentHarnessDraft(
             preset: .custom,
-            displayName: "My agent",
             executablePath: "/custom/agent",
             arguments: ["--custom", "two words"],
             workingDirectory: "/custom/project",
@@ -201,7 +227,6 @@ struct WakeProfileDraftTests {
     @Test func detectExecutable_WhenCustomDraftContainsCommandName_ResolvesAbsolutePath() {
         var draft = AgentHarnessDraft(
             preset: .custom,
-            displayName: "My agent",
             executablePath: "my-acp-agent",
             arguments: ["--acp"],
             workingDirectory: "/custom/project",
@@ -246,7 +271,6 @@ struct WakeProfileDraftTests {
             argumentTemplates: ["https://example.com/?q={urlText}"],
             agentHarness: AgentHarnessDraft(
                 preset: .custom,
-                displayName: "Private agent",
                 executablePath: "/private/bin/acp",
                 arguments: ["--mode", "acp"],
                 workingDirectory: "/private/project",
@@ -261,7 +285,6 @@ struct WakeProfileDraftTests {
         #expect(draft.targetKind == .agent)
         #expect(draft.agentHarness == AgentHarnessDraft(
             preset: .custom,
-            displayName: "Private agent",
             executablePath: "/private/bin/acp",
             arguments: ["--mode", "acp"],
             workingDirectory: "/private/project",
@@ -307,7 +330,6 @@ struct WakeProfileDraftTests {
             argumentTemplates: [],
             agentHarness: AgentHarnessDraft(
                 preset: .custom,
-                displayName: "Agent",
                 executablePath: "/custom/agent",
                 arguments: [],
                 workingDirectory: "/custom/project",

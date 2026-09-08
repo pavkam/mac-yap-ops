@@ -151,7 +151,6 @@ extension AppModelTests {
             isExecutableFile: { _ in true },
             isDirectory: { _ in true })
         await fixture.startForExternalActions()
-        fixture.model.wakeProfiles[0].agentHarness.displayName = "After"
         fixture.model.wakeProfiles[0].agentHarness.permissionPolicy = .rejectAlways
         fixture.model.wakeProfiles[0].accent = .green
         fixture.model.wakeProfiles[0].speechPreference = .disabled
