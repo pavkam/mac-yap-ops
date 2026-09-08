@@ -46,7 +46,7 @@ Security**, quit YapOps, and launch it again.
 ## Passive listening reports an on-device error
 
 The selected locale has no on-device speech recognizer on this Mac. Choose
-another Apple locale identifier in Settings. Passive wake listening is
+another **Speech language** in Settings. Passive wake listening is
 deliberately unavailable without on-device recognition.
 
 ## Capture ends without running a command

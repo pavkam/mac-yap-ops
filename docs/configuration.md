@@ -24,12 +24,18 @@ switch; neither waits for **Save Settings**.
 | Setting | Initial value | Behavior |
 | --- | --- | --- |
 | Always listen | On | Runs passive wake recognition when at least one profile is enabled. |
-| Speech locale | Current macOS locale | Selects the Apple Speech recognizer and matching system voice. |
+| Speech language | Current macOS locale | Shows English language and region names, such as English (United States). Selects the Apple Speech recognizer and matching system voice. |
 | Read inherited replies aloud | On | Allows profiles set to Inherit to use the app-wide voice. |
 | Default reply voice | Automatic macOS voice | Selects the backend and voice inherited by profiles. |
 | Agent activity sounds | On | Plays bounded thinking and tool-transition cues. |
 | Include Mac context | On | Sends one bounded focused-app snapshot only with admitted ACP requests. Direct commands never receive it. |
 | Launch at Login | Off in a fresh macOS registration | Registers the current bundle through Service Management. |
+
+The speech-language picker lists the languages Apple Speech supports. It keeps
+the current selection even if that locale is missing from Apple's list.
+Names are displayed in English; the underlying locale identifier stays in
+preferences and changes only after **Save Settings**. A listed language may
+still require downloaded on-device support for passive listening.
 
 Each profile may inherit the default reply voice, disable narration, or select
 an explicit macOS or ElevenLabs voice. The selected profile and resolved voice

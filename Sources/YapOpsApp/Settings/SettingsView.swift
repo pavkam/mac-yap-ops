@@ -122,8 +122,7 @@ struct SettingsView: View {
             subtitle: "Give each assistant its own identity, trigger, action, and voice.",
             systemImage: SettingsSectionSymbol.voiceTrigger.rawValue)
         {
-            settingsField("Speech locale", hint: "en-US", text: $model.localeID)
-                .frame(width: 170)
+            SpeechLocalePicker(localeID: $model.localeID)
 
             Divider()
 
@@ -216,23 +215,6 @@ struct SettingsView: View {
     private var headerTint: Color {
         model.wakeProfiles.first(where: \WakeProfileDraft.isEnabled)?.accent.swiftUIColor
             ?? .cyan
-    }
-
-    private func settingsField(
-        _ title: String,
-        hint: String,
-        text: Binding<String>,
-        monospaced: Bool = false) -> some View
-    {
-        VStack(alignment: .leading, spacing: 7) {
-            Text(title)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-            TextField(hint, text: text)
-                .font(monospaced ? .system(.body, design: .monospaced) : .body)
-                .textFieldStyle(.roundedBorder)
-                .accessibilityLabel(title)
-        }
     }
 
     private var nextAccent: WakeProfileAccent {
