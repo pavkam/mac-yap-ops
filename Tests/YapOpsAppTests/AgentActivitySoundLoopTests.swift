@@ -76,6 +76,7 @@ struct AgentActivitySoundLoopTests {
             player: player,
             interval: .seconds(5),
             sleep: { try await sleeper.sleep(for: $0) })
+        defer { loop.stop() }
         loop.setWorking(true)
         try await waitUntil { await sleeper.delays == [.seconds(5)] }
         Task.detached {
@@ -87,7 +88,6 @@ struct AgentActivitySoundLoopTests {
             player.sounds.count == 1
         }
         let sounds = player.sounds
-        loop.stop()
 
         #expect(sounds == [.thinking, .thinking])
     }
@@ -104,6 +104,7 @@ struct AgentActivitySoundLoopTests {
             sleep: { try await sleeper.sleep(for: $0) },
             diagnostics: diagnostics)
 
+        defer { loop.stop() }
         loop.setWorking(true)
         try await waitUntil { await sleeper.delays == [.seconds(5)] }
 
@@ -111,7 +112,6 @@ struct AgentActivitySoundLoopTests {
         #expect(events.contains("activity.working_changed"))
         #expect(events.contains("activity.sound_requested"))
         #expect(events.contains("activity.pulse_scheduled"))
-        loop.stop()
     }
 
     @MainActor @Test func setWorking_WhenEnabled_PlaysImmediatelyThenRepeatsOnClock()
@@ -125,6 +125,7 @@ struct AgentActivitySoundLoopTests {
             interval: .seconds(5),
             sleep: { try await sleeper.sleep(for: $0) })
 
+        defer { loop.stop() }
         loop.setWorking(true)
         try await waitUntil { await sleeper.delays == [.seconds(5)] }
         #expect(player.sounds == [.thinking])
@@ -132,7 +133,6 @@ struct AgentActivitySoundLoopTests {
         await sleeper.advance()
         try await waitUntil { player.sounds == [.thinking, .thinking] }
         #expect(await sleeper.delays == [.seconds(5)])
-        loop.stop()
     }
 
     @MainActor @Test
@@ -144,6 +144,7 @@ struct AgentActivitySoundLoopTests {
             initialDelay: .seconds(2),
             interval: .seconds(5),
             sleep: { try await sleeper.sleep(for: $0) })
+        defer { loop.stop() }
         loop.setWorking(true)
         try await waitUntil { await sleeper.delays == [.seconds(5)] }
 
@@ -155,7 +156,6 @@ struct AgentActivitySoundLoopTests {
 
         await sleeper.advance()
         try await waitUntil { player.sounds == [.thinking, .thinking] }
-        loop.stop()
     }
 
     @MainActor @Test func play_WhenToolCueArrives_RestartsPulseFromInitialDelay()
@@ -168,6 +168,7 @@ struct AgentActivitySoundLoopTests {
             initialDelay: .seconds(2),
             interval: .seconds(5),
             sleep: { try await sleeper.sleep(for: $0) })
+        defer { loop.stop() }
         loop.setWorking(true)
         try await waitUntil { await sleeper.delays == [.seconds(5)] }
 
@@ -175,24 +176,18 @@ struct AgentActivitySoundLoopTests {
         try await waitUntil { await sleeper.delays == [.seconds(2)] }
 
         #expect(player.sounds == [.thinking, .toolStarted])
-        loop.stop()
     }
 
     @MainActor
     private func waitUntil(
-        timeout: Duration = .seconds(1),
         condition: @escaping @MainActor () async -> Bool
     ) async throws {
-        let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: timeout)
-        while clock.now < deadline {
+        while true {
+            try Task.checkCancellation()
             if await condition() { return }
             try await Task.sleep(for: .milliseconds(10))
         }
-        throw TimeoutError()
     }
-
-    private struct TimeoutError: Error {}
 }
 
 @MainActor

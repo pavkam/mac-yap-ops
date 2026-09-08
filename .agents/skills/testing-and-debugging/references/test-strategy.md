@@ -63,6 +63,12 @@ Wall-clock waits are acceptable only when elapsed time or rendered transition
 progress is the behavior. Keep them short, bound the whole test, and assert the
 settled state. Never add a sleep merely to let an unknown race "finish."
 
+Readiness for a controlled test gate is not a latency contract. CI's concurrent
+shutdown test exhausted a five-second setup deadline under shared MainActor
+load while still completing correctly. Use cancellation-aware readiness waits
+within the test's overall time limit; release controlled gates in teardown,
+including when cleanup happens before a delayed task reaches the gate.
+
 Tests must use UUID temporary paths and must not alter real preferences, TCC,
 Keychain secrets, login items, global shortcuts, network state, audio output,
 or provider sessions. Child-process fixtures launch explicit executables and

@@ -10,6 +10,7 @@ import Testing
 @MainActor
 private final class ControlledShutdownArtifactOpener: AgentArtifactOpening {
     private var continuation: CheckedContinuation<Void, Never>?
+    private var isShutdownComplete = false
     private(set) var shutdownStarted = false
 
     func begin(runID _: UUID) {}
@@ -19,10 +20,12 @@ private final class ControlledShutdownArtifactOpener: AgentArtifactOpening {
 
     func shutdown() async {
         shutdownStarted = true
+        guard !isShutdownComplete else { return }
         await withCheckedContinuation { continuation = $0 }
     }
 
     func completeShutdown() {
+        isShutdownComplete = true
         continuation?.resume()
         continuation = nil
     }
@@ -352,13 +355,21 @@ extension AppModelTests {
         #expect(model.state == .disabled)
     }
 
-    @MainActor @Test func shutdown_WhenCalledConcurrently_AllCallersAwaitArtifactCleanup()
+    @MainActor @Test(.timeLimit(.minutes(1)))
+    func shutdown_WhenCalledConcurrently_AllCallersAwaitArtifactCleanup()
         async throws
     {
+        @MainActor func waitForReadiness(_ condition: () -> Bool) async throws {
+            while !condition() {
+                try await Task.sleep(for: .milliseconds(1))
+            }
+        }
+
         let suite = "YapOpsConcurrentShutdownTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defaults.removePersistentDomain(forName: suite)
         let opener = ControlledShutdownArtifactOpener()
+        defer { opener.completeShutdown() }
         let model = AppModel(
             preferences: AppPreferences(defaults: defaults),
             recordingOverlay: AppModelOverlayStub(),
@@ -373,13 +384,13 @@ extension AppModelTests {
             startsAutomatically: false)
         var secondFinished = false
         let first = Task { @MainActor in await model.shutdown() }
-        await waitUntil { opener.shutdownStarted }
+        try await waitForReadiness { opener.shutdownStarted }
 
         let second = Task { @MainActor in
             await model.shutdown()
             secondFinished = true
         }
-        await waitUntil { model.shutdownWaiters.count == 1 }
+        try await waitForReadiness { model.shutdownWaiters.count == 1 }
         #expect(!secondFinished)
 
         opener.completeShutdown()
