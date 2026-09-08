@@ -95,6 +95,12 @@ confirmed `NSKVONotifying_NSWindow release` after deallocation in the menu-shado
 and action-dock tests. Swift-owned test windows must set it to `false` before
 closing; retain off-screen placement and unconditional teardown.
 
+If an event-tracking audio test misses a pulse only under CI sanitizers, check
+its wall-clock deadline and shared main-run-loop ownership. The 250 ms tracking
+fixture missed its second pulse in CI. Isolate the mode-pumping test, release
+its fake clock from inside event tracking, and assert the delivery's actual
+run-loop mode. A bounded timeout detects failure; it is not a latency benchmark.
+
 ## macOS state boundaries
 
 When a file selection has no resource links, inspect whether the selected AX row

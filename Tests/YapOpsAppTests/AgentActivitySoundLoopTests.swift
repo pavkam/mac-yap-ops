@@ -56,9 +56,11 @@ private actor ManualActivitySleeper {
 private final class ActivitySoundPlayerRecorder: AgentActivitySoundPlaying {
     private(set) var sounds: [AgentActivitySound] = []
     private(set) var stopCount = 0
+    private(set) var lastRunLoopMode: RunLoop.Mode?
 
     func play(_ sound: AgentActivitySound) {
         sounds.append(sound)
+        lastRunLoopMode = RunLoop.current.currentMode
     }
 
     func stop() {
@@ -68,8 +70,18 @@ private final class ActivitySoundPlayerRecorder: AgentActivitySoundPlaying {
 
 @Suite(.timeLimit(.minutes(1)))
 struct AgentActivitySoundLoopTests {
+    private static let trackingChildKey = "YAPOPS_ACTIVITY_TRACKING_TEST_CHILD"
+    private static let trackingTestFilter =
+        "pulse_WhenAppKitTracksEvents_PlaysWithoutWaitingForDefaultMode"
+
     @MainActor @Test
     func pulse_WhenAppKitTracksEvents_PlaysWithoutWaitingForDefaultMode() async throws {
+        guard ProcessInfo.processInfo.environment[Self.trackingChildKey] == "1" else {
+            try await IsolatedAppKitTestProcess.run(
+                environmentKey: Self.trackingChildKey, testFilter: Self.trackingTestFilter)
+            return
+        }
+
         let sleeper = ManualActivitySleeper()
         let player = ActivitySoundPlayerRecorder()
         let loop = AgentActivitySoundLoop(
@@ -79,9 +91,8 @@ struct AgentActivitySoundLoopTests {
         defer { loop.stop() }
         loop.setWorking(true)
         try await waitUntil { await sleeper.delays == [.seconds(5)] }
-        Task.detached {
-            try? await Task.sleep(for: .milliseconds(10))
-            await sleeper.advance()
+        RunLoop.main.perform(inModes: [.eventTracking]) {
+            Task.detached { await sleeper.advance() }
         }
 
         runActivityEventTrackingLoop {
@@ -90,6 +101,7 @@ struct AgentActivitySoundLoopTests {
         let sounds = player.sounds
 
         #expect(sounds == [.thinking, .thinking])
+        #expect(player.lastRunLoopMode == .eventTracking)
     }
 
     @MainActor @Test func setWorking_WhenEnabled_RecordsImmediateAndScheduledSoundState()
@@ -192,7 +204,7 @@ struct AgentActivitySoundLoopTests {
 
 @MainActor
 private func runActivityEventTrackingLoop(while condition: () -> Bool) {
-    let deadline = Date(timeIntervalSinceNow: 0.25)
+    let deadline = Date(timeIntervalSinceNow: 2)
     while condition(), Date() < deadline {
         _ = RunLoop.main.run(
             mode: .eventTracking,
