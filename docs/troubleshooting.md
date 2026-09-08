@@ -265,9 +265,15 @@ backend receives only the admitted spoken unit; choosing ElevenLabs sends that
 text to ElevenLabs. Legacy replies use the existing Markdown formatter.
 Permission speech is limited to bounded provider presentation or the standard
 tool title and exact option labels. Raw tool payloads, plans, thoughts,
-diagnostics, ACP frames, and display-only text are never synthesized. Speaking
-during reply audio stops playback and becomes a follow-up. Activity sounds yield
-to permissions and audible narration.
+diagnostics, ACP frames, and display-only text are never synthesized. Hands-free
+capture pauses while speech is queued or playing. Hold push-to-talk to interrupt
+and speak, or use the panel's Stop controls. Activity sounds yield to permissions
+and audible narration.
+
+If an older build repeatedly creates follow-ups from its own replies, update and
+use **Stop turn** to discard the accumulated queue. A Codex model-metadata warning
+is nonfatal: the pinned adapter emits it as ordinary assistant text. It can be
+shown or read aloud, but must never feed another microphone request.
 
 See [Agent conversations](agent-conversations.md) and
 [Sound design](sound-design.md) for the complete behavior.

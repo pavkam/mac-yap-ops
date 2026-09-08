@@ -6,7 +6,8 @@ import YapOpsCore
 
 @MainActor
 protocol AgentConversationAudioPlaying: AnyObject {
-    var onSpeakingChange: ((Bool) -> Void)? { get set }
+    /// Reports queued or playing speech before playback can reach the microphone.
+    var onSpeechOutputActiveChange: ((Bool) -> Void)? { get set }
 
     @discardableResult
     func beginConversation(
@@ -29,14 +30,14 @@ protocol AgentConversationAudioPlaying: AnyObject {
 
 @MainActor
 final class AgentConversationAudioOrchestrator: AgentConversationAudioPlaying {
-    var onSpeakingChange: ((Bool) -> Void)?
+    var onSpeechOutputActiveChange: ((Bool) -> Void)?
 
     private let speechConfiguration:
         @MainActor (WakeProfile, Bool) -> AgentSpeechConfiguration?
     private let speechQueue: any AgentSpeechQueueing
     private let activityLoop: any AgentActivitySoundLooping
     private let diagnostics: any YapOpsDiagnosticRecording
-    private var isReportingSpeech = false
+    private var isReportingSpeechOutput = false
     private var activeSpeechConfiguration: AgentSpeechConfiguration?
 
     init(
@@ -242,14 +243,14 @@ final class AgentConversationAudioOrchestrator: AgentConversationAudioPlaying {
             event: "conversation_audio.speech_state_received",
             fields: ["state": String(describing: state)])
         activityLoop.setSpeechSuppressed(state == .starting || state == .playing)
-        let speaking = state == .playing
-        guard speaking != isReportingSpeech else { return }
-        isReportingSpeech = speaking
+        let active = state != .idle
+        guard active != isReportingSpeechOutput else { return }
+        isReportingSpeechOutput = active
         diagnostics.record(
             category: .audio,
-            event: "conversation_audio.audibility_changed",
-            fields: ["audible": String(speaking)])
-        onSpeakingChange?(speaking)
+            event: "conversation_audio.speech_output_changed",
+            fields: ["active": String(active)])
+        onSpeechOutputActiveChange?(active)
     }
 }
 
@@ -265,6 +266,7 @@ final class AgentConversationAudioPresenter {
     var readsActiveReplies = false
     private var activityIsWorking = false
     var rejectsAgentSpeechUntilNextTurn = false
+    var isCapturingSpeechInput = false
     private var toolSoundPhases: [String: ToolSoundPhase] = [:]
     var pendingPermissionNarrations: [PendingPermissionNarration] = []
 
@@ -306,6 +308,7 @@ final class AgentConversationAudioPresenter {
         case .started(let runID, let profile, _):
             self.runID = runID
             rejectsAgentSpeechUntilNextTurn = false
+            isCapturingSpeechInput = false
             pendingPermissionNarrations.removeAll(keepingCapacity: true)
             narration.reset()
             readsActiveReplies = player.beginConversation(
@@ -316,6 +319,7 @@ final class AgentConversationAudioPresenter {
             updateWorking(true)
         case .followUpSubmitted(let runID, _, _, _):
             guard self.runID == runID else { return }
+            isCapturingSpeechInput = false
             pendingPermissionNarrations.removeAll(keepingCapacity: true)
             narration.reset()
             toolSoundPhases.removeAll(keepingCapacity: true)
@@ -328,6 +332,7 @@ final class AgentConversationAudioPresenter {
         case .turnStarted(let runID):
             guard self.runID == runID else { return }
             rejectsAgentSpeechUntilNextTurn = false
+            isCapturingSpeechInput = false
             pendingPermissionNarrations.removeAll(keepingCapacity: true)
             narration.reset()
             toolSoundPhases.removeAll(keepingCapacity: true)
@@ -393,6 +398,14 @@ final class AgentConversationAudioPresenter {
         }
     }
 
+    /// Discards buffered and queued narration before explicit push-to-talk capture.
+    func interruptSpeech() {
+        isCapturingSpeechInput = true
+        pendingPermissionNarrations.removeAll(keepingCapacity: true)
+        narration.reset()
+        player.stopSpeaking()
+    }
+
     func shutdown() {
         diagnostics.record(category: .audio, event: "conversation_audio.shutdown")
         runID = nil
@@ -419,7 +432,8 @@ final class AgentConversationAudioPresenter {
 
     /// Admits only current live session-authored reply content without changing prompt work audio.
     func handleSessionEvent(_ event: AgentRunEvent, runID: UUID) {
-        guard self.runID == runID, !rejectsAgentSpeechUntilNextTurn else { return }
+        guard self.runID == runID, !rejectsAgentSpeechUntilNextTurn,
+            !isCapturingSpeechInput else { return }
         diagnostics.record(
             category: .audio,
             event: "conversation_audio.session_event_received",
@@ -452,7 +466,7 @@ final class AgentConversationAudioPresenter {
         case .userMessageDelta:
             break
         case .agentMessageDelta(let messageID, let text):
-            if readsActiveReplies {
+            if readsActiveReplies, !rejectsAgentSpeechUntilNextTurn, !isCapturingSpeechInput {
                 narration.append(messageID: messageID, text: text)
             }
             updateWorking(true)
@@ -462,7 +476,8 @@ final class AgentConversationAudioPresenter {
             narration.markSemanticBoundary()
             updateWorking(true)
         case .agentSpokenNarrationReady(_, let text):
-            guard readsActiveReplies, !rejectsAgentSpeechUntilNextTurn else { return }
+            guard readsActiveReplies, !rejectsAgentSpeechUntilNextTurn,
+                !isCapturingSpeechInput else { return }
             player.speak(
                 text,
                 localeID: localeID(),

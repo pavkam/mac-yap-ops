@@ -51,7 +51,7 @@ extension AgentConversationAudioPresenter {
     }
 
     func handlePermissionRequest(_ request: AgentPermissionRequest) {
-        guard let runID, !rejectsAgentSpeechUntilNextTurn else {
+        guard let runID, !rejectsAgentSpeechUntilNextTurn, !isCapturingSpeechInput else {
             diagnostics.record(
                 category: .audio,
                 event: "conversation_audio.permission_suppressed",

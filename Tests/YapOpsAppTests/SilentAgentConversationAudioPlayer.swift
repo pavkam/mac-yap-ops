@@ -6,7 +6,7 @@
 
 @MainActor
 final class SilentAgentConversationAudioPlayer: AgentConversationAudioPlaying {
-    var onSpeakingChange: ((Bool) -> Void)?
+    var onSpeechOutputActiveChange: ((Bool) -> Void)?
 
     func beginConversation(
         profile: WakeProfile,

@@ -344,6 +344,7 @@ extension YapOpsCoordinator {
     func startConversationListening() {
         guard
             isAgentConversationActive,
+            !agentSpeechOutputActive,
             agentCancellationTask == nil,
             !pushToTalkActive,
             let localeID = capturedLocaleID
@@ -400,35 +401,7 @@ extension YapOpsCoordinator {
                 "is_final": String(update.isFinal),
                 "speech_output_active": String(agentSpeechOutputActive),
             ])
-        if agentSpeechOutputActive {
-            let transcript = update.transcript
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            if CaptureCancellationMatcher.matches(transcript, isComplete: update.isFinal) {
-                agentSpeechOutputActive = false
-                diagnostics.record(
-                    category: .agent,
-                    event: "coordinator.voice_cancel_during_speech")
-                onAgentSpeechCancellation?()
-                cancelAgentConversationFromSpeech()
-                return
-            }
-            guard !transcript.isEmpty else {
-                currentTranscript = ""
-                if update.isFinal {
-                    startConversationListening()
-                }
-                return
-            }
-
-            // Clear this before stopping playback. The synchronous speech callback
-            // must not replace the recognition session that owns this utterance.
-            agentSpeechOutputActive = false
-            diagnostics.record(
-                category: .audio,
-                event: "coordinator.speech_barged_in",
-                fields: ["character_count": String(transcript.count)])
-            onAgentSpeechCancellation?()
-        }
+        guard !agentSpeechOutputActive else { return }
 
         conversationUtterance = update.transcript
             .trimmingCharacters(in: .whitespacesAndNewlines)

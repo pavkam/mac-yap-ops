@@ -302,12 +302,12 @@ final class AppModel {
             self.agentSessionPresentationRegistry.remove(runID: runID)
             self.agentRunSnapshot = nil
         }
-        resolvedAgentConversationAudioPlayer.onSpeakingChange = { [weak self] speaking in
+        resolvedAgentConversationAudioPlayer.onSpeechOutputActiveChange = { [weak self] active in
             self?.diagnostics.record(
                 category: .audio,
-                event: "app_model.speech_audibility_received",
-                fields: ["audible": String(speaking)])
-            self?.coordinator.setAgentSpeechOutputActive(speaking)
+                event: "app_model.speech_output_received",
+                fields: ["active": String(active)])
+            self?.coordinator.setAgentSpeechOutputActive(active)
         }
 
         if startsAutomatically {

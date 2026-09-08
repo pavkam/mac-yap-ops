@@ -72,7 +72,7 @@ see [App identity after the rename](docs/packaging.md#app-identity-after-the-ren
   Ordinary unmarked replies keep the existing visible Markdown and narration
   behavior.
 - Optional macOS or ElevenLabs reply speech with a global default or per-profile
-  voice, plus exact agent-requested confirmations, barge-in, activity cues, and
+  voice, plus exact agent-requested confirmations, push-to-talk interruption, activity cues, and
   profile-aware follow-ups. Spoken responses and confirmation choices remain
   visible and usable when reply reading is disabled.
 - Structured local diagnostics, Launch at Login, and signed SwiftPM app-bundle

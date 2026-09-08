@@ -424,38 +424,39 @@ extension YapOpsCoordinatorTests {
     }
 
     @MainActor
-    @Test func agentConversation_WhenUserSpeaksDuringReply_BargesInWithoutWaitingForFinal() async throws {
-        let fixture = try Fixture(timing: .fast, profiles: [try makeAgentProfile()])
+    @Test func agentConversation_WhenReplyIsPlaying_DiscardsEchoAndResumesFreshCapture() async throws {
+        let fixture = try Fixture(profiles: [try makeAgentProfile()])
+        defer { fixture.coordinator.stop() }
         var speechCancellationCount = 0
-        var turnCompleted = false
         fixture.coordinator.onAgentSpeechCancellation = { speechCancellationCount += 1 }
-        fixture.coordinator.onAgentRunEvent = { event in
-            if case .turnCompleted = event {
-                turnCompleted = true
-            }
-        }
         fixture.coordinator.setPassiveEnabled(true)
         fixture.speech.emit("agent explain this", isFinal: true)
         await waitUntil { await fixture.agentRunner.recordedInvocations().count == 1 }
-        await fixture.agentRunner.complete(runIndex: 0)
-        await waitUntil { turnCompleted }
+        fixture.speech.emit("partial microphone input")
+
         fixture.coordinator.setAgentSpeechOutputActive(true)
+        #expect(fixture.speech.mode == nil)
+        fixture.speech.emit("speaker echo", isFinal: true)
+        fixture.speech.emitFromRetiredSession("late echo", isFinal: true)
+        fixture.coordinator.startConversationListening()
+        #expect(fixture.speech.mode == nil)
+        #expect(fixture.coordinator.pendingAgentPrompts.isEmpty)
+        #expect(fixture.coordinator.currentTranscript.isEmpty)
+        #expect(speechCancellationCount == 0)
 
-        fixture.speech.emit("thank you")
-        await waitUntil { await fixture.agentRunner.recordedInvocations().count == 2 }
-
-        let invocations = await fixture.agentRunner.recordedInvocations()
-        #expect(speechCancellationCount == 1)
-        #expect(invocations.map(\.prompt) == [
-            AgentPrompt(request: "explain this", context: nil),
-            AgentPrompt(request: "thank you", context: nil),
+        fixture.coordinator.setAgentSpeechOutputActive(false)
+        #expect(fixture.speech.mode == .conversation)
+        fixture.speech.emitFromRetiredSession("delayed echo", isFinal: true)
+        fixture.speech.emit("fresh follow up", isFinal: true)
+        await waitUntil { await fixture.agentRunner.recordedMidTurnOffers().count == 1 }
+        #expect(await fixture.agentRunner.recordedMidTurnOffers().map(\.prompt.request) == [
+            "fresh follow up",
         ])
-        guard invocations.count == 2 else { return }
-        await fixture.agentRunner.complete(runIndex: 1)
+        await fixture.agentRunner.complete(runIndex: 0)
     }
 
     @MainActor
-    @Test func agentConversation_WhenReplyPlaybackStarts_DoesNotRestartRecognition() async throws {
+    @Test func agentConversation_WhenReplyPlaybackStarts_StopsRecognition() async throws {
         let fixture = try Fixture(profiles: [try makeAgentProfile()])
         var turnCompleted = false
         fixture.coordinator.onAgentRunEvent = { event in
@@ -473,11 +474,13 @@ extension YapOpsCoordinatorTests {
         fixture.coordinator.setAgentSpeechOutputActive(true)
 
         #expect(fixture.speech.startCount == startCount)
+        #expect(fixture.speech.mode == nil)
     }
 
     @MainActor
-    @Test func agentConversation_WhenReplyIsBeingRead_LetsStopEndConversation() async throws {
-        let fixture = try Fixture(profiles: [try makeAgentProfile()])
+    @Test func agentConversation_WhenReplyIsBeingRead_PushToTalkInterruptsAndLetsStopEndConversation() async throws {
+        let profile = try makeAgentProfile()
+        let fixture = try Fixture(profiles: [profile])
         var speechCancellationCount = 0
         var turnCompleted = false
         fixture.coordinator.onAgentSpeechCancellation = { speechCancellationCount += 1 }
@@ -493,6 +496,9 @@ extension YapOpsCoordinatorTests {
         await waitUntil { turnCompleted }
         fixture.coordinator.setAgentSpeechOutputActive(true)
 
+        fixture.coordinator.pushToTalkPressed(profileID: profile.id)
+        #expect(speechCancellationCount == 1)
+        #expect(fixture.speech.mode == .pushToTalk)
         fixture.speech.emit("stop", isFinal: true)
         await waitUntil { fixture.speech.mode == .passiveWake }
 

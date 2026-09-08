@@ -315,6 +315,8 @@ public final class YapOpsCoordinator {
             if isAgentConversationActive {
                 pushToTalkActive = true
                 pushToTalkContinuesConversation = true
+                onAgentSpeechCancellation?()
+                agentSpeechOutputActive = false
                 stopActiveSession()
                 capturedCommand = ""
                 currentTranscript = ""
@@ -494,7 +496,8 @@ public final class YapOpsCoordinator {
         beginAgentCancellation(runID: runID)
     }
 
-    /// Pauses microphone capture while synthesized speech owns audible output.
+    /// Pauses hands-free capture while speech is queued or playing.
+    /// Push-to-talk explicitly interrupts output and starts a fresh capture.
     ///
     /// - Parameter active: Whether agent speech is queued or currently playing.
     public func setAgentSpeechOutputActive(_ active: Bool) {
@@ -510,6 +513,7 @@ public final class YapOpsCoordinator {
             ])
         guard isAgentConversationActive, !pushToTalkActive else { return }
         if active {
+            stopSpeechSession()
             resetConversationCapture()
             conversationUtterance = ""
             currentTranscript = ""

@@ -406,7 +406,7 @@ actor AppModelPermissionAgentRunnerSpy: AgentHarnessRunning {
 
 @MainActor
 final class AppModelAgentConversationAudioSpy: AgentConversationAudioPlaying {
-    var onSpeakingChange: ((Bool) -> Void)?
+    var onSpeechOutputActiveChange: ((Bool) -> Void)?
     private(set) var spoken: [(text: String, localeID: String)] = []
     private(set) var stopSpeakingCount = 0
 
@@ -433,7 +433,7 @@ final class AppModelAgentConversationAudioSpy: AgentConversationAudioPlaying {
         admissionPolicy: AgentSpeechAdmissionPolicy
     ) {
         spoken.append((text, localeID))
-        onSpeakingChange?(true)
+        onSpeechOutputActiveChange?(true)
     }
 
     @discardableResult
@@ -441,17 +441,17 @@ final class AppModelAgentConversationAudioSpy: AgentConversationAudioPlaying {
         for text in texts {
             spoken.append((text, localeID))
         }
-        if !texts.isEmpty { onSpeakingChange?(true) }
+        if !texts.isEmpty { onSpeechOutputActiveChange?(true) }
         return true
     }
 
     func stopSpeaking() {
         stopSpeakingCount += 1
-        onSpeakingChange?(false)
+        onSpeechOutputActiveChange?(false)
     }
 
     func stopAll() {
-        onSpeakingChange?(false)
+        onSpeechOutputActiveChange?(false)
     }
 }
 

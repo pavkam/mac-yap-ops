@@ -195,10 +195,11 @@ extension YapOpsCoordinatorTests {
     }
 
     @MainActor
-    @Test func agentConversation_WhenUserBargesIn_StopsSpeechWithoutCancellingAgentTurn()
+    @Test func agentConversation_WhenPushToTalkInterrupts_StopsSpeechWithoutCancellingAgentTurn()
         async throws
     {
-        let fixture = try Fixture(profiles: [try makeAgentProfile()])
+        let profile = try makeAgentProfile()
+        let fixture = try Fixture(profiles: [profile])
         await fixture.agentRunner.enqueueMidTurnResults([.injected])
         var speechCancellationCount = 0
         fixture.coordinator.onAgentSpeechCancellation = {
@@ -209,7 +210,9 @@ extension YapOpsCoordinatorTests {
         await waitUntil { await fixture.agentRunner.recordedInvocations().count == 1 }
 
         fixture.coordinator.setAgentSpeechOutputActive(true)
+        fixture.coordinator.pushToTalkPressed(profileID: profile.id)
         fixture.speech.emit("also check tests", isFinal: true)
+        fixture.coordinator.pushToTalkReleased()
         await waitUntil { await fixture.agentRunner.recordedMidTurnOffers().count == 1 }
 
         #expect(speechCancellationCount == 1)

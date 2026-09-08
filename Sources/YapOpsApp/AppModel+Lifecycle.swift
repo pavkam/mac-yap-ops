@@ -225,7 +225,7 @@ extension AppModel {
             self?.diagnostics.record(
                 category: .audio,
                 event: "app_model.agent_speech_cancel_received")
-            self?.agentConversationAudioPlayer.stopSpeaking()
+            self?.agentConversationAudioPresenter.interruptSpeech()
         }
         coordinator.onAgentVoiceUtterance = { [weak self] utterance in
             self?.handleAgentVoiceUtterance(utterance) ?? false

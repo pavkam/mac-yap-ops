@@ -65,7 +65,7 @@ extension AgentConversationAudioPresenterTests {
     }
 
     @MainActor @Test
-    func orchestrator_WhenPlaybackStarts_StopsActivityBeforeReportingSpeech() {
+    func orchestrator_WhenPlaybackStarts_ReportsOutputBeforeAudiblePlayback() {
         let speechQueue = AgentSpeechQueueSpy()
         let activityLoop = AgentActivitySoundLoopSpy()
         let player = AgentConversationAudioOrchestrator(
@@ -74,18 +74,18 @@ extension AgentConversationAudioPresenterTests {
             activityLoop: activityLoop)
         var events: [String] = []
         activityLoop.onSuppression = { events.append("activity:\($0)") }
-        player.onSpeakingChange = { events.append("speech:\($0)") }
+        player.onSpeechOutputActiveChange = { events.append("speech:\($0)") }
 
         speechQueue.emit(.starting)
         speechQueue.emit(.playing)
 
         #expect(events == [
-            "activity:true", "activity:true", "speech:true",
+            "activity:true", "speech:true", "activity:true",
         ])
     }
 
     @MainActor @Test
-    func orchestrator_WhenPlaybackWaitsForAnotherSynthesis_ResumesActivityAndReportsSilence() {
+    func orchestrator_WhenPlaybackWaitsForAnotherSynthesis_KeepsCapturePausedUntilIdle() {
         let speechQueue = AgentSpeechQueueSpy()
         let activityLoop = AgentActivitySoundLoopSpy()
         let player = AgentConversationAudioOrchestrator(
@@ -93,12 +93,17 @@ extension AgentConversationAudioPresenterTests {
             speechQueue: speechQueue,
             activityLoop: activityLoop)
         var speechStates: [Bool] = []
-        player.onSpeakingChange = { speechStates.append($0) }
+        player.onSpeechOutputActiveChange = { speechStates.append($0) }
 
+        speechQueue.emit(.preparing)
+        #expect(speechStates == [true])
+        speechQueue.emit(.starting)
         speechQueue.emit(.playing)
         speechQueue.emit(.preparing)
+        #expect(speechStates == [true])
+        speechQueue.emit(.idle)
 
-        #expect(activityLoop.suppressionStates == [true, false])
+        #expect(activityLoop.suppressionStates == [false, true, true, false, false])
         #expect(speechStates == [true, false])
     }
 
@@ -393,6 +398,41 @@ extension AgentConversationAudioPresenterTests {
         #expect(player.spoken.map(\.text) == ["Useful remainder"])
         #expect(player.stopAllCount == 0)
         #expect(player.workingStates.suffix(2) == [false, true])
+    }
+
+    @MainActor @Test
+    func interruptSpeech_DiscardsBufferedNarrationAndRejectsOutputUntilFreshInput() throws {
+        let player = AgentConversationAudioSpy()
+        let presenter = AgentConversationAudioPresenter(
+            player: player,
+            readsReplies: { true },
+            playsWorkingSound: { false },
+            localeID: { "en-US" })
+        let runID = UUID()
+        presenter.handle(.started(
+            runID: runID, profile: try agentProfile(), prompt: "First"))
+        presenter.handle(.event(
+            runID: runID,
+            event: .agentMessageDelta(messageID: "old", text: "Buffered fragment")))
+        let previousStops = player.stopSpeakingCount
+
+        presenter.interruptSpeech()
+        presenter.handle(.event(
+            runID: runID,
+            event: .agentMessageDelta(messageID: "late", text: "Late legacy reply.")))
+        presenter.handle(.event(
+            runID: runID,
+            event: .agentSpokenNarrationReady(messageID: "late-spoken", text: "Late spoken reply.")))
+        presenter.handle(.turnCompleted(runID: runID, result: .init(stopReason: .endTurn)))
+        #expect(player.spoken.isEmpty)
+        #expect(player.stopSpeakingCount == previousStops + 1)
+
+        presenter.handle(.followUpSubmitted(
+            runID: runID, inputID: UUID(), prompt: "New input", disposition: .routing))
+        presenter.handle(.event(
+            runID: runID,
+            event: .agentMessageDelta(messageID: "fresh", text: "Fresh reply.")))
+        #expect(player.spoken.map(\.text) == ["Fresh reply."])
     }
 
     @MainActor @Test func lifecycle_WhenFollowUpInterruptsTurn_StopsSpeechAndRestartsWorkingCue() throws {

@@ -75,14 +75,15 @@ conversation. [Wake profiles](wake-profiles.md) owns the capture timing.
 
 Speaking while a turn is still active offers the follow-up through the provider's
 validated input route or queues it for the next turn. Recognized follow-ups wait
-in a bounded queue behind active cancellation and work. If the queue is full, the panel shows a bounded notice and leaves the
-current turn running. [Privacy and security](privacy-and-security.md) owns the
+in a bounded queue behind active cancellation and work. If the queue is full,
+the panel shows a bounded notice and leaves the current turn running. [Privacy and security](privacy-and-security.md) owns the
 retention limit.
 
-Speaking during narration stops playback and keeps the utterance in the normal
-recognition path. Conversation capture requests Apple's best-effort input voice
-processing to reduce speaker echo; unsupported devices continue with ordinary
-capture.
+Hands-free listening pauses while replies are queued or playing, then resumes
+with a fresh microphone capture when speech finishes. This prevents speaker
+output from becoming another request, including on devices without reliable echo
+cancellation. Press and hold push-to-talk to interrupt narration and speak;
+**Stop turn** and **End conversation** remain available in the panel.
 
 ## Resolve permissions
 

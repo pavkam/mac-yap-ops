@@ -17,7 +17,7 @@ SPDX-License-Identifier: MIT
 | ElevenLabs synthesis | `ElevenLabsSpeechClient` | Performs the authenticated HTTPS request and returns encoded audio bytes. |
 | Local speech | `SystemAgentSpeechPlayer` | Owns `AVSpeechSynthesizer`, one utterance, its selected locale voice, and delegate completion. |
 | Cloud playback | `SystemAgentAudioDataPlayer` | Decodes in-memory audio with `NSSound` and reports delegate completion. |
-| Activity arbitration | `AgentConversationAudioOrchestrator` | Suppresses the activity loop for `starting` and `playing`, reports audibility only for `playing`. |
+| Activity arbitration | `AgentConversationAudioOrchestrator` | Suppresses activity for `starting`/`playing`; reports speech output active for every non-idle queue state. |
 | Working/tool sounds | `AgentActivitySoundLoop` | Owns delayed pulses and one-shot effects; it never synthesizes speech. |
 
 Keep these boundaries replaceable through their existing narrow protocols. Do
@@ -56,8 +56,8 @@ shutdown as appropriate. A cancelled conversation may enqueue the explicit
   entry. Failure to decode or start cloud playback also tries system speech.
 - State progresses through `preparing`, `starting`, `playing`, and `idle`.
   Cloud preparation leaves the activity sound running. `starting` silences it
-  before audible playback; `playing` is the only externally reported speaking
-  state.
+  before audible playback. Output ownership stays active for every non-idle state
+  so hands-free capture cannot reopen between queued speech segments.
 
 ## Cancellation and barge-in
 
@@ -66,11 +66,13 @@ clearing requests, and stopping both players. Every async synthesis and playback
 completion carries its generation/request identity, so a retired callback cannot
 restart or advance the queue.
 
-The conversation coordinator treats the first non-empty recognized utterance
-during narration as barge-in: it stops speech and continues normal follow-up
-capture. Exact cancellation words stop playback and end the conversation.
-Completion starts a fresh recognition session to discard captured echo. Preserve
-that separation—speech playback must never own recognition state.
+The coordinator stops hands-free recognition while output is queued or playing,
+retiring its callbacks and capture timers before playback starts. Idle output
+starts a fresh session; device voice processing is never the echo-safety boundary.
+Push-to-talk interrupts pending narration and playback before starting explicit
+capture. The presenter rejects further speech until a new input or turn. Exact
+cancellation words from that capture end the conversation. Recognition remains
+owned by the coordinator; the player reports output ownership only.
 
 ## Concurrency rules
 

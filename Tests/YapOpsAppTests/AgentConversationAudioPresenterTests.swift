@@ -13,7 +13,7 @@ final class AgentConversationAudioSpy: AgentConversationAudioPlaying {
         case speech(String)
     }
 
-    var onSpeakingChange: ((Bool) -> Void)?
+    var onSpeechOutputActiveChange: ((Bool) -> Void)?
     var onSpeak: (() -> Void)?
     var beginsWithSpeechEnabled: Bool?
     private(set) var begunProfiles: [WakeProfile] = []
