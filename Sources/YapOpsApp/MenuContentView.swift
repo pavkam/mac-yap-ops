@@ -207,14 +207,20 @@ struct MenuContentView: View {
                     }
                     .buttonStyle(.bordered)
 
-                    if snapshot.phase == .running {
+                    if snapshot.phase == .running || snapshot.phase == .listening {
                         Button {
                             model.cancelAgentRun(runID: snapshot.runID)
                         } label: {
-                            Label("Stop turn", systemImage: "stop.circle.fill")
+                            Label(snapshot.phase == .listening ? "Stop listening" : "Stop turn",
+                                systemImage: "stop.circle.fill")
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(.red.opacity(0.84))
+                    } else if snapshot.phase == .paused {
+                        Button("Resume listening", systemImage: "mic") {
+                            model.resumeAgentConversationListening(runID: snapshot.runID)
+                        }
+                        .buttonStyle(.borderedProminent)
                     } else if snapshot.phase == .cancelling {
                         Button("Cancelling…") {}
                             .buttonStyle(.bordered)
@@ -286,6 +292,7 @@ struct MenuContentView: View {
     private func agentRunPhaseLabel(_ phase: AgentRunPhase) -> String {
         switch phase {
         case .listening: "Listening"
+        case .paused: "Paused · Microphone off"
         case .running: "Running"
         case .cancelling: "Cancelling"
         case let .completed(reason): reason == .cancelled ? "Cancelled" : "Completed"

@@ -131,7 +131,8 @@ See [ACP agent harness](agent-harness.md) for the full schema and bounds.
 A completed turn keeps the conversation and microphone available for a
 follow-up. Use **Stop turn** to cancel current provider work, narration, queued
 follow-ups, and unfinished capture, or **End conversation** to return to passive
-listening. After the conversation ends,
+listening. Stop leaves the microphone off until **Resume listening** or an explicit
+push-to-talk request. After the conversation ends,
 **Close** hides retained output and **Delete** releases it.
 
 If output does not follow the bottom, scroll there once; manual upward scrolling

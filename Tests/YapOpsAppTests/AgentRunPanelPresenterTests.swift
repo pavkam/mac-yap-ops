@@ -93,7 +93,7 @@ struct AgentRunPanelPresenterTests {
         #expect(cancellations == [runID])
     }
 
-    @MainActor @Test func cancel_WhenRunIsActive_HidesPanelImmediately() {
+    @MainActor @Test func cancel_WhenRunIsActive_KeepsPauseAndResumeControlsVisible() {
         let display = AgentRunPanelDisplaySpy()
         let presenter = AgentRunPanelPresenter(
             display: display,
@@ -103,7 +103,7 @@ struct AgentRunPanelPresenterTests {
 
         display.onAction?(.cancel(runID: runID))
 
-        #expect(display.hidden == [runID])
+        #expect(display.hidden.isEmpty)
     }
 
     @MainActor @Test func endConversation_WhenRepeatedOrStale_IsRunScopedAndExactlyOnce() {

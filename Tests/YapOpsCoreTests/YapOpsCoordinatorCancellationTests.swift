@@ -7,7 +7,7 @@ import Testing
 
 
 extension YapOpsCoordinatorTests {
-    @MainActor @Test func cancelAgentRun_WhenAgentIsExecuting_CancelsTurnAndKeepsConversationListening() async throws {
+    @MainActor @Test func cancelAgentRun_WhenAgentIsExecuting_CancelsTurnAndKeepsConversationPaused() async throws {
         let fixture = try Fixture(profiles: [try makeAgentProfile()])
         var lifecycleEvents: [AgentRunLifecycleEvent] = []
         fixture.coordinator.onAgentRunEvent = { event in
@@ -30,8 +30,8 @@ extension YapOpsCoordinatorTests {
         await fixture.agentRunner.complete(runIndex: 0)
         try await Task.sleep(for: .milliseconds(30))
 
-        #expect(fixture.speech.startCount == 3)
-        #expect(fixture.speech.mode == .conversation)
+        #expect(fixture.speech.startCount == 2)
+        #expect(fixture.speech.mode == nil)
         #expect(fixture.coordinator.state == .executing)
         guard case let .started(runID, _, _) = lifecycleEvents.first else {
             Issue.record("Expected an agent conversation start")
@@ -77,7 +77,7 @@ extension YapOpsCoordinatorTests {
         #expect(cancelledInputCount == 1)
         #expect(fixture.coordinator.pendingAgentPrompts.isEmpty)
         #expect(await fixture.agentRunner.recordedInvocations().count == 1)
-        #expect(fixture.speech.mode == .conversation)
+        #expect(fixture.speech.mode == nil)
         await fixture.agentRunner.complete(runIndex: 0)
     }
 
@@ -167,8 +167,8 @@ extension YapOpsCoordinatorTests {
         }
 
         #expect(await fixture.agentRunner.recordedInvocations().isEmpty)
-        #expect(fixture.speech.startCount == 3)
-        #expect(fixture.speech.mode == .conversation)
+        #expect(fixture.speech.startCount == 2)
+        #expect(fixture.speech.mode == nil)
         #expect(fixture.coordinator.state == .executing)
     }
 

@@ -16,12 +16,19 @@ extension AgentRunPanelView {
 
     @ViewBuilder
     func leadingActions(_ snapshot: AgentRunSnapshot) -> some View {
-        if snapshot.phase == .running {
+        if snapshot.phase == .running || snapshot.phase == .listening {
             Button {
                 model.onAction?(.cancel(runID: snapshot.runID))
             } label: {
-                Label("Stop turn", systemImage: "stop.circle.fill")
+                Label(snapshot.phase == .listening ? "Stop listening" : "Stop turn",
+                    systemImage: "stop.circle.fill")
                     .foregroundStyle(.red)
+            }
+            .buttonStyle(.bordered)
+            .transition(actionDockTransition)
+        } else if snapshot.phase == .paused {
+            Button("Resume listening", systemImage: "mic") {
+                model.onAction?(.resumeListening(runID: snapshot.runID))
             }
             .buttonStyle(.bordered)
             .transition(actionDockTransition)
@@ -147,6 +154,7 @@ extension AgentRunPanelView {
     func phaseLabel(_ phase: AgentRunPhase) -> String {
         switch phase {
         case .listening: "Listening"
+        case .paused: "Paused · Microphone off"
         case .running: "Working"
         case .cancelling: "Cancelling"
         case let .completed(reason): reason == .cancelled ? "Cancelled" : "Completed"

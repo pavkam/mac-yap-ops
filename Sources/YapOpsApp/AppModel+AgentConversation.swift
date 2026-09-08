@@ -60,6 +60,12 @@ extension AppModel {
         coordinator.cancelAgentRun()
     }
 
+    func resumeAgentConversationListening(runID: UUID) {
+        guard agentRunSnapshot?.runID == runID, agentRunSnapshot?.phase == .paused,
+            coordinator.resumeAgentConversationListening() else { return }
+        agentRunPresentation.resumeListening(runID: runID)
+    }
+
     /// Ends the complete conversation while rejecting stale panel actions by run identity.
     func endAgentConversation(runID: UUID) {
         guard agentRunSnapshot?.runID == runID,

@@ -5,6 +5,12 @@ import Foundation
 import YapOpsCore
 
 extension AgentRunPresentation {
+    func resumeListening(runID: UUID) {
+        guard self.runID == runID, phase == .paused else { return }
+        phase = .listening
+        publishNow()
+    }
+
     /// Attaches capture metadata only to its live, retained local request.
     func receiveContext(runID: UUID, inputID: UUID?, summary: AgentInputContextSummary) {
         guard self.runID == runID, phase == .running || phase == .listening else { return }

@@ -281,6 +281,9 @@ final class AppModel {
         agentRunPanelPresenter.onCancel = { [weak self] runID in
             self?.cancelAgentRun(runID: runID)
         }
+        agentRunPanelPresenter.onResumeListening = { [weak self] runID in
+            self?.resumeAgentConversationListening(runID: runID)
+        }
         agentRunPanelPresenter.onEndConversation = { [weak self] runID in
             self?.endAgentConversation(runID: runID)
         }
@@ -408,6 +411,7 @@ extension AgentRunPhase {
     var appModelDiagnosticName: String {
         switch self {
         case .listening: "listening"
+        case .paused: "paused"
         case .running: "running"
         case .cancelling: "cancelling"
         case .completed: "completed"

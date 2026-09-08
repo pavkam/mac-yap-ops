@@ -20,9 +20,9 @@ The trigger selects one profile for the lifetime of the conversation. Every
 follow-up keeps that profile's agent session, identity, and reply voice; another
 trigger or a Settings change cannot switch it mid-conversation.
 
-The microphone remains active while the provider works, while a reply is read
-aloud, and after the turn finishes. Passive wake resumes only after the
-conversation ends.
+The microphone accepts follow-ups while the provider works and after a normal
+turn finishes. It pauses during spoken output and stays off after **Stop turn**.
+Passive wake resumes only after the conversation ends.
 
 ## Read the timeline
 
@@ -105,8 +105,10 @@ permission request exactly once before the process is torn down.
 
 **Stop turn** cancels current provider work and narration, discards queued
 follow-ups, and clears unfinished microphone input. Discarded follow-ups show
-**Cancelled before next turn**. Listening resumes with a fresh capture after
-cancellation settles, so another request can start the next turn.
+**Cancelled before next turn**. The panel stays visible as **Paused · Microphone
+off** after cancellation settles. Choose **Resume listening** or use push-to-talk
+to continue this conversation. Empty push-to-talk capture leaves it paused.
+**Stop listening** offers the same pause when the provider is already idle.
 
 **End conversation** cancels active work when necessary, closes conversation
 recognition, and returns to passive wake after the normal cooldown. Saying only

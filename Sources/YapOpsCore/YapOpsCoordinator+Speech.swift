@@ -344,6 +344,7 @@ extension YapOpsCoordinator {
     func startConversationListening() {
         guard
             isAgentConversationActive,
+            !isConversationListeningPaused,
             !agentSpeechOutputActive,
             agentCancellationTask == nil,
             !pushToTalkActive,

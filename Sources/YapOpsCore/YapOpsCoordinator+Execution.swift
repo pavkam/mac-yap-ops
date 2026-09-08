@@ -125,6 +125,7 @@ extension YapOpsCoordinator {
                     "input_character_count": String(transcript.count),
                 ])
             activeAgentRunID = runID
+            isConversationListeningPaused = false
             cancelPendingAgentInputs()
             agentConversationEndResult = nil
             onAgentRunEvent?(

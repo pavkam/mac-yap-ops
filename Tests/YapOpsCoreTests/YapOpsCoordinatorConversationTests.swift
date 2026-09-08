@@ -145,8 +145,8 @@ extension YapOpsCoordinatorTests {
         await waitUntil {
             await fixture.agentRunner.cancelCount == 1
                 && fixture.coordinator.agentCancellationTask == nil
-                && fixture.speech.mode == .conversation
         }
+        #expect(fixture.coordinator.resumeAgentConversationListening())
 
         context.target = finder
         context.nextSnapshot = makeMacContextSnapshot(target: finder, selectedText: "new")

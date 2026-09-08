@@ -188,6 +188,7 @@ public final class YapOpsCoordinator {
     var pushToTalkContinuesConversation = false
     var agentConversationEndResult: AgentRunResult?
     var agentSpeechOutputActive = false
+    var isConversationListeningPaused = false
     var agentTurnHadActivity = false
     var activeAgentRestorationToken: AgentRestorationToken?
 
@@ -379,6 +380,7 @@ public final class YapOpsCoordinator {
             pushToTalkContinuesConversation = false
             stopActiveSession()
             state = .executing
+            if !transcript.isEmpty { isConversationListeningPaused = false }
             startConversationListening()
             guard !transcript.isEmpty else { return }
             if CaptureCancellationMatcher.matches(transcript, isComplete: true) {
@@ -424,45 +426,6 @@ public final class YapOpsCoordinator {
             return
         }
         resumePassiveIfNeeded()
-    }
-
-    /// Cancels the active turn, pending input, and capture while retaining the conversation.
-    public func cancelAgentRun() {
-        guard
-            case .agent = executingAction,
-            let runID = activeAgentRunID,
-            executionTask != nil,
-            agentCancellationTask == nil
-        else {
-            diagnostics.record(
-                category: .agent,
-                event: "coordinator.agent_cancel_ignored",
-                fields: ["reason": "no_cancellable_turn"])
-            return
-        }
-
-        diagnostics.record(
-            category: .agent,
-            event: "coordinator.agent_cancel_requested",
-            fields: ["run_id": runID.uuidString])
-
-        executionGeneration &+= 1
-        let cancelledInputs = pendingAgentPrompts.map(\.id)
-        cancelAllAgentInputs()
-        stopActiveSession()
-        conversationUtterance = ""
-        currentTranscript = ""
-        capturedCommand = ""
-        pushToTalkActive = false
-        pushToTalkContinuesConversation = false
-        executionTask?.cancel()
-        executionTask = nil
-        beginAgentCancellation(runID: runID)
-        onAgentRunEvent?(.turnCancellationStarted(runID: runID))
-        for inputID in cancelledInputs {
-            onAgentRunEvent?(.followUpDispositionChanged(
-                runID: runID, inputID: inputID, disposition: .cancelled))
-        }
     }
 
     /// Ends the complete live agent conversation and releases its cached session.

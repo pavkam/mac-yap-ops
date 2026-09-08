@@ -156,6 +156,7 @@ extension YapOpsCoordinatorTests {
         }
         #expect(fixture.coordinator.pendingAgentPrompts.isEmpty)
         #expect(await fixture.agentRunner.recordedInvocations().count == 1)
+        #expect(fixture.coordinator.resumeAgentConversationListening())
         fixture.speech.emit("fresh request", isFinal: true)
         await waitUntil { await fixture.agentRunner.recordedInvocations().count == 2 }
         #expect(await fixture.agentRunner.recordedInvocations().map(\.prompt.request) == [

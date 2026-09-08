@@ -7,6 +7,7 @@ import YapOpsCore
 /// The panel-visible phase of a retained agent conversation.
 enum AgentRunPhase: Equatable, Sendable {
     case listening
+    case paused
     case running
     case cancelling
     case completed(AgentStopReason)
@@ -16,7 +17,7 @@ enum AgentRunPhase: Equatable, Sendable {
         switch self {
         case .completed, .failed:
             true
-        case .listening, .running, .cancelling:
+        case .listening, .paused, .running, .cancelling:
             false
         }
     }
@@ -29,7 +30,7 @@ enum AgentRunPhase: Equatable, Sendable {
         switch self {
         case .running, .cancelling:
             true
-        case .listening, .completed, .failed:
+        case .listening, .paused, .completed, .failed:
             false
         }
     }

@@ -100,6 +100,27 @@ extension AppModelTests {
         #expect(fixture.model.agentRunSnapshot?.notices == ["Wait for the agent."])
     }
 
+    @MainActor @Test
+    func conversation_StopAndResumeKeepMicrophoneAndPresentationInSync() async throws {
+        let profile = try makeAgentProfile(displayName: "Codex")
+        let fixture = try Fixture(profiles: [profile])
+        await fixture.model.start()
+        fixture.speech.emit("Codex explain this", isFinal: true)
+        await waitUntil { fixture.model.agentRunSnapshot?.phase == .listening }
+        let runID = try #require(fixture.model.agentRunSnapshot?.runID)
+
+        fixture.model.cancelAgentRun(runID: runID)
+        #expect(fixture.model.agentRunSnapshot?.phase == .paused)
+        #expect(fixture.speech.mode == nil)
+        #expect(fixture.model.statusPresentation.detail == "Microphone off · Resume when ready")
+        fixture.model.resumeAgentConversationListening(runID: UUID())
+        #expect(fixture.speech.mode == nil)
+        fixture.model.resumeAgentConversationListening(runID: runID)
+        #expect(fixture.model.agentRunSnapshot?.phase == .listening)
+        #expect(fixture.speech.mode == .conversation)
+        await fixture.model.shutdown()
+    }
+
     @MainActor @Test func agentConversation_WhenSpeechIsPartial_ShowsLiveFollowUpText() async throws
     {
         let profile = try makeAgentProfile(displayName: "Codex")

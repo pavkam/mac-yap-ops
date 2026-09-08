@@ -60,6 +60,18 @@ struct AgentRunPresentationTimingTests {
         #expect((presentation.snapshot?.elapsedSeconds ?? 0) > 0)
     }
 
+    @MainActor @Test(arguments: [false, true])
+    func cancelledResult_OnlyShowsMicrophonePausedAfterUserStop(userStopped: Bool) throws {
+        let presentation = AgentRunPresentation(startsElapsedTimer: false)
+        let runID = UUID()
+        presentation.start(runID: runID, profile: try makeAgentProfile(), prompt: "Inspect")
+        if userStopped { #expect(presentation.beginCancellation(runID: runID)) }
+
+        presentation.completeTurn(runID: runID, result: .init(stopReason: .cancelled))
+
+        #expect(presentation.snapshot?.phase == (userStopped ? .paused : .listening))
+    }
+
     private func makeAgentProfile() throws -> WakeProfile {
         try WakeProfile(
             wakePhrase: "computer",

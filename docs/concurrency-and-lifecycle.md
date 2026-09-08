@@ -109,7 +109,8 @@ conversation recognition and resumes passive wake after the configured cooldown.
 
 Stop retires the execution and recognition generations, discards active and
 pending input, and establishes cancellation ownership before publishing the
-cancelling phase. A fresh microphone session starts after cancellation settles.
+cancelling phase. Cancellation leaves microphone capture paused; only an explicit
+resume or nonempty push-to-talk input can restart it.
 Ordinary follow-ups use validated steering or FIFO without cancelling active work.
 
 ## Bounded queues and backpressure

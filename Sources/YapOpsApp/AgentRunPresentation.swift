@@ -334,8 +334,8 @@ final class AgentRunPresentation {
         }
     }
 
-    /// Settles the current turn and returns the conversation to follow-up listening.
-    func completeTurn(runID: UUID, result _: AgentRunResult) {
+    /// Settles the turn, keeping capture paused after a user-requested Stop.
+    func completeTurn(runID: UUID, result: AgentRunResult) {
         guard self.runID == runID, phase?.isTerminal == false else { return }
         diagnosticsRecorder.record(
             category: .ui,
@@ -344,7 +344,7 @@ final class AgentRunPresentation {
         flushPendingPublication()
         settleTools()
         stopElapsedTimer()
-        phase = .listening
+        phase = phase == .cancelling && result.stopReason == .cancelled ? .paused : .listening
         permissions = []
         voiceInput = ""
         publishNow()
@@ -417,7 +417,7 @@ final class AgentRunPresentation {
     ///
     /// - Returns: Whether cancellation should be forwarded to the coordinator.
     func beginCancellation(runID: UUID) -> Bool {
-        guard self.runID == runID, phase == .running else { return false }
+        guard self.runID == runID, phase == .running || phase == .listening else { return false }
         diagnosticsRecorder.record(
             category: .ui,
             event: "agent_presentation.cancellation_started",

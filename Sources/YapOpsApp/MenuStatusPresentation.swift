@@ -83,6 +83,12 @@ struct MenuStatusPresentation: Equatable {
                 detail: "Listening for a follow-up",
                 symbolName: "waveform.badge.mic",
                 isError: false)
+        case .paused:
+            MenuStatusPresentation(
+                title: "Conversation paused",
+                detail: "Microphone off · Resume when ready",
+                symbolName: "mic.slash",
+                isError: false)
         case .running:
             MenuStatusPresentation(
                 title: "Agent working",

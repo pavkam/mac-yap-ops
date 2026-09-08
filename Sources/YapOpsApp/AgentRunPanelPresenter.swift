@@ -6,6 +6,7 @@ import YapOpsCore
 
 enum AgentRunPanelAction: Equatable {
     case cancel(runID: UUID)
+    case resumeListening(runID: UUID)
     case endConversation(runID: UUID)
     case permission(runID: UUID, key: AgentPermissionKey, optionID: String)
     case stopBackgroundTask(runID: UUID, taskID: AgentBackgroundTaskID)
@@ -48,6 +49,7 @@ struct SystemAgentRunPasteboardWriter: AgentRunPasteboardWriting {
 @MainActor
 final class AgentRunPanelPresenter {
     var onCancel: ((UUID) -> Void)?
+    var onResumeListening: ((UUID) -> Void)?
     var onEndConversation: ((UUID) -> Void)?
     var onPermission: ((UUID, AgentPermissionKey, String) -> Void)?
     var onStopBackgroundTask: ((UUID, AgentBackgroundTaskID) -> Void)?
@@ -109,7 +111,8 @@ final class AgentRunPanelPresenter {
                 ])
             return
         }
-        if snapshot.phase == .running, self.snapshot?.phase != .running {
+        if snapshot.phase == .running || snapshot.phase == .listening,
+            self.snapshot?.phase != snapshot.phase {
             cancelledRunID = nil
         }
         resolvedPermissions.formIntersection(snapshot.permissions.lazy.map(\.key))
@@ -159,15 +162,21 @@ final class AgentRunPanelPresenter {
         switch action {
         case .cancel(let runID):
             guard snapshot.runID == runID,
-                snapshot.phase == .running,
+                (snapshot.phase == .running || snapshot.phase == .listening),
                 cancelledRunID != runID
             else {
                 recordIgnored(action, reason: "run_not_cancellable")
                 return
             }
             cancelledRunID = runID
-            display.hide(runID: runID)
             onCancel?(runID)
+            recordApplied(action)
+        case .resumeListening(let runID):
+            guard snapshot.runID == runID, snapshot.phase == .paused else {
+                recordIgnored(action, reason: "conversation_not_paused")
+                return
+            }
+            onResumeListening?(runID)
             recordApplied(action)
         case .endConversation(let runID):
             guard snapshot.runID == runID,
@@ -319,6 +328,7 @@ extension AgentRunPanelAction {
     fileprivate var diagnosticName: String {
         switch self {
         case .cancel: "stop_turn"
+        case .resumeListening: "resume_listening"
         case .endConversation: "end_conversation"
         case .permission: "permission"
         case .stopBackgroundTask: "stop_background_task"
@@ -335,6 +345,7 @@ extension AgentRunPanelAction {
     fileprivate var runID: UUID {
         switch self {
         case .cancel(let runID),
+            .resumeListening(let runID),
             .endConversation(let runID),
             .copy(let runID),
             .close(let runID),
@@ -356,6 +367,7 @@ extension AgentRunPhase {
     fileprivate var diagnosticName: String {
         switch self {
         case .listening: "listening"
+        case .paused: "paused"
         case .running: "running"
         case .cancelling: "cancelling"
         case .completed: "completed"

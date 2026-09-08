@@ -88,7 +88,7 @@ struct AgentPermissionTransportResultFlowTests {
         #expect(await waitUntil {
             await fixture.transport.cancelledPermissionResponseCount() == 1
         })
-        #expect(await waitUntil { fixture.app.model.agentRunSnapshot?.phase == .listening })
+        #expect(await waitUntil { fixture.app.model.agentRunSnapshot?.phase == .paused })
 
         #expect(await fixture.transport.cancelledPermissionResponseCount() == 1)
         #expect(fixture.audio.spoken.map(\.text) == confirmationSpeech)
