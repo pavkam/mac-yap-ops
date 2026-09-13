@@ -23,7 +23,11 @@ struct SettingsView: View {
                 pane { speechSettings }
             }
         }
-        .frame(width: 720, height: selectedPane == .general ? 420 : 660)
+        .frame(
+            width: Design.Layout.settingsWidth,
+            height: selectedPane == .general
+                ? Design.Layout.settingsHeightGeneral
+                : Design.Layout.settingsHeightTall)
         .navigationTitle(selectedPane.title)
         .onChange(of: model.wakeProfiles) { saved = false }
         .onChange(of: model.localeID) { saved = false }
@@ -80,33 +84,7 @@ struct SettingsView: View {
     }
 
     private var profileSettings: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Your assistants")
-                            .font(.headline)
-                            .accessibilityAddTraits(.isHeader)
-                        Text("Set each profile’s trigger, action, shortcut, and reply voice.")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button {
-                        model.wakeProfiles.append(WakeProfileDraft(
-                            wakePhrase: "",
-                            urlTemplate: "https://www.google.com/search?q={urlText}",
-                            accent: nextAccent))
-                    } label: {
-                        Label("Add Profile", systemImage: "plus")
-                    }
-                }
-                ForEach($model.wakeProfiles) { $profile in
-                    ProfileSettingsEditor(model: model, profile: $profile)
-                }
-            }
-            .padding(20)
-        }
+        ProfilesPane(model: model)
     }
 
     private var speechSettings: some View {
@@ -164,10 +142,6 @@ struct SettingsView: View {
         }
     }
 
-    private var nextAccent: WakeProfileAccent {
-        let accents = WakeProfileAccent.allCases
-        return accents[model.wakeProfiles.count % accents.count]
-    }
 }
 
 extension WakeProfileAccent {

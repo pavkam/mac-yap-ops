@@ -73,6 +73,27 @@ extension Design {
                 endPoint: .bottomTrailing)
         }
 
+        /// The conversation panel header ground.
+        ///
+        /// Radial rather than linear: the wash gathers behind the profile mark
+        /// at the leading edge and falls away, so the header reads as lit by the
+        /// profile rather than tinted by it.
+        static func panelHeader(_ accent: SwiftUI.Color) -> RadialGradient {
+            RadialGradient(
+                colors: [accent.opacity(Alpha.panelHeaderWash), .clear],
+                center: .topLeading,
+                startRadius: 0,
+                endRadius: 320)
+        }
+
+        /// The specular inset along a floating panel's top edge.
+        static var panelSpecular: LinearGradient {
+            LinearGradient(
+                colors: [.white.opacity(Alpha.panelSpecular), .clear],
+                startPoint: .top,
+                endPoint: .bottom)
+        }
+
         /// The overlay rim: a bright specular stop falling to the accent.
         static func overlayRim(accent: SwiftUI.Color) -> LinearGradient {
             LinearGradient(

@@ -67,6 +67,17 @@ extension Design {
         static let accentGlowOrb: Double = 0.46
         /// Status dot glow.
         static let accentGlowDot: Double = 0.55
+        /// Profile icon badge ground.
+        static let accentBadge: Double = 0.13
+
+        // Selection. A selected sidebar row or preset button takes an accent
+        // wash and accent ink; a segmented control takes a solid accent fill
+        // with white ink. These are not interchangeable.
+
+        /// Selected sidebar row fill.
+        static let selectionFill: Double = 0.16
+        /// Selected sidebar row border.
+        static let selectionBorder: Double = 0.4
 
         // The listening layer. Listening is the product, so the overlay is the
         // one place the system is expressive rather than merely correct — but
@@ -88,6 +99,16 @@ extension Design {
         static let captureRingResting: Double = 0.7
         /// Overlay cancel glyph.
         static let inkOverlayCancel: Double = 0.78
+
+        // Conversation panel chrome. The panel hosts listening too, so it takes
+        // the same accent-lit treatment at a lower intensity.
+
+        /// Radial accent wash behind the panel header.
+        static let panelHeaderWash: Double = 0.14
+        /// Specular inset along the panel's top edge.
+        static let panelSpecular: Double = 0.22
+        /// Breathing phase pip at rest.
+        static let phasePipResting: Double = 0.45
 
         // Ink adjustments, where the application dims a semantic colour rather
         // than substituting a different one.

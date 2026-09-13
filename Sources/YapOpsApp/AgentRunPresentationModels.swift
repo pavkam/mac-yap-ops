@@ -13,6 +13,20 @@ enum AgentRunPhase: Equatable, Sendable {
     case completed(AgentStopReason)
     case failed(String)
 
+    /// Whether the conversation is actively working.
+    ///
+    /// `paused` is deliberately excluded: a muted microphone must not look
+    /// alive, so the phase pip and every other ambient motion stay inert while
+    /// paused. Ambient motion in this application means work is happening.
+    var isLive: Bool {
+        switch self {
+        case .listening, .running:
+            true
+        case .paused, .cancelling, .completed, .failed:
+            false
+        }
+    }
+
     var isTerminal: Bool {
         switch self {
         case .completed, .failed:

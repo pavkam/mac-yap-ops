@@ -20,6 +20,8 @@ extension Design {
         static let settingsHeightGeneral: CGFloat = 420
         /// Settings height on every other tab.
         static let settingsHeightTall: CGFloat = 660
+        /// Profiles master list column.
+        static let settingsSidebar: CGFloat = 218
 
         /// Menu status header disc.
         static let statusOrb: CGFloat = 44

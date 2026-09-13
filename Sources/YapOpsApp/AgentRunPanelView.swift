@@ -12,9 +12,11 @@ struct AgentRunPanelView: View {
     @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
-        let cornerRadius: CGFloat = model.isMinimized ? 18 : 22
+        let cornerRadius: CGFloat = model.isMinimized
+            ? Design.Radius.panelCompact
+            : Design.Radius.panelExpanded
         ZStack {
-            AgentRunPanelBackdrop()
+            AgentRunPanelBackdrop(accent: accent)
             content
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
@@ -125,9 +127,14 @@ struct AgentRunPanelView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(snapshot.profileName)
                         .font(.headline)
-                    Text(panelPhaseLabel(snapshot))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    HStack(spacing: Design.Space.micro) {
+                        AgentRunPhasePip(
+                            tint: accent,
+                            isLive: snapshot.phase.isLive || snapshot.hasActiveBackgroundTasks)
+                        Text(panelPhaseLabel(snapshot))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

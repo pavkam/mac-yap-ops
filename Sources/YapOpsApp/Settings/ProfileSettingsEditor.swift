@@ -64,15 +64,6 @@ struct ProfileSettingsEditor: View {
             }
             .labelsHidden()
             .frame(width: 110)
-            Button(role: .destructive) {
-                model.wakeProfiles.removeAll { $0.id == profile.id }
-            } label: {
-                Image(systemName: "trash")
-            }
-            .buttonStyle(.borderless)
-            .disabled(model.wakeProfiles.count == 1)
-            .help("Remove profile")
-            .accessibilityLabel("Remove profile")
         }
     }
 
@@ -299,7 +290,7 @@ private enum ProfileSpeechMode: Hashable {
     case voice
 }
 
-private struct ProfileIconBadge: View {
+struct ProfileIconBadge: View {
     let icon: ProfileIcon
     let accent: WakeProfileAccent
 
@@ -307,9 +298,9 @@ private struct ProfileIconBadge: View {
         ProfileIconGlyph(icon: icon)
             .font(Design.Text.glyph(Design.Glyph.badge))
             .foregroundStyle(accent.swiftUIColor)
-            .frame(width: 36, height: 36)
+            .frame(width: Design.Layout.iconBadge, height: Design.Layout.iconBadge)
             .background(
-                accent.swiftUIColor.opacity(0.13),
+                accent.swiftUIColor.opacity(Design.Alpha.accentBadge),
                 in: RoundedRectangle(cornerRadius: Design.Radius.innerCard))
             .accessibilityLabel("Profile icon")
     }
