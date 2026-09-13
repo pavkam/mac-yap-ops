@@ -14,8 +14,13 @@ import YapOpsCore
 final class AppModel {
     /// The current speech and execution state rendered by the menu and recording overlay.
     var state: ActivationState = .disabled
+
+    /// Live input levels for `VoiceBars`, mirrored from the active speech
+    /// session while `state == .capturing`. Reset by the session on stop, so
+    /// this never holds a stale level once capture ends.
     /// The most recently submitted transcript shown as compact history.
     var lastTranscript = ""
+    var captureLevels: [Double] = .init(repeating: 0, count: SpeechAudioLevelMeter.barCount)
     /// The partial transcript currently rendered while the user speaks.
     var currentTranscript = ""
     /// Whether passive wake listening is enabled in saved application state.
@@ -278,6 +283,9 @@ final class AppModel {
             self?.cancelCapture()
         }
         bindAgentRunPresentation(agentRunPresentation)
+        (speechSession as? SpeechAudioLevelReporting)?.onLevels = { [weak self] levels in
+            self?.captureLevels = levels
+        }
         agentRunPanelPresenter.onCancel = { [weak self] runID in
             self?.cancelAgentRun(runID: runID)
         }

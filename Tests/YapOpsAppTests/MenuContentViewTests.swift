@@ -11,7 +11,7 @@ import YapOpsCore
 private final class MenuOverlayStub: RecordingOverlayDisplaying {
     var onCancel: (() -> Void)?
 
-    func show(transcript: String, accent: WakeProfileAccent) {}
+    func show(transcript: String, accent: WakeProfileAccent, levels: [Double]) {}
     func hide() {}
 }
 

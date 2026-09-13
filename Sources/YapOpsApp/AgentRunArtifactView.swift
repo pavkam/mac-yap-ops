@@ -12,8 +12,12 @@ struct AgentRunArtifactShelf: View {
     var body: some View {
         if !snapshot.artifacts.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                Label("Results", systemImage: "square.grid.2x2")
-                    .font(.headline)
+                HStack(spacing: Design.Space.small) {
+                    Label("Results", systemImage: "square.grid.2x2")
+                        .font(.headline)
+
+                    ArtifactCountChip(count: snapshot.artifacts.count, tint: snapshot.accent.swiftUIColor)
+                }
 
                 LazyVGrid(
                     columns: [GridItem(.adaptive(minimum: 250), spacing: 12)],
@@ -174,5 +178,32 @@ private struct AgentRunArtifactCard: View {
         let count = result.artifact.declaredSize ?? UInt64(result.embeddedByteCount)
         guard count > 0, count <= UInt64(Int64.max) else { return nil }
         return ByteCountFormatter.string(fromByteCount: Int64(count), countStyle: .file)
+    }
+}
+
+/// The count chip beside "Results".
+///
+/// The artifact grid is the thing the user came for — the source's own
+/// result-first ordering says so — so its count gets a number, not just a
+/// header. A count above nine reads as "several", which is what matters at
+/// this size; the exact figure is still in the label for accessibility.
+private struct ArtifactCountChip: View {
+    let count: Int
+    let tint: Color
+
+    var body: some View {
+        Text(displayCount)
+            .font(Design.Text.eyebrowControl)
+            .foregroundStyle(tint)
+            .padding(.horizontal, Design.Space.tiny + 2)
+            .padding(.vertical, 1)
+            .background(
+                tint.opacity(Design.Alpha.accentWashCard),
+                in: Capsule())
+            .accessibilityLabel("\(count) result\(count == 1 ? "" : "s")")
+    }
+
+    private var displayCount: String {
+        count > 9 ? "9+" : String(count)
     }
 }

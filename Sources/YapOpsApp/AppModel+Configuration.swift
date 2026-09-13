@@ -119,7 +119,8 @@ extension AppModel {
         overlayPresenter.update(
             state: state,
             transcript: currentTranscript,
-            accent: activeProfile?.accent ?? activeWakeProfiles.first?.accent ?? .blue)
+            accent: activeProfile?.accent ?? activeWakeProfiles.first?.accent ?? .blue,
+            levels: captureLevels)
     }
 
     /// Publishes one immutable conversation snapshot to UI and audio presenters.

@@ -54,11 +54,18 @@ struct RecordingOverlayView: View {
 
     private var transcriptContent: some View {
         VStack(alignment: .leading, spacing: Design.Space.micro) {
-            Text("Listening")
-                .font(Design.Text.eyebrowOverlay)
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-                .tracking(Design.Tracking.overlay)
+            HStack(spacing: Design.Space.small) {
+                Text("Listening")
+                    .font(Design.Text.eyebrowOverlay)
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                    .tracking(Design.Tracking.overlay)
+
+                // Level data beats animation: given real levels, bars track the
+                // signal directly rather than an ambient guess at "something is
+                // happening".
+                VoiceBars(levels: model.levels, tint: accentColor, height: 11)
+            }
 
             Text(RecordingTranscriptTail.format(model.transcript))
                 .font(Design.Text.transcript)

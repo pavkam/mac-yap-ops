@@ -6,8 +6,20 @@ import Foundation
 import Speech
 import YapOpsCore
 
+/// Reports live input levels alongside a `SpeechSessionProtocol` session.
+///
+/// A separate protocol rather than a new `SpeechSessionProtocol` requirement:
+/// `VoiceBars` is cosmetic, and adding it to the recognition contract would
+/// force every fake session in the test suite to grow a levels callback it
+/// does not use. A caller that wants levels casts to this protocol; one that
+/// does not, ignores it entirely.
 @MainActor
-final class AppleSpeechSession: SpeechSessionProtocol {
+protocol SpeechAudioLevelReporting: AnyObject {
+    var onLevels: (([Double]) -> Void)? { get set }
+}
+
+@MainActor
+final class AppleSpeechSession: SpeechSessionProtocol, SpeechAudioLevelReporting {
     enum SessionError: Error, LocalizedError {
         case recognizerUnavailable(String)
         case noAudioInput
@@ -28,6 +40,14 @@ final class AppleSpeechSession: SpeechSessionProtocol {
     private let configurationMonitor = AudioEngineConfigurationMonitor()
     private let diagnostics: any YapOpsDiagnosticRecording
     private var hasInputTap = false
+    private lazy var levelMeter = SpeechAudioLevelMeter { [weak self] levels in
+        self?.onLevels?(levels)
+    }
+
+    /// Live input levels for `VoiceBars`, delivered on the main actor at a
+    /// throttled rate. `nil` outside `SpeechAudioLevelReporting`'s reach — most
+    /// callers only need `SpeechSessionProtocol`.
+    var onLevels: (([Double]) -> Void)?
     private var generation = 0
 
     init(
@@ -97,11 +117,15 @@ final class AppleSpeechSession: SpeechSessionProtocol {
         }
 
         let bufferSink = SpeechAudioBufferSink(request: request)
+        let levelMeter = self.levelMeter
         input.installTap(
             onBus: 0,
             bufferSize: 2_048,
             format: format,
-            block: bufferSink.makeTap())
+            block: { buffer, _ in
+                bufferSink.append(buffer)
+                levelMeter.process(buffer)
+            })
         hasInputTap = true
         recognitionRequest = request
         audioEngine = engine
@@ -210,6 +234,7 @@ final class AppleSpeechSession: SpeechSessionProtocol {
         hasInputTap = false
         audioEngine?.stop()
         audioEngine = nil
+        levelMeter.reset()
         diagnostics.record(
             category: .speechRecognition,
             event: "recognition.stopped",

@@ -33,6 +33,7 @@ struct MenuContentView: View {
             profileList
 
             if model.state == .capturing {
+                captureStrip
                 cancelButton
             }
 
@@ -313,6 +314,20 @@ struct MenuContentView: View {
         case let .completed(reason): reason == .cancelled ? "Cancelled" : "Completed"
         case .failed: "Failed"
         }
+    }
+
+    private var captureStrip: some View {
+        HStack(spacing: Design.Space.small) {
+            VoiceBars(levels: model.captureLevels, tint: headerAccent, height: 14)
+            Text("Listening")
+                .font(Design.Text.rowDetail)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, Design.Space.menuGutter)
+        .padding(.bottom, Design.Space.small)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Listening")
     }
 
     private var cancelButton: some View {

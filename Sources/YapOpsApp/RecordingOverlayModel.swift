@@ -9,6 +9,7 @@ import YapOpsCore
 final class RecordingOverlayModel {
     var transcript = ""
     var isRecording = false
+    var levels: [Double] = .init(repeating: 0, count: SpeechAudioLevelMeter.barCount)
     var accent: WakeProfileAccent = .blue
     @ObservationIgnored var onCancel: (() -> Void)?
 }

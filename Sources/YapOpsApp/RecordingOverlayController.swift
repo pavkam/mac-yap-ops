@@ -34,7 +34,7 @@ final class RecordingOverlayController: RecordingOverlayDisplaying {
         panel.contentView = NSHostingView(rootView: RecordingOverlayView(model: model))
     }
 
-    func show(transcript: String, accent: WakeProfileAccent) {
+    func show(transcript: String, accent: WakeProfileAccent, levels: [Double]) {
         let previousTranscript = model.transcript
         let panelWasVisible = panel.isVisible
         let shouldAnimate = RecordingOverlayLayout.shouldAnimate(
@@ -58,6 +58,7 @@ final class RecordingOverlayController: RecordingOverlayDisplaying {
 
         model.transcript = transcript
         model.accent = accent
+        model.levels = levels
         model.isRecording = true
         if !panelWasVisible {
             activeVisibleFrame = activeScreenVisibleFrame()

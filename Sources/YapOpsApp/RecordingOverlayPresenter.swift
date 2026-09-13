@@ -13,7 +13,7 @@ struct RecordingOverlayHandoff: Equatable {
 protocol RecordingOverlayDisplaying: AnyObject {
     var onCancel: (() -> Void)? { get set }
 
-    func show(transcript: String, accent: WakeProfileAccent)
+    func show(transcript: String, accent: WakeProfileAccent, levels: [Double])
     func hide()
     func takeAgentRunHandoff() -> RecordingOverlayHandoff?
 }
@@ -37,10 +37,11 @@ final class RecordingOverlayPresenter {
     func update(
         state: ActivationState,
         transcript: String,
-        accent: WakeProfileAccent = .blue)
+        accent: WakeProfileAccent = .blue,
+        levels: [Double] = [])
     {
         if state == .capturing {
-            display.show(transcript: transcript, accent: accent)
+            display.show(transcript: transcript, accent: accent, levels: levels)
         } else {
             display.hide()
         }

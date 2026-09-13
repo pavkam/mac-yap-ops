@@ -60,7 +60,7 @@ final class AppModelOverlayStub: RecordingOverlayDisplaying {
     var onCancel: (() -> Void)?
     private(set) var shownAccents: [WakeProfileAccent] = []
 
-    func show(transcript: String, accent: WakeProfileAccent) {
+    func show(transcript: String, accent: WakeProfileAccent, levels: [Double]) {
         shownAccents.append(accent)
     }
     func hide() {}

@@ -14,7 +14,7 @@ private final class RecordingOverlayDisplaySpy: RecordingOverlayDisplaying {
     var handoff: RecordingOverlayHandoff?
     var onCancel: (() -> Void)?
 
-    func show(transcript: String, accent: WakeProfileAccent) {
+    func show(transcript: String, accent: WakeProfileAccent, levels: [Double]) {
         shownValues.append((transcript, accent))
     }
 
