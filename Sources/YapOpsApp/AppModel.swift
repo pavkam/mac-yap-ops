@@ -287,6 +287,9 @@ final class AppModel {
         agentRunPanelPresenter.onEndConversation = { [weak self] runID in
             self?.endAgentConversation(runID: runID)
         }
+        agentRunPanelPresenter.onSubmitFollowUp = { [weak self] runID, text in
+            self?.submitAgentFollowUp(runID: runID, text: text)
+        }
         agentRunPanelPresenter.onPermission = { [weak self] runID, key, optionID in
             self?.resolveAgentPermission(
                 runID: runID,

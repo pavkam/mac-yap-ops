@@ -4,7 +4,16 @@
 import Foundation
 
 extension YapOpsCoordinator {
-    func submitAgentFollowUp(_ prompt: String) {
+    /// Queues an additional request for the active agent conversation.
+    ///
+    /// YapOps accepts follow-ups mid-turn, so this does not wait for the agent
+    /// to finish: the prompt joins the pending queue and is delivered when the
+    /// session can take it. Requests are rejected — with a notice, never
+    /// silently — when there is no active conversation, when the prompt exceeds
+    /// the protocol's byte ceiling, or when the pending queue is full.
+    ///
+    /// - Parameter prompt: The request text, already trimmed by the caller.
+    public func submitAgentFollowUp(_ prompt: String) {
         guard case .agent = executingAction, let runID = activeAgentRunID else {
             diagnostics.record(
                 category: .agent,

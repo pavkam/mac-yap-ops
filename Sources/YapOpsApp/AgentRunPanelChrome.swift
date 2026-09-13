@@ -82,12 +82,42 @@ extension AgentRunPanelView {
             removal: .move(edge: .bottom).combined(with: .opacity))
     }
 
+    /// The bottom of the panel.
+    ///
+    /// While a conversation is live the composer owns it: sending is the action
+    /// you want, and the old dock offered everything except that. Terminal
+    /// phases keep the dock, because Delete / Copy output / Close is all that
+    /// remains to do.
+    @ViewBuilder
     func actionDock(_ snapshot: AgentRunSnapshot) -> some View {
-        actions(snapshot)
-            .controlSize(.small)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 11)
-            .overlay(alignment: .top) { panelSeparator }
+        if snapshot.phase.isTerminal {
+            actions(snapshot)
+                .controlSize(.small)
+                .padding(.horizontal, Design.Space.panelGutter)
+                .padding(.vertical, Design.Space.cardTight)
+                .overlay(alignment: .top) { panelSeparator }
+        } else {
+            AgentRunComposer(
+                snapshot: snapshot,
+                isListening: snapshot.phase == .listening,
+                onSubmit: { text in
+                    model.onAction?(.submitFollowUp(runID: snapshot.runID, text: text))
+                },
+                onToggleMicrophone: {
+                    if snapshot.phase == .paused {
+                        model.onAction?(.resumeListening(runID: snapshot.runID))
+                    } else {
+                        model.onAction?(.cancel(runID: snapshot.runID))
+                    }
+                },
+                onStop: {
+                    model.onAction?(.cancel(runID: snapshot.runID))
+                },
+                onEndConversation: {
+                    model.onAction?(.endConversation(runID: snapshot.runID))
+                })
+                .overlay(alignment: .top) { panelSeparator }
+        }
     }
 
     func userBubble(_ text: String, label: String) -> some View {

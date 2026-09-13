@@ -223,25 +223,39 @@ extension AgentRunPanelView {
     func failureCard(_ snapshot: AgentRunSnapshot) -> some View {
         if case let .failed(message) = snapshot.phase {
             Label {
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: Design.Space.hairline + 1) {
                     Text("Agent stopped")
                         .font(.callout.weight(.semibold))
                     Text(message)
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
+
+                    if !snapshot.prompt.trimmingCharacters(in: .whitespaces).isEmpty {
+                        Button("Retry turn", systemImage: "arrow.clockwise") {
+                            model.onAction?(.retry(runID: snapshot.runID))
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .padding(.top, Design.Space.micro)
+                        .accessibilityHint("Sends the same request again")
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             } icon: {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.red)
             }
-            .padding(12)
+            .padding(Design.Space.card)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.red.opacity(0.10), in: RoundedRectangle(cornerRadius: Design.Radius.innerCard))
+            .background(
+                Design.Color.danger.opacity(Design.Alpha.failureFill),
+                in: RoundedRectangle(cornerRadius: Design.Radius.innerCard))
             .overlay {
                 RoundedRectangle(cornerRadius: Design.Radius.innerCard)
-                    .stroke(.red.opacity(0.45), lineWidth: 1)
+                    .stroke(
+                        Design.Color.danger.opacity(Design.Alpha.failureBorder),
+                        lineWidth: Design.Border.strong)
             }
             .accessibilityElement(children: .combine)
         }

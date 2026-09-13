@@ -296,7 +296,7 @@ struct AgentRunPanelPresenterTests {
         #expect(display.shown.isEmpty)
     }
 
-    @MainActor @Test func panel_WhenConstructed_IsFloatingMovableAndCannotBecomeKeyOrMain() {
+    @MainActor @Test func panel_WhenConstructed_IsFloatingMovableAndNonActivating() {
         let controller = AgentRunPanelController()
         let panel = controller.panelForTesting
 
@@ -308,7 +308,22 @@ struct AgentRunPanelPresenterTests {
         #expect(panel.collectionBehavior.contains(.stationary))
         #expect(panel.isMovable)
         #expect(!panel.hasShadow)
-        #expect(!panel.canBecomeKey)
+    }
+
+    /// The composer needs a text field, so the panel accepts key status — but
+    /// only on demand. `becomesKeyOnlyIfNeeded` on a `.nonactivatingPanel` means
+    /// AppKit hands over key status solely when the user clicks a control that
+    /// requires it, and the application itself never activates, so the app
+    /// behind keeps its foreground state.
+    @MainActor @Test func panel_WhenConstructed_TakesKeyOnlyOnDemandAndNeverBecomesMain() {
+        let controller = AgentRunPanelController()
+        let panel = controller.panelForTesting
+
+        #expect(panel.canBecomeKey)
+        #expect(panel.becomesKeyOnlyIfNeeded)
+        #expect(panel.styleMask.contains(.nonactivatingPanel))
+
+        // YapOps has no main window. Taking one would move the menu bar to it.
         #expect(!panel.canBecomeMain)
     }
 

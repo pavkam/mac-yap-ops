@@ -7,7 +7,18 @@ import YapOpsCore
 
 @MainActor
 final class AgentRunPanel: NSPanel {
-    override var canBecomeKey: Bool { false }
+    /// The panel accepts key status so the composer's field can be typed into.
+    ///
+    /// This is narrower than it looks. The panel is a `.nonactivatingPanel` with
+    /// `becomesKeyOnlyIfNeeded`, so AppKit hands it key status only when the
+    /// user clicks a control that actually needs it — the text field — and never
+    /// for a click on the panel's chrome, a drag, or a button. The application
+    /// itself still does not activate, so the app behind keeps its foreground
+    /// state; only keystrokes route here, and only after a deliberate click.
+    ///
+    /// `canBecomeMain` stays false: YapOps has no main window and must never
+    /// take one, or the menu bar would switch to it.
+    override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 }
 

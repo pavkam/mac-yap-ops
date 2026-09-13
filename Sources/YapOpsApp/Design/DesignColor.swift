@@ -110,6 +110,11 @@ extension Design {
         /// Breathing phase pip at rest.
         static let phasePipResting: Double = 0.45
 
+        /// Failure card ground.
+        static let failureFill: Double = 0.1
+        /// Failure card border.
+        static let failureBorder: Double = 0.45
+
         // Ink adjustments, where the application dims a semantic colour rather
         // than substituting a different one.
 

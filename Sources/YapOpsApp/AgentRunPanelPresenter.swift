@@ -8,6 +8,8 @@ enum AgentRunPanelAction: Equatable {
     case cancel(runID: UUID)
     case resumeListening(runID: UUID)
     case endConversation(runID: UUID)
+    case submitFollowUp(runID: UUID, text: String)
+    case retry(runID: UUID)
     case permission(runID: UUID, key: AgentPermissionKey, optionID: String)
     case stopBackgroundTask(runID: UUID, taskID: AgentBackgroundTaskID)
     case copy(runID: UUID)
@@ -51,6 +53,7 @@ final class AgentRunPanelPresenter {
     var onCancel: ((UUID) -> Void)?
     var onResumeListening: ((UUID) -> Void)?
     var onEndConversation: ((UUID) -> Void)?
+    var onSubmitFollowUp: ((UUID, String) -> Void)?
     var onPermission: ((UUID, AgentPermissionKey, String) -> Void)?
     var onStopBackgroundTask: ((UUID, AgentBackgroundTaskID) -> Void)?
     var onClose: ((UUID) -> Void)?
@@ -188,6 +191,32 @@ final class AgentRunPanelPresenter {
             }
             endedRunID = runID
             onEndConversation?(runID)
+            recordApplied(action)
+        case .submitFollowUp(let runID, let text):
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard snapshot.runID == runID,
+                !snapshot.phase.isTerminal,
+                endedRunID != runID,
+                !trimmed.isEmpty
+            else {
+                recordIgnored(action, reason: "conversation_not_accepting_input")
+                return
+            }
+            onSubmitFollowUp?(runID, trimmed)
+            recordApplied(action)
+        case .retry(let runID):
+            // Recovery resends the request that failed. A failed turn with no
+            // way forward is the worst state in the application, and the prompt
+            // is already on the snapshot.
+            let prompt = snapshot.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard snapshot.runID == runID,
+                case .failed = snapshot.phase,
+                !prompt.isEmpty
+            else {
+                recordIgnored(action, reason: "run_not_retryable")
+                return
+            }
+            onSubmitFollowUp?(runID, prompt)
             recordApplied(action)
         case .permission(let runID, let key, let optionID):
             guard snapshot.runID == runID,
@@ -330,6 +359,8 @@ extension AgentRunPanelAction {
         case .cancel: "stop_turn"
         case .resumeListening: "resume_listening"
         case .endConversation: "end_conversation"
+        case .submitFollowUp: "submit_follow_up"
+        case .retry: "retry"
         case .permission: "permission"
         case .stopBackgroundTask: "stop_background_task"
         case .copy: "copy"
@@ -347,6 +378,7 @@ extension AgentRunPanelAction {
         case .cancel(let runID),
             .resumeListening(let runID),
             .endConversation(let runID),
+            .retry(let runID),
             .copy(let runID),
             .close(let runID),
             .delete(let runID),
@@ -358,6 +390,8 @@ extension AgentRunPanelAction {
         case .permission(let runID, _, _):
             runID
         case .stopBackgroundTask(let runID, _):
+            runID
+        case .submitFollowUp(let runID, _):
             runID
         }
     }

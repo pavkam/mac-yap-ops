@@ -67,6 +67,32 @@ extension AppModel {
     }
 
     /// Ends the complete conversation while rejecting stale panel actions by run identity.
+    /// Sends a typed follow-up, or resends a failed request.
+    ///
+    /// The coordinator owns every constraint that matters here — an active
+    /// conversation, the prompt byte ceiling, and the pending-prompt bound — so
+    /// this only establishes that the request belongs to the run on screen.
+    func submitAgentFollowUp(runID: UUID, text: String) {
+        guard agentRunSnapshot?.runID == runID else {
+            diagnostics.record(
+                category: .ui,
+                event: "app_model.follow_up_ignored",
+                fields: [
+                    "run_id": runID.uuidString,
+                    "reason": "stale_run",
+                ])
+            return
+        }
+        diagnostics.record(
+            category: .ui,
+            event: "app_model.follow_up_submitted",
+            fields: [
+                "run_id": runID.uuidString,
+                "character_count": String(text.count),
+            ])
+        coordinator.submitAgentFollowUp(text)
+    }
+
     func endAgentConversation(runID: UUID) {
         guard agentRunSnapshot?.runID == runID,
             agentRunSnapshot?.phase.isTerminal == false
