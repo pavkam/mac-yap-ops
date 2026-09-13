@@ -5,11 +5,6 @@ import SwiftUI
 import YapOpsCore
 
 struct ProfileSettingsEditor: View {
-    private static let curatedSymbols = [
-        "sparkles", "waveform", "brain.head.profile", "terminal", "hammer",
-        "magnifyingglass", "doc.text", "lightbulb", "music.note", "wand.and.stars",
-    ]
-
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorSchemeContrast) private var contrast
     let model: AppModel
@@ -82,39 +77,7 @@ struct ProfileSettingsEditor: View {
     }
 
     private var iconEditor: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Icon")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-            HStack(spacing: 8) {
-                Picker("Icon kind", selection: iconKind) {
-                    Text("SF Symbol").tag(ProfileIconKind.systemSymbol)
-                    Text("Emoji").tag(ProfileIconKind.emoji)
-                }
-                .labelsHidden()
-                .frame(width: 110)
-
-                switch profile.icon {
-                case .systemSymbol:
-                    TextField("SF Symbol name", text: systemSymbolName)
-                        .font(.system(.body, design: .monospaced))
-                        .textFieldStyle(.roundedBorder)
-                    Menu {
-                        ForEach(Self.curatedSymbols, id: \.self) { name in
-                            Button { profile.icon = .systemSymbol(name) } label: {
-                                Label(name, systemImage: name)
-                            }
-                        }
-                    } label: {
-                        Label("Browse", systemImage: "square.grid.2x2")
-                    }
-                case .emoji:
-                    TextField("Emoji", text: emoji)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 90)
-                }
-            }
-        }
+        ProfileGlyphPicker(icon: $profile.icon, accent: profile.accent)
     }
 
     @ViewBuilder
@@ -214,39 +177,6 @@ struct ProfileSettingsEditor: View {
             set: { profile.selectTarget($0) })
     }
 
-    private var iconKind: Binding<ProfileIconKind> {
-        Binding(
-            get: {
-                switch profile.icon {
-                case .systemSymbol: .systemSymbol
-                case .emoji: .emoji
-                }
-            },
-            set: {
-                profile.icon = $0 == .systemSymbol
-                    ? .systemSymbol("sparkles")
-                    : .emoji("🤖")
-            })
-    }
-
-    private var systemSymbolName: Binding<String> {
-        Binding(
-            get: {
-                guard case .systemSymbol(let name) = profile.icon else { return "" }
-                return name
-            },
-            set: { profile.icon = .systemSymbol($0) })
-    }
-
-    private var emoji: Binding<String> {
-        Binding(
-            get: {
-                guard case .emoji(let value) = profile.icon else { return "" }
-                return value
-            },
-            set: { profile.icon = .emoji(String($0.prefix(1))) })
-    }
-
     private var speechMode: ProfileSpeechMode {
         switch profile.speechPreference {
         case .inherit: .inherit
@@ -277,11 +207,6 @@ struct ProfileSettingsEditor: View {
             },
             set: { profile.speechPreference = .voice($0) })
     }
-}
-
-private enum ProfileIconKind: Hashable {
-    case systemSymbol
-    case emoji
 }
 
 private enum ProfileSpeechMode: Hashable {

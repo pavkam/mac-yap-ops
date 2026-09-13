@@ -8,8 +8,7 @@ struct SettingsView: View {
     @Bindable var model: AppModel
     @Bindable var launchAtLogin: LaunchAtLoginSetting
     @Binding var selectedPane: SettingsPane
-    @Environment(\.dismissWindow) private var dismissWindow
-    @State private var saved = false
+    @State private var autosave = SettingsAutosave()
 
     var body: some View {
         TabView(selection: $selectedPane) {
@@ -29,13 +28,21 @@ struct SettingsView: View {
                 ? Design.Layout.settingsHeightGeneral
                 : Design.Layout.settingsHeightTall)
         .navigationTitle(selectedPane.title)
-        .onChange(of: model.wakeProfiles) { saved = false }
-        .onChange(of: model.localeID) { saved = false }
-        .onChange(of: model.readsAgentRepliesAloud) { saved = false }
-        .onChange(of: model.playsAgentWorkingSound) { saved = false }
-        .onChange(of: model.capturesMacContext) { saved = false }
-        .onChange(of: model.defaultSpeechVoice) { saved = false }
-        .onChange(of: model.elevenLabsAPIKey) { saved = false }
+        .onChange(of: model.wakeProfiles) { scheduleSave() }
+        .onChange(of: model.localeID) { scheduleSave() }
+        .onChange(of: model.readsAgentRepliesAloud) { scheduleSave() }
+        .onChange(of: model.playsAgentWorkingSound) { scheduleSave() }
+        .onChange(of: model.capturesMacContext) { scheduleSave() }
+        .onChange(of: model.defaultSpeechVoice) { scheduleSave() }
+        .onChange(of: model.elevenLabsAPIKey) { scheduleSave() }
+        .onDisappear {
+            // Closing inside the debounce window must not discard the last edit.
+            Task { @MainActor in
+                await autosave.flush(
+                    save: model.saveSettings,
+                    errorMessage: { model.settingsError })
+            }
+        }
         .task(id: model.isStartupReady) {
             guard model.isStartupReady else { return }
             await launchAtLogin.refresh()
@@ -45,7 +52,7 @@ struct SettingsView: View {
     private func pane<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         VStack(spacing: 0) {
             content()
-                .disabled(model.isSavingSettings || !model.isStartupReady)
+                .disabled(!model.isStartupReady)
             Divider()
             footer
                 .padding(.horizontal, 20)
@@ -111,35 +118,16 @@ struct SettingsView: View {
 
     private var footer: some View {
         HStack {
-            if let error = model.settingsError {
-                Label(error, systemImage: "exclamationmark.circle.fill")
-                    .font(.callout)
-                    .foregroundStyle(.red)
-            } else if saved {
-                Label("Settings saved", systemImage: "checkmark.circle.fill")
-                    .font(.callout)
-                    .foregroundStyle(.green)
-            } else {
-                Text("Save applies changes in all tabs.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
+            SaveIndicator(status: autosave.status)
             Spacer()
-
-            Button("Save Settings") {
-                Task { @MainActor in
-                    saved = await SettingsSaveHandler.perform(
-                        save: model.saveSettings,
-                        close: {
-                            dismissWindow()
-                        })
-                }
-            }
-            .keyboardShortcut(.defaultAction)
-            .buttonStyle(.borderedProminent)
-            .disabled(model.isSavingSettings || !model.isStartupReady)
         }
+    }
+
+    private func scheduleSave() {
+        guard model.isStartupReady else { return }
+        autosave.edited(
+            save: model.saveSettings,
+            errorMessage: { model.settingsError })
     }
 
 }
