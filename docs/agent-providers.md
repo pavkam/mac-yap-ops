@@ -23,7 +23,7 @@ Codex, then Claude. Every suggested field remains editable.
 | Provider | Executable | Adapter arguments |
 | --- | --- | --- |
 | Cursor | `cursor-agent` | `acp` |
-| Codex | `npx` | `-y`, `@agentclientprotocol/codex-acp@1.8.0` |
+| Codex | `npx` | `-y`, `@agentclientprotocol/codex-acp@1.11.0` |
 | Claude | `npx` | `-y`, `@agentclientprotocol/claude-agent-acp@0.73.0` |
 | Custom | User-selected absolute path | User-selected explicit arguments |
 

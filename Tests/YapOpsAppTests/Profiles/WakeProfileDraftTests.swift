@@ -181,7 +181,7 @@ struct WakeProfileDraftTests {
 
         #expect(draft.displayName == "Codex")
         #expect(draft.executablePath == "/opt/homebrew/bin/npx")
-        #expect(draft.arguments == ["-y", "@agentclientprotocol/codex-acp@1.8.0"])
+        #expect(draft.arguments == ["-y", "@agentclientprotocol/codex-acp@1.11.0"])
     }
 
     @Test func preset_WhenClaudeSelected_UsesPinnedClaudeAdapterArguments() {

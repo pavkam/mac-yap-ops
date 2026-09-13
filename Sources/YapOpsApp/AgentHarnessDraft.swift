@@ -66,7 +66,7 @@ struct AgentHarnessDraft: Equatable {
             arguments = ["acp"]
         case .codex:
             executablePath = ""
-            arguments = ["-y", "@agentclientprotocol/codex-acp@1.8.0"]
+            arguments = ["-y", "@agentclientprotocol/codex-acp@1.11.0"]
         case .claude:
             executablePath = ""
             arguments = ["-y", "@agentclientprotocol/claude-agent-acp@0.73.0"]
