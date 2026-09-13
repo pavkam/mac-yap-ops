@@ -119,7 +119,7 @@ struct AgentHarnessSettingsView: View {
 
             ZStack(alignment: .topLeading) {
                 if draft.systemPrompt.isEmpty {
-                    Text("Optional instructions for this agent's tone, priorities, and response style…")
+                    Text("Optional instructions for this agent’s tone, priorities, and response style…")
                         .font(.body)
                         .foregroundStyle(.tertiary)
                         .padding(.horizontal, 9)
