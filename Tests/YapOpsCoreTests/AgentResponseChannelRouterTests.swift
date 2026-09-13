@@ -27,6 +27,52 @@ struct AgentResponseChannelRouterTests {
         }
     }
 
+    @Test func spokenMarkerWithoutNewline_WhenSplitAtEveryPosition_RoutesWithoutLeakingMarker() {
+        let marker = AgentResponseChannelRouter.spokenMarkerBody
+
+        for split in marker.indicesIncludingEnd {
+            var router = AgentResponseChannelRouter()
+            var events = router.route(.agentMessageDelta(
+                messageID: "answer",
+                text: String(marker[..<split])))
+            events += router.route(.agentMessageDelta(
+                messageID: "answer",
+                text: String(marker[split...]) + "Let me check."))
+            events += router.finishMessage()
+
+            #expect(spokenText(in: events) == "Let me check.")
+            #expect(displayText(in: events).isEmpty)
+            #expect(legacyText(in: events).isEmpty)
+            #expect(narrationReady(in: events) == [
+                NarrationRecord(messageID: "answer", text: "Let me check."),
+            ])
+        }
+    }
+
+    @Test func spokenMarkerWithNewline_ConsumesOnlyTheMarkerNewline() {
+        var router = AgentResponseChannelRouter()
+        var events = router.route(.agentMessageDelta(
+            messageID: "answer",
+            text: AgentResponseChannelRouter.spokenMarker + "\nLeading blank line"))
+        events += router.finishMessage()
+
+        #expect(spokenText(in: events) == "\nLeading blank line")
+        #expect(legacyText(in: events).isEmpty)
+    }
+
+    @Test func markerOnlyMessage_WhenFinished_EmitsNothingInsteadOfLeakingMarker() {
+        for marker in [
+            AgentResponseChannelRouter.spokenMarkerBody,
+            AgentResponseChannelRouter.spokenMarker,
+        ] {
+            var router = AgentResponseChannelRouter()
+            var events = router.route(.agentMessageDelta(messageID: "empty", text: marker))
+            events += router.finishMessage()
+
+            #expect(events.isEmpty)
+        }
+    }
+
     @Test func displayMarker_WhenSplitAtEveryPosition_RoutesBothChannelsWithoutLeakingMarker() {
         let marker = AgentResponseChannelRouter.displayMarker
 
@@ -91,7 +137,7 @@ struct AgentResponseChannelRouterTests {
     }
 
     @Test func partialStartMarker_WhenSemanticBoundaryArrives_FlushesLegacyBeforeBoundary() {
-        let marker = AgentResponseChannelRouter.spokenMarker
+        let marker = AgentResponseChannelRouter.spokenMarkerBody
 
         for split in marker.indices.dropFirst() {
             let prefix = String(marker[..<split])

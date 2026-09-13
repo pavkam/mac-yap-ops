@@ -426,6 +426,12 @@ display marker: "\n[[yapops:display:v1]]\n"
 Here `\n` denotes one LF byte; it is not the two literal characters backslash
 and `n`.
 
+The spoken marker's trailing LF is tolerated but not required: a message opening
+with `[[yapops:spoken:v1]]` still routes to the spoken channel whether or not an
+LF follows, and exactly one LF immediately after the marker is consumed as part
+of it. A message consisting of the marker alone is an empty spoken response and
+emits nothing. The display delimiter's surrounding newlines remain required.
+
 The spoken marker must be the first bytes of the message. The display delimiter
 and display section are optional. Markers may be split across JSON-RPC chunks;
 the router retains only bounded undecided marker lookahead and never exposes a

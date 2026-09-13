@@ -9,10 +9,17 @@ import Foundation
 /// messages. Provider-typed channel events bypass marker parsing. One router owns
 /// one ordered stream and retains only bounded marker lookahead and narration text.
 public struct AgentResponseChannelRouter: Sendable {
+    /// The marker text without its trailing newline.
+    ///
+    /// The agent is instructed to emit ``spokenMarker``, but a model that drops the
+    /// newline still opts into spoken routing rather than leaking the marker.
+    public static let spokenMarkerBody = "[[yapops:spoken:v1]]"
     /// The exact prefix that opts a legacy agent message into spoken routing.
-    public static let spokenMarker = "[[yapops:spoken:v1]]\n"
+    public static let spokenMarker = spokenMarkerBody + "\n"
+    /// The display delimiter text without its surrounding newlines.
+    public static let displayMarkerBody = "[[yapops:display:v1]]"
     /// The optional delimiter that switches a marker-routed message to display text.
-    public static let displayMarker = "\n[[yapops:display:v1]]\n"
+    public static let displayMarker = "\n" + displayMarkerBody + "\n"
 
     private static let maximumNarrationCharacters = 20_000
 
@@ -84,6 +91,8 @@ public struct AgentResponseChannelRouter: Sendable {
             return []
         case let .undecided(message):
             guard !message.text.isEmpty else { return [] }
+            // A message that is only the marker is an empty spoken response, not legacy text.
+            guard message.text != Self.spokenMarkerBody else { return [] }
             return [.agentMessageDelta(messageID: message.messageID, text: message.text)]
         case var .spoken(message):
             var events: [AgentRunEvent] = []
@@ -131,18 +140,22 @@ public struct AgentResponseChannelRouter: Sendable {
 
     private mutating func resolveUndecided() -> [AgentRunEvent] {
         guard case let .undecided(message) = state else { return [] }
-        let marker = Self.spokenMarker
+        let body = Self.spokenMarkerBody
 
-        if marker.hasPrefix(message.text) && message.text != marker {
+        if body.hasPrefix(message.text) && message.text != body {
             return []
         }
-        guard message.text.hasPrefix(marker) else {
+        guard message.text.hasPrefix(body) else {
             state = .legacy(messageID: message.messageID)
             guard !message.text.isEmpty else { return [] }
             return [.agentMessageDelta(messageID: message.messageID, text: message.text)]
         }
 
-        let remainder = String(message.text.dropFirst(marker.count))
+        // The marker's trailing newline is optional, so one more byte is needed to
+        // decide whether a following newline belongs to the marker or to the narration.
+        let afterBody = message.text.dropFirst(body.count)
+        guard let first = afterBody.first else { return [] }
+        let remainder = first == "\n" ? String(afterBody.dropFirst()) : String(afterBody)
         var spoken = SpokenMessage(
             messageID: message.messageID,
             origin: .marker,

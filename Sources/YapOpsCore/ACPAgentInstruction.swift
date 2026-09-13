@@ -3,12 +3,15 @@
 
 enum ACPAgentInstruction {
     static let responseChannelContract = """
-        Begin every user-facing response with this exact marker as its first bytes:
-        \(AgentResponseChannelRouter.spokenMarker)Write concise agent-authored plain text for speech after it.
+        Begin every user-facing response with this exact marker as its first bytes, \
+        followed by a newline:
+        \(AgentResponseChannelRouter.spokenMarkerBody)
+        Write concise agent-authored plain text for speech on the following lines.
 
-        When richer visual detail is useful, append this exact delimiter and then GitHub-flavored \
-        Markdown for the panel:
-        \(AgentResponseChannelRouter.displayMarker)Write the optional display response here.
+        When richer visual detail is useful, append this exact delimiter on its own line and \
+        then GitHub-flavored Markdown for the panel:
+        \(AgentResponseChannelRouter.displayMarkerBody)
+        Write the optional display response here.
 
         Never put Markdown, tool payloads, diagnostics, or hidden reasoning in the spoken section. \
         The display section is optional. Do not alter either marker.
