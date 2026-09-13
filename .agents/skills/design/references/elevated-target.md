@@ -6,18 +6,33 @@ SPDX-License-Identifier: MIT
 # Elevated target
 
 The YapOps Design System was reverse-engineered from this repository, but its
-brief was "the elevated target" — so it describes several surfaces the
-application does not have. Those are feature projects, not styling, and each
-carries behavioural risk that a token migration does not.
-
-This page records what was deliberately **not** adopted, so that a later agent
-neither builds it by accident nor re-proposes it as an oversight.
+brief was "the elevated target" — so it described several surfaces the
+application did not have. All of them are now built; this page is the record
+of what changed, why each one landed the way it did, and the one place a
+repository invariant had to be reinterpreted rather than obeyed literally.
 
 ## Adopted
 
 The token layer, the accent environment, and the content contract in
 `content-and-voice.md`. See
-`docs/superpowers/specs/2026-09-12-design-token-foundation-design.md`.
+`docs/superpowers/specs/2026-09-12-design-token-foundation-design.md` for the
+original design; the sections below cover what it deferred.
+
+Every "Intentional addition" the design system's readme lists is now built:
+
+| Addition | Where | Notes |
+| --- | --- | --- |
+| `EmptyState` | `Settings/SettingsEmptyState.swift` | One recipe, used where the Profiles detail column has no selection |
+| Recovery on `FailureCard` | `AgentRunPanelContent.swift` `failureCard` | "Retry turn" resends the run's original prompt through `.retry` |
+| `VoiceBars` and level metering | `VoiceBars.swift`, `SpeechAudioLevelMeter.swift` | Menu capture strip and the recording overlay; the conversation composer's mic button does not yet carry live levels — see below |
+| `Composer` | `AgentRunComposer.swift` | Required reinterpreting a panel invariant; see below |
+| `SaveIndicator` and autosave | `Settings/SaveIndicator.swift`, `Settings/SettingsAutosave.swift` | Replaces the explicit "Save Settings" button |
+| First-run flow | `Onboarding/FirstRunView.swift`, `Onboarding/FirstRunPresenter.swift` | Gated by `AppPreferences.hasCompletedFirstRun` |
+
+Also built beyond that list: the Profiles pane's master–detail restructure
+(`Settings/ProfilesPane.swift`, `Settings/SidebarProfileRow.swift`), the curated
+glyph picker (`Settings/ProfileGlyphPicker.swift`), and the artifact count chip
+on the Results shelf (`AgentRunArtifactView.swift`).
 
 ## Not vendored
 
@@ -32,48 +47,39 @@ Vendoring would add a second copy of assets we own plus ~200 files of React and
 CSS that a SwiftPM repository cannot build, test or lint, and an ISC obligation
 for icons we will not use.
 
-## Sequenced backlog
+## The `Composer` reinterpreted a panel invariant
 
-| # | Project | Notes |
-| --- | --- | --- |
-| P2 | `EmptyState` and a recovery action on `FailureCard` | Small. The source renders empty lists as nothing, and leaves a failed turn with Delete, Copy and Close only |
-| P3 | Content and voice conformance | Apply `content-and-voice.md` to existing strings. Copy and tests; no layout risk |
-| P4 | Audio level metering and `VoiceBars` | There is no level metering anywhere today. Constrained by the real-time audio callback invariant in AGENTS.md |
-| P5 | Conversation `Composer` | **Blocked.** See below |
-| P6 | Settings master–detail and autosave | Replaces `SettingsSaveHandler`; a behavioural change deserving its own design |
-| P7 | Onboarding and first run | New window and permission flow. YapOps requests Microphone and Speech Recognition lazily today |
+The design system's `Composer` puts a text input in the conversation panel.
+That collided with AGENTS.md's requirement that the menu, recording and agent
+panels remain non-activating and preserve the foreground app's focus, which
+`AgentRunPanelController.swift` had enforced with a hard
+`override var canBecomeKey: Bool { false }`. A text field needs key focus; a
+panel that can never take it cannot host one.
 
-Each needs its own spec, plan and implementation cycle. Do not batch them.
+The resolution: the panel now returns `true`, but the constraint that made the
+original override necessary — the app must never activate, and a stray click
+must never steal focus — is preserved by the mechanism already in place rather
+than by the blanket refusal. The panel stays `.nonactivatingPanel` with
+`becomesKeyOnlyIfNeeded = true`, so AppKit hands over key status only when the
+user clicks a control that actually requires it (the composer's field), never
+for a click on chrome, a drag, or a button; the application itself still never
+activates, so the foreground app keeps its state. `canBecomeMain` stays false —
+YapOps still has no main window. `AgentRunPanelPresenterTests` asserts this
+narrower contract by name
+(`panel_WhenConstructed_TakesKeyOnlyOnDemandAndNeverBecomesMain`).
 
-## P5 is blocked on a product decision
+## Known gap: the composer's microphone has no live level
 
-The design system's `Composer` puts a text input in the conversation panel. It
-collides with a universal invariant.
-
-AGENTS.md requires that the menu, recording and agent panels remain
-non-activating and preserve the foreground app's focus.
-`AgentRunPanelController.swift` enforces it with
-`override var canBecomeKey: Bool { false }` and `becomesKeyOnlyIfNeeded = true`.
-A text field needs key focus.
-
-The design system's author worked from a read-only copy and could not have known
-this. Three resolutions exist, none chosen:
-
-1. **Remain voice-only.** The invariant wins; the composer is never built. The
-   panel keeps no way to type to a conversation.
-2. **Let the expanded panel become key.** The overlay and menu stay
-   non-activating. Needs an explicit design for focus restoration — what happens
-   to the app the user was in when the panel takes focus, and what gives it back.
-3. **A separate activating input window.** Preserves the invariant on all three
-   panels at the cost of another surface.
-
-This is a product decision, not an implementation detail. Nothing else in the
-backlog depends on it, so it can stay open.
+`VoiceBars` reads real levels in the menu capture strip and the recording
+overlay, both fed from `AppleSpeechSession`'s recognition tap through
+`SpeechAudioLevelMeter`. The conversation composer's microphone button does not
+carry the same live signal — turn-level agent-conversation audio is a separate
+subsystem from the passive/push-to-talk capture path metered today, and
+threading levels through it needs its own look at that subsystem's real-time
+constraints rather than being folded into this pass.
 
 ## Also not adopted
 
-- **`SaveIndicator`** — an autosave receipt, which only makes sense with P6.
-  Until then the explicit save in `SettingsSaveHandler` is the model.
 - **The Lucide icon set** — this is macOS; use real SF Symbols through
   `Image(systemName:)`. The substitution exists so the design system renders in a
   browser, not because Lucide is the intent.

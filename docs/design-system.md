@@ -92,18 +92,16 @@ and no exclamation marks in UI copy.
 
 `.agents/skills/design/references/content-and-voice.md` is the full contract.
 
-## What is not adopted
+## The elevated target
 
-The design system's brief was "the elevated target", so it describes several
-surfaces this application does not have — level metering and `VoiceBars`, a
-conversation composer, onboarding, an autosave Settings restructure, `EmptyState`
-and a recovery action on failures. Those are feature projects with behavioural
-risk, sequenced in
+The design system's brief was "the elevated target", so it described several
+surfaces this application did not have. All of them are now built: level
+metering and `VoiceBars`, the conversation composer, first run, autosave and
+`SaveIndicator`, the Profiles master–detail restructure, `EmptyState`, and
+recovery on failures. The full record — including the one panel invariant the
+composer required reinterpreting, and the known gap in the composer's own
+microphone level — is in
 `.agents/skills/design/references/elevated-target.md`.
-
-The composer is blocked on a product decision: it needs key focus, and the menu,
-recording and agent panels are required to stay non-activating so they preserve
-the foreground app's focus.
 
 The archive itself is not vendored. Every asset in it already exists under
 `Sources/YapOpsApp/Resources/`, and its React components and Lucide icons have no
