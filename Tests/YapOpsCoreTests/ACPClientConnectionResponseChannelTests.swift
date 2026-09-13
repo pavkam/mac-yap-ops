@@ -175,6 +175,9 @@ extension ACPClientConnectionTests {
 
         try await transport.feed(agentMessageUpdate(
             text: AgentResponseChannelRouter.spokenMarker + "Background"))
+        // The retained session router must see the background chunk before the next turn
+        // claims delivery, or that turn receives the narration instead of a suppression.
+        try await drainFedFrames(transport: transport)
 
         let secondRecorder = AgentEventRecorder()
         let second = prompt(connection, text: "Second", recorder: secondRecorder)
