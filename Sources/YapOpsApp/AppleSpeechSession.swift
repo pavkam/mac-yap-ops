@@ -122,10 +122,7 @@ final class AppleSpeechSession: SpeechSessionProtocol, SpeechAudioLevelReporting
             onBus: 0,
             bufferSize: 2_048,
             format: format,
-            block: { buffer, _ in
-                bufferSink.append(buffer)
-                levelMeter.process(buffer)
-            })
+            block: Self.makeTap(bufferSink: bufferSink, levelMeter: levelMeter))
         hasInputTap = true
         recognitionRequest = request
         audioEngine = engine
@@ -215,6 +212,28 @@ final class AppleSpeechSession: SpeechSessionProtocol, SpeechAudioLevelReporting
                 ])
             stop()
             throw error
+        }
+    }
+
+    /// Builds the recognition tap block outside `AppleSpeechSession`'s actor
+    /// isolation.
+    ///
+    /// A closure literal written directly inside an instance method of a
+    /// `@MainActor` class is isolated to that actor by lexical context alone —
+    /// regardless of what it captures. `AVAudioEngine` invokes an audio tap
+    /// from its own real-time thread, never the main actor, so a closure
+    /// written inline here would carry a runtime isolation check that always
+    /// fails: an immediate, unrecoverable trap on the first buffer, not a
+    /// warning. `nonisolated` breaks that inference; `SpeechAudioBufferSink`
+    /// and `SpeechAudioLevelMeter` are themselves plain, non-actor types, so
+    /// the closure they end up in has no isolation to check.
+    nonisolated static func makeTap(
+        bufferSink: SpeechAudioBufferSink,
+        levelMeter: SpeechAudioLevelMeter
+    ) -> AVAudioNodeTapBlock {
+        { buffer, _ in
+            bufferSink.append(buffer)
+            levelMeter.process(buffer)
         }
     }
 
