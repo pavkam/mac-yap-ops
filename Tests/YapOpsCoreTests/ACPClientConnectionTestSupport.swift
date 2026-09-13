@@ -74,6 +74,25 @@ extension ACPClientConnectionTests {
         }
     }
 
+    /// Waits until the receive loop has handled every frame fed so far.
+    ///
+    /// One receive loop drains one ordered stream, so observing the reply to a later
+    /// probe frame proves every earlier frame was fully handled. An unsupported method
+    /// always draws a reply, which makes this usable between turns, where no event
+    /// delivery is active to observe instead.
+    func drainFedFrames(
+        transport: FakeACPTransport,
+        probeID: ACPRequestID = .string("drain-probe")) async throws
+    {
+        try await transport.feed(.request(
+            id: probeID,
+            method: "yapops/drain-probe",
+            params: .object([:])))
+        #expect(await transport.nextSentMessage() == .errorResponse(
+            id: probeID,
+            error: ACPJSONRPCError(code: -32_601, message: "Method not found")))
+    }
+
     func promptRequest(id: Int64, text: String, sessionID: String = "session-1") -> ACPMessage {
         .request(
             id: .integer(id),
