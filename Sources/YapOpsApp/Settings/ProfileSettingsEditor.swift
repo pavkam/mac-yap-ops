@@ -28,9 +28,9 @@ struct ProfileSettingsEditor: View {
             shortcutEditor
         }
         .padding(15)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: Design.Radius.innerCard))
         .overlay {
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: Design.Radius.innerCard)
                 .stroke(
                     contrast == .increased ? Color.primary.opacity(0.5)
                         : Color(nsColor: .separatorColor),
@@ -305,12 +305,12 @@ private struct ProfileIconBadge: View {
 
     var body: some View {
         ProfileIconGlyph(icon: icon)
-            .font(.system(size: 18, weight: .semibold))
+            .font(Design.Text.glyph(Design.Glyph.badge))
             .foregroundStyle(accent.swiftUIColor)
             .frame(width: 36, height: 36)
             .background(
                 accent.swiftUIColor.opacity(0.13),
-                in: RoundedRectangle(cornerRadius: 10))
+                in: RoundedRectangle(cornerRadius: Design.Radius.innerCard))
             .accessibilityLabel("Profile icon")
     }
 }

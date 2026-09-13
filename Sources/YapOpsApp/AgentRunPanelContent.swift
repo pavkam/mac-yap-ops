@@ -43,7 +43,7 @@ extension AgentRunPanelView {
                         }
                     }
                     .padding(11)
-                    .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
+                    .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: Design.Radius.innerCard))
                     .accessibilityElement(children: .contain)
                     .accessibilityLabel(task.accessibilityLabel)
                 }
@@ -80,7 +80,7 @@ extension AgentRunPanelView {
                     endPoint: .bottomTrailing))
             Circle().stroke(.white.opacity(0.28), lineWidth: 0.7)
             ProfileIconGlyph(icon: snapshot.profileIcon)
-                .font(.system(size: 9, weight: .bold))
+                .font(Design.Text.glyph(Design.Glyph.micro, weight: .bold))
                 .foregroundStyle(.white)
         }
         .frame(width: 27, height: 27)
@@ -116,7 +116,7 @@ extension AgentRunPanelView {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 case .historyBoundary:
                     Label("Previous provider history", systemImage: "clock.arrow.circlepath")
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .font(Design.Text.captionRounded)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 case let .message(message):
@@ -173,11 +173,11 @@ extension AgentRunPanelView {
             .padding(.horizontal, 13)
             .padding(.vertical, 11)
             .background {
-                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                RoundedRectangle(cornerRadius: Design.Radius.message, style: .continuous)
                     .fill(.white.opacity(message.kind == .thought ? 0.035 : 0.055))
             }
             .overlay {
-                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                RoundedRectangle(cornerRadius: Design.Radius.message, style: .continuous)
                     .stroke(.white.opacity(0.10), lineWidth: 0.7)
             }
         }
@@ -215,7 +215,7 @@ extension AgentRunPanelView {
             .font(.caption)
             .foregroundStyle(.secondary)
             .padding(10)
-            .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 9))
+            .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: Design.Radius.notice))
         }
     }
 
@@ -238,9 +238,9 @@ extension AgentRunPanelView {
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+            .background(.red.opacity(0.10), in: RoundedRectangle(cornerRadius: Design.Radius.innerCard))
             .overlay {
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: Design.Radius.innerCard)
                     .stroke(.red.opacity(0.45), lineWidth: 1)
             }
             .accessibilityElement(children: .combine)

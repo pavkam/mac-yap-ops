@@ -57,14 +57,14 @@ struct AgentHarnessSettingsView: View {
             }
             .padding(14)
             .background {
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                RoundedRectangle(cornerRadius: Design.Radius.hero, style: .continuous)
                     .fill(LinearGradient(
                         colors: [tint.opacity(0.12), .primary.opacity(0.025)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing))
             }
             .overlay {
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                RoundedRectangle(cornerRadius: Design.Radius.hero, style: .continuous)
                     .stroke(tint.opacity(0.22), lineWidth: 1)
             }
 
@@ -133,9 +133,9 @@ struct AgentHarnessSettingsView: View {
                     .padding(4)
             }
             .frame(minHeight: 88, maxHeight: 120)
-            .background(.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 9))
+            .background(.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: Design.Radius.notice))
             .overlay {
-                RoundedRectangle(cornerRadius: 9)
+                RoundedRectangle(cornerRadius: Design.Radius.notice)
                     .stroke(isOversized ? Color.red.opacity(0.7) : tint.opacity(0.22))
             }
 
@@ -199,9 +199,9 @@ struct AgentHarnessSettingsView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 8))
+            .background(.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: Design.Radius.field))
             .overlay {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: Design.Radius.field)
                     .stroke(
                         hasResolvedPath ? tint.opacity(0.28) : Color.orange.opacity(0.34),
                         lineWidth: 1)
@@ -238,9 +238,9 @@ struct AgentHarnessSettingsView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 8))
+            .background(.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: Design.Radius.field))
             .overlay {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: Design.Radius.field)
                     .stroke(.separator.opacity(0.55), lineWidth: 1)
             }
         }
@@ -431,14 +431,14 @@ private struct AgentProviderMark: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: Design.Radius.row, style: .continuous)
                 .fill(LinearGradient(
                     colors: [tint.opacity(0.95), tint.opacity(0.52)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing))
 
             Image(systemName: preset.systemImage)
-                .font(.system(size: 20, weight: .semibold))
+                .font(Design.Text.glyph(Design.Glyph.providerMark))
                 .foregroundStyle(.white)
         }
         .frame(width: 44, height: 44)
@@ -453,16 +453,16 @@ private struct AgentProviderButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 12, weight: .semibold, design: .rounded))
+            .font(Design.Text.chipLabel)
             .foregroundStyle(isSelected ? tint : Color.primary.opacity(0.78))
             .padding(.horizontal, 8)
             .padding(.vertical, 8)
             .background {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: Design.Radius.field, style: .continuous)
                     .fill(isSelected ? tint.opacity(0.16) : Color.primary.opacity(0.045))
             }
             .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: Design.Radius.field, style: .continuous)
                     .stroke(
                         isSelected ? tint.opacity(0.46) : Color.primary.opacity(0.07),
                         lineWidth: 1)

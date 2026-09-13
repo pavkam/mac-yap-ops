@@ -20,6 +20,7 @@ continuity, legibility, restraint, and fast feedback—not more decoration.
 | Product feel, menu, overlay, panel, Settings, or interaction contract | `references/experience-principles.md` |
 | Ownership, modularization, presentation models, AppKit/SwiftUI boundaries | `references/code-architecture.md` |
 | Color, materials, typography, symbols, spacing, or reusable styling | `references/visual-language.md` |
+| A token's value, the profile accent, or user-visible wording | `.agents/skills/design/SKILL.md` |
 | Animation, scrolling, transitions, timing, sound, or feedback | `references/motion-and-feedback.md` |
 | Accessibility, performance, tests, or completion validation | `references/accessibility-and-validation.md` |
 | A new or uncertain Apple framework API/convention | `references/apple-platform-guidance.md` |
@@ -56,6 +57,7 @@ A UX change is ready only when:
   task churn; and
 - every API works on macOS 15 or has an explicit availability guard and fallback.
 
-Do not create a generic design system for one use, animate an entire hierarchy
-with an unscoped `.animation`, or polish over a broken state model. Fix the
-experience boundary first; the pixels can then behave themselves.
+Do not invent a bespoke abstraction for a single call site, animate an entire
+hierarchy with an unscoped `.animation`, or polish over a broken state model.
+Shared values belong in `Design/`, routed from `.agents/skills/design/SKILL.md`.
+Fix the experience boundary first; the pixels can then behave themselves.

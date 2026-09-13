@@ -172,15 +172,4 @@ struct SettingsView: View {
 
 extension WakeProfileAccent {
     var displayName: String { rawValue.capitalized }
-
-    var swiftUIColor: Color {
-        switch self {
-        case .cyan: .cyan
-        case .blue: .blue
-        case .purple: .purple
-        case .pink: .pink
-        case .orange: .orange
-        case .green: .green
-        }
-    }
 }

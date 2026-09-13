@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Alexandru Ciobanu (alex+git@ciobanu.org)
+# SPDX-License-Identifier: MIT
+
+interface:
+  display_name: "Design"
+  short_description: "Work with YapOps design tokens and copy"
+  default_prompt: "Use $design to change or review a YapOps token, accent, or user-visible wording."

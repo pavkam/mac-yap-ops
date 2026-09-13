@@ -84,7 +84,7 @@ extension AgentRunPanelView {
         }
         .padding(11)
         .background(.quaternary.opacity(thinking.isWorking ? 0.45 : 0.25),
-                    in: RoundedRectangle(cornerRadius: 10))
+                    in: RoundedRectangle(cornerRadius: Design.Radius.innerCard))
     }
 
     @ViewBuilder
@@ -178,9 +178,9 @@ extension AgentRunPanelView {
                 .controlSize(.small)
             }
             .padding(12)
-            .background(accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+            .background(accent.opacity(0.10), in: RoundedRectangle(cornerRadius: Design.Radius.innerCard))
             .overlay {
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: Design.Radius.innerCard)
                     .stroke(accent.opacity(0.5), lineWidth: 1)
             }
             .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98)))

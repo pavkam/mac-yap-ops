@@ -92,9 +92,9 @@ private struct AgentRunArtifactCard: View {
             }
         }
         .padding(10)
-        .background(.quaternary.opacity(0.30), in: RoundedRectangle(cornerRadius: 11))
+        .background(.quaternary.opacity(0.30), in: RoundedRectangle(cornerRadius: Design.Radius.artifact))
         .overlay {
-            RoundedRectangle(cornerRadius: 11)
+            RoundedRectangle(cornerRadius: Design.Radius.artifact)
                 .stroke(
                     contrast == .increased
                         ? Color.primary.opacity(0.55)
@@ -130,13 +130,13 @@ private struct AgentRunArtifactCard: View {
                     .tint(accent)
             case .unavailable, nil:
                 Image(systemName: fallbackSymbol)
-                    .font(.system(size: 36, weight: .light))
+                    .font(Design.Text.artifactFallback)
                     .foregroundStyle(.secondary)
             }
         }
         .frame(maxWidth: .infinity)
         .frame(height: 128)
-        .clipShape(RoundedRectangle(cornerRadius: 7))
+        .clipShape(RoundedRectangle(cornerRadius: Design.Radius.thumbnail))
         .accessibilityHidden(true)
     }
 

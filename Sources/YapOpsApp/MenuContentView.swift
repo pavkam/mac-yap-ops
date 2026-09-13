@@ -38,7 +38,8 @@ struct MenuContentView: View {
 
             footer
         }
-        .frame(width: 356)
+        .frame(width: Design.Layout.menuWidth)
+        .profileAccent(headerAccent)
         .background(panelBackground)
         .background {
             MenuWindowConfigurationView(layoutIdentity: layoutIdentity)
@@ -50,76 +51,81 @@ struct MenuContentView: View {
     private var statusHeader: some View {
         let presentation = model.statusPresentation
 
-        return HStack(spacing: 13) {
+        return HStack(spacing: Design.Space.header) {
             ZStack {
                 Circle()
-                    .fill(headerAccent.opacity(0.16))
+                    .fill(headerAccent.opacity(Design.Alpha.accentWashHeader))
 
                 Circle()
-                    .stroke(headerAccent.opacity(0.28), lineWidth: 1)
+                    .stroke(
+                        headerAccent.opacity(Design.Alpha.accentBorder),
+                        lineWidth: Design.Border.strong)
 
                 Image(systemName: presentation.symbolName)
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(presentation.isError ? .red : headerAccent)
+                    .font(Design.Text.glyph(Design.Glyph.status))
+                    .foregroundStyle(presentation.isError ? Design.Color.danger : headerAccent)
                     .symbolEffect(.variableColor.iterative, isActive: model.state == .capturing)
             }
-            .frame(width: 44, height: 44)
+            .frame(width: Design.Layout.statusOrb, height: Design.Layout.statusOrb)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: Design.Space.hairline) {
                 Text(presentation.title)
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .font(Design.Text.statusTitle)
 
                 Text(presentation.detail)
-                    .font(.system(size: 12))
+                    .font(Design.Text.statusDetail)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
 
-            Spacer(minLength: 8)
+            Spacer(minLength: Design.Space.small)
 
             Circle()
-                .fill(presentation.isError ? Color.red : headerAccent)
-                .frame(width: 8, height: 8)
+                .fill(presentation.isError ? Design.Color.danger : headerAccent)
+                .frame(width: Design.Layout.statusDot, height: Design.Layout.statusDot)
                 .shadow(
-                    color: (presentation.isError ? Color.red : headerAccent).opacity(0.55),
-                    radius: 4)
+                    color: (presentation.isError ? Design.Color.danger : headerAccent)
+                        .opacity(Design.Glow.statusDot.alpha),
+                    radius: Design.Glow.statusDot.radius)
         }
-        .padding(.horizontal, 18)
-        .padding(.top, 17)
-        .padding(.bottom, 14)
+        .padding(.horizontal, Design.Space.panelGutter)
+        .padding(.top, Design.Space.menuHeaderTop)
+        .padding(.bottom, Design.Space.menuGutter)
     }
 
     private var lastCommand: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: Design.Space.micro) {
             Label("Last command", systemImage: "text.quote")
-                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .font(Design.Text.eyebrow)
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
-                .tracking(0.8)
+                .tracking(Design.Tracking.eyebrow)
 
             Text(MenuTranscriptSummary.format(model.lastTranscript, maximumLength: 92))
-                .font(.system(size: 13, weight: .medium, design: .rounded))
-                .foregroundStyle(.primary.opacity(0.88))
+                .font(Design.Text.rowTranscript)
+                .foregroundStyle(.primary.opacity(Design.Alpha.inkTranscript))
                 .lineLimit(2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 12))
-        .padding(.horizontal, 14)
-        .padding(.bottom, 12)
+        .padding(Design.Space.card)
+        .background(
+            .primary.opacity(Design.Alpha.fillChip),
+            in: RoundedRectangle(cornerRadius: Design.Radius.row))
+        .padding(.horizontal, Design.Space.menuGutter)
+        .padding(.bottom, Design.Space.card)
     }
 
     private var profileList: some View {
         let listeningControl = MenuListeningControlPresentation.make(
             isListening: model.passiveEnabled)
 
-        return VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 8) {
+        return VStack(alignment: .leading, spacing: Design.Space.row) {
+            HStack(spacing: Design.Space.small) {
                 Text("Profiles")
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .font(Design.Text.eyebrow)
                     .foregroundStyle(.secondary)
                     .textCase(.uppercase)
-                    .tracking(0.8)
+                    .tracking(Design.Tracking.eyebrow)
 
                 Spacer()
 
@@ -127,24 +133,27 @@ struct MenuContentView: View {
                     model.togglePassiveListening()
                 } label: {
                     Label(listeningControl.title, systemImage: listeningControl.symbolName)
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .foregroundStyle(model.passiveEnabled ? Color.secondary : headerAccent)
-                        .background(.primary.opacity(0.055), in: Capsule())
+                        .font(Design.Text.eyebrowControl)
+                        .padding(.horizontal, Design.Space.small)
+                        .padding(.vertical, Design.Space.tiny)
+                        .foregroundStyle(
+                            model.passiveEnabled ? Design.Color.accentFallback : headerAccent)
+                        .background(.primary.opacity(Design.Alpha.fillChip), in: Capsule())
                         .overlay {
                             Capsule()
-                                .stroke(.white.opacity(0.08), lineWidth: 0.75)
+                                .stroke(
+                                    .white.opacity(Design.Alpha.hairlineChip),
+                                    lineWidth: Design.Border.default)
                         }
                 }
                 .buttonStyle(.plain)
                 .help("\(listeningControl.title) wake phrase listening")
                 .accessibilityLabel("\(listeningControl.title) wake phrase listening")
             }
-            .padding(.horizontal, 4)
+            .padding(.horizontal, Design.Space.tiny)
 
             ScrollView {
-                LazyVStack(spacing: 7) {
+                LazyVStack(spacing: Design.Space.row) {
                     ForEach(model.activeWakeProfiles) { profile in
                         MenuProfileRow(profile: profile) {
                             model.setWakeProfileEnabled(profile.id, enabled: !profile.isEnabled)
@@ -155,30 +164,30 @@ struct MenuContentView: View {
             .frame(height: MenuProfileListLayout.height(
                 profileCount: model.activeWakeProfiles.count))
         }
-        .padding(.horizontal, 14)
-        .padding(.bottom, 14)
+        .padding(.horizontal, Design.Space.menuGutter)
+        .padding(.bottom, Design.Space.menuGutter)
     }
 
     private func agentRunControls(_ snapshot: AgentRunSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Design.Space.small) {
             HStack {
                 Label {
                     Text(snapshot.profileName)
                 } icon: {
                     ProfileIconGlyph(icon: snapshot.profileIcon)
                 }
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .font(Design.Text.badgeTitle)
                     .foregroundStyle(snapshot.accent.swiftUIColor)
                 Spacer()
                 Text(snapshot.hasActiveBackgroundTasks && snapshot.phase != .running
                     ? "Working in background"
                     : agentRunPhaseLabel(snapshot.phase))
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .font(Design.Text.eyebrowControl)
                     .foregroundStyle(.secondary)
             }
 
             if snapshot.phase.isTerminal && snapshot.canCloseOrDelete {
-                HStack(spacing: 8) {
+                HStack(spacing: Design.Space.small) {
                     Spacer(minLength: 0)
 
                     Button(role: .destructive) {
@@ -197,7 +206,7 @@ struct MenuContentView: View {
                     .tint(snapshot.accent.swiftUIColor)
                 }
             } else {
-                HStack(spacing: 8) {
+                HStack(spacing: Design.Space.small) {
                     Spacer(minLength: 0)
 
                     Button {
@@ -215,7 +224,7 @@ struct MenuContentView: View {
                                 systemImage: "stop.circle.fill")
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(.red.opacity(0.84))
+                        .tint(Design.Color.danger.opacity(Design.Alpha.inkStopTurn))
                     } else if snapshot.phase == .paused {
                         Button("Resume listening", systemImage: "mic") {
                             model.resumeAgentConversationListening(runID: snapshot.runID)
@@ -242,23 +251,27 @@ struct MenuContentView: View {
                 }
             }
         }
-        .padding(12)
-        .background(snapshot.accent.swiftUIColor.opacity(0.075), in: RoundedRectangle(cornerRadius: 12))
+        .padding(Design.Space.card)
+        .background(
+            snapshot.accent.swiftUIColor.opacity(Design.Alpha.accentWashCard),
+            in: RoundedRectangle(cornerRadius: Design.Radius.row))
         .overlay {
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(snapshot.accent.swiftUIColor.opacity(0.16), lineWidth: 0.75)
+            RoundedRectangle(cornerRadius: Design.Radius.row)
+                .stroke(
+                    snapshot.accent.swiftUIColor.opacity(Design.Alpha.accentWashHeader),
+                    lineWidth: Design.Border.default)
         }
-        .padding(.horizontal, 14)
-        .padding(.bottom, 12)
+        .padding(.horizontal, Design.Space.menuGutter)
+        .padding(.bottom, Design.Space.card)
     }
 
     private var backgroundSessions: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: Design.Space.row) {
             Text("Background sessions")
-                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .font(Design.Text.eyebrow)
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
-                .tracking(0.8)
+                .tracking(Design.Tracking.eyebrow)
             ForEach(model.activeAgentBackgroundSessions) { session in
                 Button {
                     model.showAgentBackgroundSession(session.key)
@@ -275,18 +288,20 @@ struct MenuContentView: View {
                     "\(session.profileName), \(session.activeTaskCount) active background tasks")
             }
         }
-        .padding(12)
-        .background(.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 12))
-        .padding(.horizontal, 14)
-        .padding(.bottom, 12)
+        .padding(Design.Space.card)
+        .background(
+            .primary.opacity(Design.Alpha.fillField),
+            in: RoundedRectangle(cornerRadius: Design.Radius.row))
+        .padding(.horizontal, Design.Space.menuGutter)
+        .padding(.bottom, Design.Space.card)
     }
 
     private var interruptedBackgroundWork: some View {
         Label("Interrupted when YapOps exited", systemImage: "exclamationmark.circle")
             .font(.caption)
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 18)
-            .padding(.bottom, 12)
+            .padding(.horizontal, Design.Space.panelGutter)
+            .padding(.bottom, Design.Space.card)
     }
 
     private func agentRunPhaseLabel(_ phase: AgentRunPhase) -> String {
@@ -305,19 +320,19 @@ struct MenuContentView: View {
             model.cancelCapture()
         } label: {
             Label("Cancel recording", systemImage: "xmark.circle.fill")
-                .font(.system(size: 13, weight: .semibold))
+                .font(Design.Text.actionLabel)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 7)
+                .padding(.vertical, Design.Space.row)
         }
         .buttonStyle(.borderedProminent)
-        .tint(.red.opacity(0.86))
+        .tint(Design.Color.danger.opacity(Design.Alpha.inkCancel))
         .keyboardShortcut(.cancelAction)
-        .padding(.horizontal, 14)
-        .padding(.bottom, 14)
+        .padding(.horizontal, Design.Space.menuGutter)
+        .padding(.bottom, Design.Space.menuGutter)
     }
 
     private var footer: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Design.Space.small) {
             Button {
                 dismiss()
                 SettingsWindowPresenter.live.open {
@@ -340,11 +355,11 @@ struct MenuContentView: View {
             }
             .keyboardShortcut("q")
         }
-        .font(.system(size: 12, weight: .medium))
+        .font(Design.Text.footer)
         .buttonStyle(.plain)
-        .padding(.horizontal, 18)
-        .padding(.vertical, 13)
-        .background(.primary.opacity(0.035))
+        .padding(.horizontal, Design.Space.panelGutter)
+        .padding(.vertical, Design.Space.header)
+        .background(.primary.opacity(Design.Alpha.fill))
         .overlay(alignment: .top) {
             Divider()
         }
@@ -353,21 +368,15 @@ struct MenuContentView: View {
     private var panelBackground: some View {
         ZStack {
             Rectangle()
-                .fill(.ultraThinMaterial)
+                .fill(Design.Material.floating)
 
-            LinearGradient(
-                colors: [
-                    headerAccent.opacity(0.11),
-                    .clear,
-                    headerAccent.opacity(0.04),
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing)
+            Design.Wash.menu(headerAccent)
         }
     }
 
     private var headerAccent: Color {
-        model.activeWakeProfiles.first(where: \.isEnabled)?.accent.swiftUIColor ?? .secondary
+        model.activeWakeProfiles.first(where: \.isEnabled)?.accent.swiftUIColor
+            ?? Design.Color.accentFallback
     }
 
     private var layoutIdentity: MenuContentLayoutIdentity {
@@ -392,46 +401,53 @@ private struct MenuProfileRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 11) {
+            HStack(spacing: Design.Space.cardTight) {
                 ZStack {
                     Circle()
-                        .fill(profile.accent.swiftUIColor.opacity(profile.isEnabled ? 0.18 : 0.07))
+                        .fill(profile.accent.swiftUIColor.opacity(
+                            profile.isEnabled
+                                ? Design.Alpha.accentWashAvatar
+                                : Design.Alpha.accentWashAvatarDisabled))
 
                     profileIcon
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(Design.Text.glyph(Design.Glyph.row))
                         .foregroundStyle(
                             profile.isEnabled ? profile.accent.swiftUIColor : .secondary)
                 }
-                .frame(width: 34, height: 34)
+                .frame(width: Design.Layout.profileAvatar, height: Design.Layout.profileAvatar)
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: Design.Space.hairline) {
                     Text(profile.name)
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .font(Design.Text.rowTitle)
                         .foregroundStyle(.primary)
 
                     Text("“\(profile.wakePhrase)” · \(profileDetail)")
-                        .font(.system(size: 11))
+                        .font(Design.Text.rowDetail)
                         .foregroundStyle(.secondary)
                 }
 
-                Spacer(minLength: 8)
+                Spacer(minLength: Design.Space.small)
 
                 Image(systemName: profile.isEnabled ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 17, weight: .medium))
+                    .font(Design.Text.glyph(Design.Glyph.status, weight: .medium))
                     .foregroundStyle(
                         profile.isEnabled
                             ? profile.accent.swiftUIColor
-                            : Color.secondary.opacity(0.55))
+                            : Design.Color.accentFallback.opacity(Design.Alpha.inkMuted))
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .contentShape(RoundedRectangle(cornerRadius: 12))
+            .padding(.horizontal, Design.Space.rowInset)
+            .padding(.vertical, Design.Space.small)
+            .contentShape(RoundedRectangle(cornerRadius: Design.Radius.row))
             .background(
-                isHovering ? Color.primary.opacity(0.075) : Color.primary.opacity(0.035),
-                in: RoundedRectangle(cornerRadius: 12))
+                Color.primary.opacity(
+                    isHovering ? Design.Alpha.fillHover : Design.Alpha.fill),
+                in: RoundedRectangle(cornerRadius: Design.Radius.row))
             .overlay {
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(.white.opacity(isHovering ? 0.14 : 0.07), lineWidth: 0.75)
+                RoundedRectangle(cornerRadius: Design.Radius.row)
+                    .stroke(
+                        .white.opacity(
+                            isHovering ? Design.Alpha.hairlineHover : Design.Alpha.hairline),
+                        lineWidth: Design.Border.default)
             }
         }
         .buttonStyle(.plain)

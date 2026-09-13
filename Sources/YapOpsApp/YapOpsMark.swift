@@ -8,13 +8,13 @@ struct YapOpsMark: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 15, style: .continuous)
+            RoundedRectangle(cornerRadius: Design.Radius.message, style: .continuous)
                 .fill(LinearGradient(
                     colors: [tint, tint.opacity(0.62), .indigo.opacity(0.78)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing))
 
-            RoundedRectangle(cornerRadius: 15, style: .continuous)
+            RoundedRectangle(cornerRadius: Design.Radius.message, style: .continuous)
                 .stroke(.white.opacity(0.28), lineWidth: 1)
 
             HStack(alignment: .center, spacing: 2.5) {

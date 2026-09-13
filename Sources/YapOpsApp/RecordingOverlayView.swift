@@ -15,8 +15,9 @@ struct RecordingOverlayView: View {
                     y: isExpanded ? 1 : 0.78,
                     anchor: .center)
 
-            HStack(spacing: isExpanded ? 16 : 0) {
-                microphoneOrb(size: isExpanded ? 72 : 92)
+            HStack(spacing: isExpanded ? Design.Space.overlayGutter : 0) {
+                microphoneOrb(
+                    size: isExpanded ? Design.Layout.orbExpanded : Design.Layout.orbIdle)
                     .fixedSize()
 
                 if isExpanded {
@@ -24,7 +25,9 @@ struct RecordingOverlayView: View {
                         .transition(.move(edge: .leading).combined(with: .opacity))
                 }
             }
-            .padding(.horizontal, isExpanded ? 16 : 13)
+            .padding(
+                .horizontal,
+                isExpanded ? Design.Space.overlayGutter : Design.Space.overlayCollapsedGutter)
             .frame(
                 maxWidth: .infinity,
                 maxHeight: .infinity,
@@ -35,7 +38,10 @@ struct RecordingOverlayView: View {
                     maxWidth: .infinity,
                     maxHeight: .infinity,
                     alignment: isExpanded ? .trailing : .topTrailing)
-                .padding(isExpanded ? 14 : 5)
+                .padding(
+                    isExpanded
+                        ? Design.Space.overlayCancelInset
+                        : Design.Space.overlayCancelInsetCollapsed)
         }
         .animation(
             .smooth(duration: RecordingOverlayLayout.transitionDuration),
@@ -47,69 +53,70 @@ struct RecordingOverlayView: View {
     }
 
     private var transcriptContent: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: Design.Space.micro) {
             Text("Listening")
-                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .font(Design.Text.eyebrowOverlay)
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
-                .tracking(1.2)
+                .tracking(Design.Tracking.overlay)
 
             Text(RecordingTranscriptTail.format(model.transcript))
-                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                .font(Design.Text.transcript)
                 .foregroundStyle(.primary)
                 .lineLimit(2)
                 .contentTransition(.interpolate)
-                .animation(.snappy(duration: 0.2), value: model.transcript)
+                .animation(Design.Motion.snappy, value: model.transcript)
         }
         .padding(.trailing, 40)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var capsuleBackground: some View {
-        RoundedRectangle(cornerRadius: 32, style: .continuous)
-            .fill(.ultraThinMaterial)
+        RoundedRectangle(cornerRadius: Design.Radius.capsule, style: .continuous)
+            .fill(Design.Material.floating)
             .overlay {
-                LinearGradient(
-                    colors: [
-                        accentColor.opacity(0.18),
-                        accentColor.opacity(0.08),
-                        accentHighlight.opacity(0.16),
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing)
-                    .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
+                Design.Wash.overlay(accent: accentColor, highlight: accentHighlight)
+                    .clipShape(
+                        RoundedRectangle(cornerRadius: Design.Radius.capsule, style: .continuous))
             }
             .overlay {
-                RoundedRectangle(cornerRadius: 32, style: .continuous)
+                RoundedRectangle(cornerRadius: Design.Radius.capsule, style: .continuous)
                     .stroke(
-                        LinearGradient(
-                            colors: [.white.opacity(0.5), accentColor.opacity(0.28)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing),
-                        lineWidth: 1)
+                        Design.Wash.overlayRim(accent: accentColor),
+                        lineWidth: Design.Border.strong)
             }
     }
 
     private func microphoneOrb(size: CGFloat) -> some View {
         ZStack {
             Circle()
-                .fill(.thinMaterial)
+                .fill(Design.Material.orb)
 
             Circle()
                 .fill(AngularGradient(
-                    colors: [accentColor, accentHighlight, accentColor.opacity(0.75), accentColor],
+                    colors: [
+                        accentColor,
+                        accentHighlight,
+                        accentColor.opacity(Design.Alpha.orbCoreFalloff),
+                        accentColor,
+                    ],
                     center: .center))
-                .padding(5)
-                .shadow(color: accentColor.opacity(0.46), radius: 10)
+                .padding(Design.Space.micro)
+                .shadow(
+                    color: accentColor.opacity(Design.Glow.orb.alpha),
+                    radius: Design.Glow.orb.radius)
 
             Circle()
-                .stroke(accentColor.opacity(0.5), lineWidth: 3)
+                .stroke(accentColor.opacity(Design.Alpha.captureRing), lineWidth: 3)
                 .scaleEffect(model.isRecording ? 1.14 : 0.88)
-                .opacity(model.isRecording ? 0.05 : 0.7)
+                .opacity(
+                    model.isRecording
+                        ? Design.Alpha.captureRingFaded
+                        : Design.Alpha.captureRingResting)
                 .animation(
                     model.isRecording
-                        ? .easeOut(duration: 1.15).repeatForever(autoreverses: false)
-                        : .easeOut(duration: 0.15),
+                        ? Design.Motion.pulse.repeatForever(autoreverses: false)
+                        : Design.Motion.overlayOut,
                     value: model.isRecording)
 
             Image(systemName: "mic.fill")
@@ -128,14 +135,7 @@ struct RecordingOverlayView: View {
     }
 
     private var accentHighlight: Color {
-        switch model.accent {
-        case .cyan: .blue
-        case .blue: .indigo
-        case .purple: .pink
-        case .pink: .purple
-        case .orange: .pink
-        case .green: .cyan
-        }
+        model.accent.highlightColor
     }
 
     private var cancelButton: some View {
@@ -143,13 +143,15 @@ struct RecordingOverlayView: View {
             model.onCancel?()
         } label: {
             Image(systemName: "xmark")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(.primary.opacity(0.78))
-                .frame(width: 28, height: 28)
-                .background(.regularMaterial, in: Circle())
+                .font(Design.Text.glyph(11, weight: .bold))
+                .foregroundStyle(.primary.opacity(Design.Alpha.inkOverlayCancel))
+                .frame(width: Design.Layout.hitTarget, height: Design.Layout.hitTarget)
+                .background(Design.Material.panel, in: Circle())
                 .overlay {
                     Circle()
-                        .stroke(.white.opacity(0.28), lineWidth: 0.75)
+                        .stroke(
+                            .white.opacity(Design.Alpha.hairlineBright),
+                            lineWidth: Design.Border.default)
                 }
         }
         .buttonStyle(.plain)

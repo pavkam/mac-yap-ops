@@ -104,7 +104,7 @@ extension AgentRunPanelView {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 10))
+        .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: Design.Radius.innerCard))
         .accessibilityElement(children: .combine)
     }
 

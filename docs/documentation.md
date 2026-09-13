@@ -27,6 +27,7 @@ audience, but they should link to the owner instead of maintaining a second copy
 | `docs/sound-design.md` | Cue timing, playback conditions, assets, and silent-test behavior. |
 | `docs/troubleshooting.md` | Symptom-oriented recovery steps. |
 | `docs/architecture.md` | Package and subsystem ownership plus top-level state flow. |
+| `docs/design-system.md` | Design token ownership, the profile accent, copy voice, and design-system adoption boundaries. |
 | `docs/agent-harness.md` | ACP process, wire, session, prompt, permission, cancellation, recovery, and delivery contracts. |
 | `docs/concurrency-and-lifecycle.md` | Isolation, identities, callbacks, queues, run-loop delivery, and shutdown. |
 | `docs/privacy-and-security.md` | Data paths, credentials, persistence, redaction, and resource bounds. |

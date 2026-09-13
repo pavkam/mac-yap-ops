@@ -31,6 +31,7 @@ runtime contract, investigation, or contributor workflow.
 | Guide | Use it to |
 | --- | --- |
 | [Architecture](architecture.md) | Locate package, subsystem, state-flow, and adapter ownership. |
+| [Design system](design-system.md) | Find the token a surface should use, and what the design system describes but YapOps does not build. |
 | [ACP agent harness](agent-harness.md) | Read the process, wire, session, permission, cancellation, recovery, and delivery contract. |
 | [Concurrency and lifecycle](concurrency-and-lifecycle.md) | Trace actor isolation, identities, callbacks, queues, cancellation order, and shutdown. |
 | [Privacy and security](privacy-and-security.md) | Understand data paths, trust boundaries, credentials, persistence, redaction, and retention. |

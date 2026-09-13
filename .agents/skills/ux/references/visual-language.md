@@ -38,7 +38,9 @@ with an opaque semantic background. Do not merely increase opacity from 0.08 to
   `accessibilityDifferentiateWithoutColor`.
 - Prefer `primary`, `secondary`, `separator`, system backgrounds, and semantic
   status colors. Test custom tints in light, dark, and increased contrast.
-- Never hard-code the apparent RGB value of a macOS system color.
+- Never hard-code the apparent RGB value of a macOS system color. Name the
+  system color through `Design.Color` or `WakeProfileAccent.swiftUIColor`, which
+  is what keeps this rule checkable; see `.agents/skills/design/SKILL.md`.
 
 ## Typography
 
@@ -73,7 +75,8 @@ click comfort, but invisible overlap between neighboring targets does not.
 
 Use continuous rounded rectangles and circles consistently. A corner radius
 expresses containment: the outer panel is softer than an inner card, which is
-softer than a token. Do not assign a different radius to every view.
+softer than a token. `Design.Radius` holds that ladder as eleven ascending
+tiers—pick the tier a surface belongs to rather than inventing a radius for it.
 
 Respect safe visible frames across multiple displays, including negative
 origins and smaller-than-preferred screens. Appearance is not slick if half of

@@ -43,6 +43,7 @@ Load additional skills only when their trigger matches:
 | --- | --- |
 | ACP framing, sessions, permissions, providers, adapters, cancellation, recovery | `.agents/skills/acp-integration/SKILL.md` |
 | SwiftUI/AppKit, menu/panels, Settings, layout, styling, motion, accessibility | `.agents/skills/ux/SKILL.md` |
+| Design tokens, accent propagation, copy voice, design-system adoption | `.agents/skills/design/SKILL.md` |
 | Narration, macOS speech, ElevenLabs, voice catalog, playback, fallback, barge-in | `.agents/skills/voice-reading/SKILL.md` |
 | Tests, diagnosis, logs, profiling, permissions, packaging, signing, CI | `.agents/skills/testing-and-debugging/SKILL.md` |
 

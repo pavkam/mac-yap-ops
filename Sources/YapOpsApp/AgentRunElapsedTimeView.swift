@@ -26,7 +26,7 @@ struct AgentRunElapsedTimeView: View {
                 Text(elapsedTime.formatted(at: startedAt))
             }
         }
-        .font(.system(size: 12, weight: .medium, design: .monospaced))
+        .font(Design.Text.elapsed)
         .foregroundStyle(.secondary)
     }
 }

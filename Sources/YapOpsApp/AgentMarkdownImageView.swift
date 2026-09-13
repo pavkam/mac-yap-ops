@@ -61,12 +61,12 @@ struct AgentMarkdownImageContent: View {
                     .accessibilityLabel("Loading agent image")
             case .unavailable:
                 Label("Image unavailable", systemImage: "photo.badge.exclamationmark")
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .font(Design.Text.captionRounded)
                     .foregroundStyle(.secondary)
             }
         }
         .frame(maxWidth: .infinity, minHeight: 96, maxHeight: 420)
-        .background(.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .background(.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: Design.Radius.innerCard))
+        .clipShape(RoundedRectangle(cornerRadius: Design.Radius.innerCard))
     }
 }

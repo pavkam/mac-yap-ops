@@ -191,7 +191,7 @@ private struct VoiceSelectionStatus: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(backgroundColor, in: RoundedRectangle(cornerRadius: 8))
+        .background(backgroundColor, in: RoundedRectangle(cornerRadius: Design.Radius.field))
         .accessibilityElement(children: .combine)
     }
 

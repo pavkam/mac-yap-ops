@@ -118,7 +118,7 @@ enum AgentMarkdownRendering {
                 VStack(alignment: .leading, spacing: 5) {
                     if let language = configuration.language, !language.isEmpty {
                         Text(language.uppercased())
-                            .font(.system(size: 8, weight: .bold, design: .rounded))
+                            .font(Design.Text.codeTag)
                             .foregroundStyle(.secondary)
                             .tracking(0.7)
                     }
@@ -134,7 +134,7 @@ enum AgentMarkdownRendering {
                 }
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.black.opacity(0.16), in: RoundedRectangle(cornerRadius: 9))
+                .background(.black.opacity(0.16), in: RoundedRectangle(cornerRadius: Design.Radius.notice))
                 .markdownMargin(top: 0, bottom: 8)
             }
             .list { configuration in
