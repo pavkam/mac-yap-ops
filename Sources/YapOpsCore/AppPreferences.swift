@@ -22,6 +22,7 @@ public final class AppPreferences {
         static let profileHotKeysMigrated = "profileHotKeysMigrated"
         static let executablePath = "executablePath"
         static let argumentTemplates = "argumentTemplates"
+        static let hasCompletedFirstRun = "hasCompletedFirstRun"
     }
 
     private let defaults: UserDefaults
@@ -196,6 +197,16 @@ public final class AppPreferences {
                 ?? ["https://www.google.com/search?q={urlText}"]
         }
         set { defaults.set(newValue, forKey: Key.argumentTemplates) }
+    }
+
+    /// Whether the first-run flow has been shown and dismissed.
+    ///
+    /// The lazy permission model — request Microphone and Speech Recognition on
+    /// the first spoken command — is unchanged by this. First run explains that
+    /// model; it does not front-load the request.
+    public var hasCompletedFirstRun: Bool {
+        get { defaults.bool(forKey: Key.hasCompletedFirstRun) }
+        set { defaults.set(newValue, forKey: Key.hasCompletedFirstRun) }
     }
 
     private func normalized(_ value: String?, fallback: String) -> String {

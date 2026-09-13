@@ -55,6 +55,9 @@ extension Design {
         /// deliberate here, because a 36pt glyph at semibold reads as an error
         /// state rather than a placeholder.
         static let artifactFallback = Font.system(size: 36, weight: .light)
+        /// First-run step glyph. `.light` for the same reason as the artifact
+        /// fallback: a large glyph at semibold reads as an alert.
+        static let onboardingStep = Font.system(size: 44, weight: .light)
 
         /// A glyph sized to sit with neighbouring text.
         ///

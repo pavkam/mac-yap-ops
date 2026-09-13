@@ -11,7 +11,9 @@ struct YapOpsApp: App {
     @State private var model: AppModel
     @State private var launchAtLogin: LaunchAtLoginSetting
     @State private var applicationStartup: ApplicationStartup
+    @State private var preferences: AppPreferences
     @AppStorage("settingsPane") private var settingsPane: SettingsPane = .general
+    @Environment(\.openWindow) private var openWindow
 
     @MainActor
     init() {
@@ -98,6 +100,7 @@ struct YapOpsApp: App {
         _launchAtLogin = State(
             initialValue: LaunchAtLoginSetting(diagnostics: diagnostics))
         _applicationStartup = State(initialValue: composition.startup)
+        _preferences = State(initialValue: preferences)
         composition.startup.start()
     }
 
@@ -107,8 +110,23 @@ struct YapOpsApp: App {
         } label: {
             let presentation = model.statusPresentation
 
+            // The label renders at launch regardless of whether the menu is
+            // ever opened; MenuBarExtra's content closure does not build until
+            // the user clicks the status item, so first run cannot trigger
+            // from there.
             Image(systemName: presentation.symbolName)
                 .accessibilityLabel(presentation.title)
+                .task {
+                    // openWindow is unusable for a moment after launch, before
+                    // SwiftUI finishes building the scene graph. This is
+                    // deliberately independent of AppModel's own startup
+                    // (permissions, credential loading): a first-run user by
+                    // definition has no stored credential yet, so gating a
+                    // welcome window on that chain would make it least likely
+                    // to appear for exactly the audience it is for.
+                    try? await Task.sleep(for: .milliseconds(200))
+                    presentFirstRunIfNeeded()
+                }
         }
         .menuBarExtraStyle(.window)
         .windowStyle(.plain)
@@ -118,5 +136,27 @@ struct YapOpsApp: App {
                 .background(SettingsWindowFrontingView())
         }
         .windowResizability(.contentSize)
+
+        Window("Welcome to YapOps", id: FirstRunPresenter.windowID) {
+            FirstRunView {
+                preferences.hasCompletedFirstRun = true
+                FirstRunPresenter.dismiss()
+            }
+        }
+        .windowResizability(.contentSize)
+        .defaultPosition(.center)
+    }
+}
+
+extension YapOpsApp {
+    /// Opens the first-run window once, on the first launch only.
+    ///
+    /// Called from `.onAppear` on the menu content, which is the earliest
+    /// SwiftUI gives an `openWindow` action a body to run in — the `init`
+    /// above runs before the environment exists.
+    @MainActor
+    func presentFirstRunIfNeeded() {
+        guard !preferences.hasCompletedFirstRun else { return }
+        FirstRunPresenter.present(with: openWindow)
     }
 }

@@ -27,6 +27,23 @@ struct AppPreferencesTests {
         #expect(!capturesMacContext)
     }
 
+    @Test func hasCompletedFirstRun_WhenDefaultsAreEmpty_DefaultsToFalse() throws {
+        let suite = "YapOpsFirstRunDefaultsTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+
+        #expect(!AppPreferences(defaults: defaults).hasCompletedFirstRun)
+    }
+
+    @Test func hasCompletedFirstRun_WhenChanged_RoundTripsThroughDefaults() throws {
+        let suite = "YapOpsFirstRunPersistenceTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        AppPreferences(defaults: defaults).hasCompletedFirstRun = true
+
+        #expect(AppPreferences(defaults: defaults).hasCompletedFirstRun)
+    }
+
     @Test func wakeProfiles_WhenStoredProfileIsCorrupt_DoesNotRewriteStoredBytes() throws {
         let suite = "YapOpsTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
